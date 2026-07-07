@@ -1,4 +1,4 @@
-"""Browser launcher: spawn a Chromium with the profile's fingerprint.
+﻿"""Browser launcher: spawn a Chromium with the profile's fingerprint.
 
 Uses Playwright's ``launch_persistent_context`` so each profile lives in
 its own user data dir (the same isolation Chrome gives to multi-account
@@ -34,7 +34,7 @@ from .profile import Profile, ProfileStore
 from .proxy import ProxyConfig, parse_proxy
 
 
-log = logging.getLogger("antidetect.browser")
+log = logging.getLogger("antique.browser")
 
 
 def _find_free_port(preferred: Optional[int] = None) -> int:
@@ -69,7 +69,7 @@ class BrowserLauncher:
         headless: bool = False,
     ):
         self.store = store
-        self.data_root = data_root or Path(os.environ.get("ANTIDETECT_DATA_DIR", "data"))
+        self.data_root = data_root or Path(os.environ.get("ANTIQUE_DATA_DIR", "data"))
         self.data_root.mkdir(parents=True, exist_ok=True)
         self.headless = headless
         self._live: Dict[str, BrowserHandle] = {}
@@ -169,7 +169,7 @@ class BrowserLauncher:
             apply_initial_state_to_user_data(default_dir, user_dir)
         except Exception as exc:  # pragma: no cover — defensive
             log.warning(
-                "antidetect-local: failed to apply imported state for %s: %s",
+                "antique: failed to apply imported state for %s: %s",
                 profile.user_id,
                 exc,
             )
@@ -200,7 +200,7 @@ class BrowserLauncher:
         launch_opts["headless"] = self.headless
         init_js = build_init_script(fp)
         playwright = await async_playwright().start()
-        channel = os.environ.get("ANTIDETECT_BROWSER_CHANNEL")
+        channel = os.environ.get("ANTIQUE_BROWSER_CHANNEL")
         chromium = playwright.chromium if not channel else playwright.chromium
         context = await chromium.launch_persistent_context(
             user_data_dir=str(user_dir),

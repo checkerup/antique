@@ -1,4 +1,4 @@
-# antidetect-local
+﻿# antique
 
 **A self-hosted, open-source replacement for AdsPower — multi-profile browser farm with fingerprint spoofing, proxy rotation, .adb bundle import, and an AdsPower-compatible REST API.**
 
@@ -32,11 +32,11 @@
 
 ## 1. What this is (TL;DR for agents)
 
-antidetect-local is a Python service that:
+antique is a Python service that:
 
 - Spawns isolated Chromium contexts (Playwright `launch_persistent_context`) per profile — each profile has its own user data dir, cookies, localStorage, IndexedDB.
 - Generates internally-consistent browser fingerprints (UA, navigator, screen, timezone, locale, WebGL vendor/renderer, audio + canvas noise seeds) and injects JS init scripts to patch the browser at boot.
-- Persists profiles in SQLite (`data/antidetect.db`) — proxies, fingerprints, cookies, tags, sessions, import bookkeeping.
+- Persists profiles in SQLite (`data/antique.db`) — proxies, fingerprints, cookies, tags, sessions, import bookkeeping.
 - Imports `.adb` profile bundles exported from AdsPower (cookies + LocalStorage + IndexedDB). The import uses native Chromium reading instead of brittle LevelDB parsing — we copy the source directories into Playwright's `user_data_dir` and let Chromium read them itself.
 - Exposes an AdsPower-compatible REST API on `http://127.0.0.1:<port>/...` so existing scripts that already talk to AdsPower can switch by changing the base URL.
 - Ships a single-page dashboard at `/` (or `/dashboard`) and a FastAPI Swagger at `/docs`.
@@ -69,8 +69,8 @@ antidetect-local is a Python service that:
 ### Install
 
 ```bash
-git clone https://github.com/<your-org>/antidetect-local
-cd antidetect-local
+git clone https://github.com/<your-org>/antique
+cd antique
 python -m venv .venv && source .venv/bin/activate   # or .venv\Scripts\activate on Windows
 pip install -e .
 playwright install chromium
@@ -146,7 +146,7 @@ python -m src.cli import-cookies path/to/bundle.adb --full --name "Full import"
                                      ▼          ▼
                             ┌────────────────────────┐
                             │  data/                  │
-                            │  ├─ antidetect.db       │  ← profiles, sessions, tags, groups
+                            │  ├─ antique.db       │  ← profiles, sessions, tags, groups
                             │  └─ profiles/<user_id>/ │  ← Playwright user_data_dir per profile
                             │      ├─ Default/         │  ← cookies, cache, Local Storage, IndexedDB
                             │      └─ ...              │
@@ -212,7 +212,7 @@ tests/
 
 ## 5. Data model and storage schema
 
-Database: `data/antidetect.db` (SQLite, single file).
+Database: `data/antique.db` (SQLite, single file).
 
 ### Tables
 
@@ -347,7 +347,7 @@ All responses use the AdsPower shape: `{"code": 0, "msg": "success", "data": {..
 
 ```http
 GET /health
-→ {"status": "ok", "service": "antidetect-local", "version": "0.1.0"}
+→ {"status": "ok", "service": "antique", "version": "0.1.0"}
 ```
 
 ### Profiles
@@ -603,7 +603,7 @@ For real CDP, point your automation at the per-profile websocket returned by `PO
 
 ```
 data/
-├── antidetect.db                 ← SQLite (profiles, sessions, tags, groups)
+├── antique.db                 ← SQLite (profiles, sessions, tags, groups)
 └── profiles/
     ├── <user_id>/                ← Playwright user_data_dir for the profile
     │   ├── Default/
@@ -618,7 +618,7 @@ data/
             └── ...
 ```
 
-Override with `ANTIDETECT_DATA_DIR=/some/path` (env var).
+Override with `ANTIQUE_DATA_DIR=/some/path` (env var).
 
 ---
 
@@ -691,9 +691,9 @@ python -m pytest -k adb             # only .adb-related tests
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `ANTIDETECT_DATA_DIR` | `./data` | Root for `antidetect.db` + profile user data dirs |
-| `ANTIDETECT_DB` | `<data_dir>/antidetect.db` | SQLite path override |
-| `ANTIDETECT_BROWSER_CHANNEL` | (unset, uses bundled Chromium) | Playwright browser channel: `chrome`, `msedge`, `chromium-beta` |
+| `ANTIQUE_DATA_DIR` | `./data` | Root for `antique.db` + profile user data dirs |
+| `ANTIQUE_DB` | `<data_dir>/antique.db` | SQLite path override |
+| `ANTIQUE_BROWSER_CHANNEL` | (unset, uses bundled Chromium) | Playwright browser channel: `chrome`, `msedge`, `chromium-beta` |
 | `HOST` (CLI only) | `127.0.0.1` | Bind address for `serve` |
 | `UI_PORT` (CLI only) | `8080` | Port for `serve` |
 

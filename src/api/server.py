@@ -1,4 +1,4 @@
-"""FastAPI server entry point for the local API + UI.
+﻿"""FastAPI server entry point for the local API + UI.
 
 Usage:
     python -m src.api.server --ui-port 8080
@@ -37,10 +37,10 @@ def create_app(
 ) -> FastAPI:
     """Build the FastAPI app with all wiring done."""
     if data_root is None:
-        data_root = Path(os.environ.get("ANTIDETECT_DATA_DIR", "data"))
+        data_root = Path(os.environ.get("ANTIQUE_DATA_DIR", "data"))
     data_root.mkdir(parents=True, exist_ok=True)
 
-    store = ProfileStore(db_path=data_root / "antidetect.db")
+    store = ProfileStore(db_path=data_root / "antique.db")
     ensure_default_group(store.engine)
     launcher = BrowserLauncher(store, data_root=data_root, headless=headless)
     cdp = CDPProxy(launcher)
@@ -48,7 +48,7 @@ def create_app(
     from .routes import wire as wire_routes
     wire_routes(store, launcher, cdp)
 
-    app = FastAPI(title="antidetect-local", version="0.1.0")
+    app = FastAPI(title="antique", version="0.1.0")
 
     app.add_middleware(
         CORSMiddleware,
@@ -74,7 +74,7 @@ def create_app(
         dash = (Path(__file__).parent.parent / "ui" / "templates" / "index.html").resolve()
         if dash.exists():
             return FileResponse(str(dash))
-        return {"msg": "antidetect-local API running", "docs": "/docs"}
+        return {"msg": "antique API running", "docs": "/docs"}
 
     return app
 

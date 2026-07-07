@@ -1,4 +1,4 @@
-# antidetect-local
+﻿# antique
 
 **一个自托管、开源的 AdsPower 替代方案 —— 多 profile 浏览器农场，具备 fingerprint 伪装、proxy 轮换、.adb bundle 导入，以及 AdsPower 兼容的 REST API。**
 
@@ -32,11 +32,11 @@
 
 ## 1. 这是什么（给 agent 的 TL;DR）
 
-antidetect-local 是一个 Python 服务，功能如下：
+antique 是一个 Python 服务，功能如下：
 
 - 为每个 profile 启动独立的 Chromium context（Playwright `launch_persistent_context`）—— 每个 profile 拥有自己的 user data dir、cookies、localStorage、IndexedDB。
 - 生成内部一致的 browser fingerprint（UA、navigator、screen、timezone、locale、WebGL vendor/renderer、audio + canvas noise seed），并注入 JS init script 在启动时对浏览器进行 patch。
-- 在 SQLite（`data/antidetect.db`）中持久化 profile —— 包括 proxy、fingerprint、cookies、tags、sessions 以及导入相关的元数据。
+- 在 SQLite（`data/antique.db`）中持久化 profile —— 包括 proxy、fingerprint、cookies、tags、sessions 以及导入相关的元数据。
 - 导入从 AdsPower 导出的 `.adb` profile bundle（cookies + LocalStorage + IndexedDB）。导入采用原生 Chromium 读取，而非脆弱的 LevelDB 解析 —— 我们把源目录拷贝到 Playwright 的 `user_data_dir`，让 Chromium 自己读取。
 - 在 `http://127.0.0.1:<port>/...` 上暴露 AdsPower 兼容的 REST API，因此已经对接 AdsPower 的现有脚本只需修改 base URL 即可切换。
 - 在 `/`（或 `/dashboard`）提供一个单页 dashboard，在 `/docs` 提供 FastAPI Swagger。
@@ -66,8 +66,8 @@ antidetect-local 是一个 Python 服务，功能如下：
 ### 安装
 
 ```bash
-git clone https://github.com/<your-org>/antidetect-local
-cd antidetect-local
+git clone https://github.com/<your-org>/antique
+cd antique
 python -m venv .venv && source .venv/bin/activate   # or .venv\Scripts\activate on Windows
 pip install -e .
 playwright install chromium
@@ -143,7 +143,7 @@ python -m src.cli import-cookies path/to/bundle.adb --full --name "Full import"
                                       ▼          ▼
                              ┌────────────────────────┐
                              │  data/                  │
-                             │  ├─ antidetect.db       │  ← profiles, sessions, tags, groups
+                             │  ├─ antique.db       │  ← profiles, sessions, tags, groups
                              │  └─ profiles/<user_id>/ │  ← Playwright user_data_dir per profile
                              │      ├─ Default/         │  ← cookies, cache, Local Storage, IndexedDB
                              │      └─ ...              │
@@ -209,7 +209,7 @@ tests/
 
 ## 5. 数据模型与存储 schema
 
-数据库：`data/antidetect.db`（SQLite，单文件）。
+数据库：`data/antique.db`（SQLite，单文件）。
 
 ### 表结构
 
@@ -344,7 +344,7 @@ Base URL：`http://127.0.0.1:<ui-port>`（同一端口同时提供 UI 和 API；
 
 ```http
 GET /health
-→ {"status": "ok", "service": "antidetect-local", "version": "0.1.0"}
+→ {"status": "ok", "service": "antique", "version": "0.1.0"}
 ```
 
 ### Profiles
@@ -601,7 +601,7 @@ Playwright 拥有每个 profile 的 Chromium 进程，但外部自动化（Selen
 
 ```
 data/
-├── antidetect.db                 ← SQLite (profiles, sessions, tags, groups)
+├── antique.db                 ← SQLite (profiles, sessions, tags, groups)
 └── profiles/
     ├── <user_id>/                ← 该 profile 的 Playwright user_data_dir
     │   ├── Default/
@@ -616,7 +616,7 @@ data/
             └── ...
 ```
 
-可通过环境变量 `ANTIDETECT_DATA_DIR=/some/path` 覆盖。
+可通过环境变量 `ANTIQUE_DATA_DIR=/some/path` 覆盖。
 
 ---
 
@@ -682,9 +682,9 @@ python -m pytest -k adb             # only .adb-related tests
 
 | 变量 | 默认值 | 用途 |
 |---|---|---|
-| `ANTIDETECT_DATA_DIR` | `./data` | `antidetect.db` + profile user data dir 的根目录 |
-| `ANTIDETECT_DB` | `<data_dir>/antidetect.db` | SQLite 路径覆盖 |
-| `ANTIDETECT_BROWSER_CHANNEL` | （未设置，使用打包的 Chromium） | Playwright browser channel：`chrome`、`msedge`、`chromium-beta` |
+| `ANTIQUE_DATA_DIR` | `./data` | `antique.db` + profile user data dir 的根目录 |
+| `ANTIQUE_DB` | `<data_dir>/antique.db` | SQLite 路径覆盖 |
+| `ANTIQUE_BROWSER_CHANNEL` | （未设置，使用打包的 Chromium） | Playwright browser channel：`chrome`、`msedge`、`chromium-beta` |
 | `HOST`（仅 CLI） | `127.0.0.1` | `serve` 的绑定地址 |
 | `UI_PORT`（仅 CLI） | `8080` | `serve` 的端口 |
 

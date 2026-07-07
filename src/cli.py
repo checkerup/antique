@@ -1,4 +1,4 @@
-"""CLI for antidetect-local.
+﻿"""CLI for antique.
 
 Subcommands:
 
@@ -27,7 +27,7 @@ from rich.console import Console
 from rich.table import Table
 
 
-app = typer.Typer(add_completion=False, no_args_is_help=True, help="antidetect-local CLI")
+app = typer.Typer(add_completion=False, no_args_is_help=True, help="antique CLI")
 console = Console()
 
 
@@ -58,7 +58,7 @@ def serve(
     from .api.server import create_app
     import uvicorn
     app = create_app(api_port=api_port, cdp_port=cdp_port, headless=headless)
-    console.print(f"[green]antidetect-local[/green] starting on http://{host}:{ui_port}")
+    console.print(f"[green]antique[/green] starting on http://{host}:{ui_port}")
     console.print(f"  Dashboard:    http://{host}:{ui_port}/")
     console.print(f"  API docs:     http://{host}:{ui_port}/docs")
     console.print(f"  AdsPower API: http://{host}:{ui_port}/user/list")
@@ -236,7 +236,7 @@ def import_cookies(
         # Full-profile flow: create the profile first (so we have a user_id),
         # then extract the bundle under data/profiles/imports/<user_id>/.
         p = store.create(name=name or path.stem)
-        import_root = Path(os.environ.get("ANTIDETECT_DATA_DIR", "data")) / "profiles" / "imports"
+        import_root = Path(os.environ.get("ANTIQUE_DATA_DIR", "data")) / "profiles" / "imports"
         import_root.mkdir(parents=True, exist_ok=True)
         try:
             result = prepare_adspower_import(path, import_root, p.user_id)

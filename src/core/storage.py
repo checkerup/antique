@@ -1,7 +1,7 @@
-"""SQLite storage layer using SQLModel.
+﻿"""SQLite storage layer using SQLModel.
 
 Stores profiles, fingerprint configs, proxy configs, and session metadata.
-DB file lives at ``data/antidetect.db`` by default — overridable via env.
+DB file lives at ``data/antique.db`` by default — overridable via env.
 """
 from __future__ import annotations
 
@@ -90,13 +90,13 @@ class GroupRecord(SQLModel, table=True):
 
 
 def _default_db_path() -> Path:
-    """Resolve the default SQLite path under ``./data/antidetect.db``."""
-    env = os.environ.get("ANTIDETECT_DB")
+    """Resolve the default SQLite path under ``./data/antique.db``."""
+    env = os.environ.get("ANTIQUE_DB")
     if env:
         return Path(env)
-    base = Path(os.environ.get("ANTIDETECT_DATA_DIR", "data"))
+    base = Path(os.environ.get("ANTIQUE_DATA_DIR", "data"))
     base.mkdir(parents=True, exist_ok=True)
-    return base / "antidetect.db"
+    return base / "antique.db"
 
 
 def make_engine(db_path: Optional[Path] = None, echo: bool = False):

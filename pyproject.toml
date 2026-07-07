@@ -1,15 +1,15 @@
-[build-system]
+﻿[build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "antidetect-local"
+name = "antique"
 version = "0.1.0"
 description = "Local open-source alternative to AdsPower: multi-profile anti-detect browser with fingerprint spoofing, proxy management, cookie import/export, and an AdsPower-compatible local API."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
-authors = [{ name = "antidetect-local contributors" }]
+authors = [{ name = "antique contributors" }]
 
 [project.scripts]
 antidetect = "src.cli:main"

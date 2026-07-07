@@ -1,4 +1,4 @@
-"""CDP multiplexer (a minimal AdsPower-style proxy).
+﻿"""CDP multiplexer (a minimal AdsPower-style proxy).
 
 AdsPower exposes two HTTP ports:
 
@@ -106,9 +106,9 @@ class CDPProxy:
     def version_payload(self) -> Dict[str, Any]:
         """Return the standard ``/json/version`` shape."""
         return {
-            "Browser": f"antidetect-local/{self.launcher.__class__.__name__}",
+            "Browser": f"antique/{self.launcher.__class__.__name__}",
             "Protocol-Version": "1.3",
-            "User-Agent": "Mozilla/5.0 antidetect-local",
+            "User-Agent": "Mozilla/5.0 antique",
             "V8-Version": "",
             "WebKit-Version": "",
             "webSocketDebuggerUrl": "ws://127.0.0.1:5555/devtools/browser",

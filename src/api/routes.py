@@ -1,4 +1,4 @@
-"""AdsPower-compatible API routes.
+﻿"""AdsPower-compatible API routes.
 
 Endpoints mirror AdsPower's local API (port 50325) so existing scripts
 that talk to AdsPower can switch by changing the base URL.
@@ -47,7 +47,7 @@ from ..core.profile import ProfileStore
 from ..core.proxy import ProxyConfig, check_proxy, parse_proxy_list, parse_proxy
 
 
-log = logging.getLogger("adshield.api")
+log = logging.getLogger("antique.api")
 router = APIRouter()
 
 # These are wired in by server.py at startup
@@ -169,7 +169,7 @@ def _ads_response(success: bool, **data: Any) -> Dict[str, Any]:
 
 @router.get("/health")
 def health() -> Dict[str, Any]:
-    return {"status": "ok", "service": "antidetect-local", "version": "0.1.0"}
+    return {"status": "ok", "service": "antique", "version": "0.1.0"}
 
 
 # ---------------------------------------------------------------------------
@@ -357,7 +357,7 @@ async def user_import(
         # under data/profiles/imports/<user_id>/ so the launcher can apply
         # LocalStorage/IndexedDB on first launch.
         p = _store.create(name=profile_name or "imported")
-        import_root = Path(os.environ.get("ANTIDETECT_DATA_DIR", "data")) / "profiles" / "imports"
+        import_root = Path(os.environ.get("ANTIQUE_DATA_DIR", "data")) / "profiles" / "imports"
         import_root.mkdir(parents=True, exist_ok=True)
         try:
             result = prepare_adspower_import(src_path, import_root, p.user_id)
@@ -696,7 +696,7 @@ def info() -> Dict[str, Any]:
     profiles = _store.list()
     running = _launcher.list_running()
     return {
-        "service": "antidetect-local",
+        "service": "antique",
         "version": "0.1.0",
         "profile_count": len(profiles),
         "running_count": len(running),
