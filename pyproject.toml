@@ -1,4 +1,4 @@
-﻿[build-system]
+[build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
@@ -12,7 +12,7 @@ license = { text = "MIT" }
 authors = [{ name = "antique contributors" }]
 
 [project.scripts]
-antidetect = "src.cli:main"
+antique = "src.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
