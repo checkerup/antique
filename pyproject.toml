@@ -21,4 +21,4 @@ include = ["src*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
-addopts = "-q --tb=short"
+addopts = "-q --tb=short -p no:web3 -p no:pytest_ethereum"
