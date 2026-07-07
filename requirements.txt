@@ -1,0 +1,38 @@
+# Web framework + local API
+fastapi>=0.110
+uvicorn[standard]>=0.27
+pydantic>=2.6
+
+# Browser automation (Chromium-based fingerprint manipulation)
+playwright>=1.42
+# Optional Firefox alternative for better anti-detect (camoufox)
+# camoufox>=0.2.0
+
+# Storage
+sqlmodel>=0.0.16
+# aiosqlite is included via sqlmodel
+
+# Proxy / network
+httpx>=0.27
+aiohttp>=3.9
+
+# Fingerprint generation
+# fake-useragent is noisy; we generate fingerprint fields ourselves with realistic distributions
+# but we keep it for fallback / diversity
+fake-useragent>=1.5
+
+# Cookie / profile import
+# PyYAML for AdsPower config parsing
+pyyaml>=6.0
+
+# CLI
+typer>=0.12
+rich>=13.7
+
+# Testing
+pytest>=8.1
+pytest-asyncio>=0.23
+httpx>=0.27
+
+# Utility
+python-dotenv>=1.0

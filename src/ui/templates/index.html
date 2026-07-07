@@ -1,0 +1,816 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>antidetect-local</title>
+<style>
+:root {
+  --bg: #0e1117;
+  --panel: #161b22;
+  --border: #30363d;
+  --text: #c9d1d9;
+  --muted: #8b949e;
+  --accent: #58a6ff;
+  --green: #3fb950;
+  --red: #f85149;
+  --yellow: #d29922;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+}
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+}
+header h1 { margin: 0; font-size: 18px; font-weight: 600; }
+header .meta { color: var(--muted); font-size: 12px; margin-top: 2px; }
+header .actions { display: flex; gap: 8px; }
+main { padding: 24px; max-width: 1400px; margin: 0 auto; }
+.toolbar { display: flex; gap: 8px; margin-bottom: 16px; align-items: center; flex-wrap: wrap; }
+.toolbar input[type="search"] {
+  flex: 1; min-width: 200px; padding: 8px 12px; background: var(--panel);
+  border: 1px solid var(--border); border-radius: 6px;
+  color: var(--text); font-size: 13px;
+}
+.toolbar select {
+  padding: 8px 12px; background: var(--panel);
+  border: 1px solid var(--border); border-radius: 6px;
+  color: var(--text); font-size: 13px;
+}
+.btn {
+  padding: 8px 14px; border: 1px solid var(--border); border-radius: 6px;
+  background: var(--panel); color: var(--text); cursor: pointer; font-size: 13px;
+  transition: all .15s;
+}
+.btn:hover { background: #1c2129; border-color: var(--accent); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn.primary:hover { background: #79b8ff; }
+.btn.danger { background: var(--red); border-color: var(--red); color: #fff; }
+.btn.danger:hover { background: #ff6e6e; }
+.btn.warning { background: var(--yellow); border-color: var(--yellow); color: #000; }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+.btn.sm { padding: 4px 8px; font-size: 12px; }
+table { width: 100%; border-collapse: collapse; background: var(--panel); border-radius: 6px; overflow: hidden; }
+th, td { padding: 10px 14px; text-align: left; border-bottom: 1px solid var(--border); }
+th { background: #0d1117; font-weight: 600; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .5px; }
+tbody tr:hover { background: #1c2129; }
+tbody tr:last-child td { border-bottom: none; }
+tbody tr.selected { background: rgba(88, 166, 255, .08); }
+.status { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; text-transform: uppercase; }
+.status.active { background: rgba(63, 185, 80, .15); color: var(--green); }
+.status.inactive { background: rgba(139, 148, 158, .15); color: var(--muted); }
+.tag { display: inline-block; padding: 2px 6px; background: rgba(88, 166, 255, .15); color: var(--accent); border-radius: 3px; font-size: 11px; margin-right: 4px; }
+.empty { text-align: center; padding: 60px; color: var(--muted); }
+.modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.6); align-items: center; justify-content: center; z-index: 100; }
+.modal.open { display: flex; }
+.modal .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 24px; max-width: 700px; width: 90%; max-height: 90vh; overflow: auto; }
+.modal h2 { margin: 0 0 16px; font-size: 16px; }
+.field { margin-bottom: 12px; }
+.field label { display: block; margin-bottom: 4px; color: var(--muted); font-size: 12px; }
+.field input, .field textarea, .field select {
+  width: 100%; padding: 8px 12px; background: var(--bg);
+  border: 1px solid var(--border); border-radius: 6px;
+  color: var(--text); font-size: 13px; font-family: inherit;
+}
+.field textarea { min-height: 80px; font-family: ui-monospace, monospace; }
+.field-row { display: flex; gap: 8px; }
+.field-row .field { flex: 1; }
+.row { display: flex; gap: 8px; justify-content: flex-end; }
+.kbd { font-family: ui-monospace, monospace; font-size: 11px; padding: 2px 6px; background: var(--bg); border: 1px solid var(--border); border-radius: 3px; color: var(--muted); }
+.bulk-bar { display: none; padding: 12px 24px; background: rgba(88,166,255,.08); border: 1px solid var(--accent); border-radius: 6px; margin-bottom: 16px; align-items: center; gap: 8px; }
+.bulk-bar.visible { display: flex; }
+.bulk-bar .count { font-weight: 600; color: var(--accent); }
+.proxy-status { display: inline-block; padding: 2px 6px; border-radius: 3px; font-size: 11px; }
+.proxy-status.ok { background: rgba(63,185,80,.15); color: var(--green); }
+.proxy-status.error { background: rgba(248,81,73,.15); color: var(--red); }
+.proxy-status.checking { background: rgba(210,153,34,.15); color: var(--yellow); }
+.tabs { display: flex; gap: 0; border-bottom: 1px solid var(--border); margin-bottom: 16px; }
+.tab { padding: 8px 16px; cursor: pointer; color: var(--muted); border-bottom: 2px solid transparent; }
+.tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>antidetect-local</h1>
+    <div class="meta" id="info-meta">connecting...</div>
+  </div>
+  <div class="actions">
+    <button class="btn" onclick="window.open('/docs', '_blank')">API docs</button>
+    <button class="btn" onclick="openProxyImport()">Import proxies</button>
+    <button class="btn primary" onclick="openCreate()">+ New profile</button>
+  </div>
+</header>
+
+<main>
+  <div class="toolbar">
+    <input type="search" id="search" placeholder="Search profiles..." oninput="render()">
+    <select id="group-filter" onchange="render()">
+      <option value="">All groups</option>
+    </select>
+    <button class="btn" onclick="openImport()">Import cookies</button>
+    <button class="btn" onclick="refresh()">&#x21bb; Refresh</button>
+  </div>
+
+  <div class="bulk-bar" id="bulk-bar">
+    <span class="count" id="bulk-count">0</span> selected:
+    <button class="btn sm primary" onclick="bulkStart()">Start all</button>
+    <button class="btn sm warning" onclick="bulkStop()">Stop all</button>
+    <button class="btn sm" onclick="bulkExport()">Export cookies</button>
+    <button class="btn sm" onclick="bulkProxyCheck()">Check proxies</button>
+    <button class="btn sm danger" onclick="bulkDelete()">Delete</button>
+    <span style="flex:1"></span>
+    <button class="btn sm" onclick="clearSelection()">Clear selection</button>
+  </div>
+
+  <table id="profiles">
+    <thead>
+      <tr>
+        <th><input type="checkbox" id="select-all" onchange="toggleAll(this)"></th>
+        <th>Status</th>
+        <th>Name</th>
+        <th>User ID</th>
+        <th>Group</th>
+        <th>Tags</th>
+        <th>Proxy</th>
+        <th>Launched</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody id="tbody">
+      <tr><td colspan="9" class="empty">Loading...</td></tr>
+    </tbody>
+  </table>
+</main>
+
+<!-- Create profile modal -->
+<div class="modal" id="createModal">
+  <div class="panel">
+    <h2>New profile</h2>
+    <div class="field">
+      <label>Name</label>
+      <input id="create-name" placeholder="my-profile-01">
+    </div>
+    <div class="field">
+      <label>Group ID</label>
+      <input id="create-group" placeholder="0" value="0">
+    </div>
+    <div class="field">
+      <label>Proxy type</label>
+      <select id="create-proxy-type">
+        <option value="direct">direct (no proxy)</option>
+        <option value="http">HTTP</option>
+        <option value="https">HTTPS</option>
+        <option value="socks5">SOCKS5</option>
+      </select>
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label>Proxy host:port</label>
+        <input id="create-proxy-host" placeholder="proxy.example.com:8080">
+      </div>
+      <div class="field">
+        <label>User (optional)</label>
+        <input id="create-proxy-user">
+      </div>
+      <div class="field">
+        <label>Password</label>
+        <input id="create-proxy-pass" type="password">
+      </div>
+    </div>
+    <div class="field">
+      <label>Remark (optional)</label>
+      <input id="create-remark">
+    </div>
+    <div class="field">
+      <label>Tags (comma-separated)</label>
+      <input id="create-tags" placeholder="social, crypto">
+    </div>
+    <div class="row">
+      <button class="btn" onclick="closeCreate()">Cancel</button>
+      <button class="btn primary" onclick="submitCreate()">Create</button>
+    </div>
+  </div>
+</div>
+
+<!-- Import modal -->
+<div class="modal" id="importModal">
+  <div class="panel">
+    <h2>Import cookies / AdsPower profile</h2>
+    <p style="color: var(--muted); font-size: 13px;">
+      Upload a single AdsPower export (.adb / .zip), a Netscape
+      <span class="kbd">cookies.txt</span>, or a Playwright/Chrome JSON.
+    </p>
+    <div class="field">
+      <label>File</label>
+      <input type="file" id="import-file">
+    </div>
+    <div class="row" style="margin-bottom: 16px;">
+      <button class="btn" onclick="submitImport()">Import file</button>
+    </div>
+    <hr style="border: 0; border-top: 1px solid var(--border); margin: 16px 0;">
+    <p style="color: var(--muted); font-size: 13px;">
+      Or import an entire local AdsPower backup directory.
+    </p>
+    <div class="field">
+      <label>Local backup path</label>
+      <input id="backup-path" placeholder="C:\\ai_workflow\\adspower_profiles_backup">
+    </div>
+    <div class="field">
+      <label><input type="checkbox" id="backup-overwrite"> Overwrite existing profiles</label>
+    </div>
+    <div class="row">
+      <button class="btn" onclick="closeImport()">Cancel</button>
+      <button class="btn primary" onclick="submitBackupImport()">Import backup folder</button>
+    </div>
+  </div>
+</div>
+
+<!-- Proxy import modal -->
+<div class="modal" id="proxyImportModal">
+  <div class="panel">
+    <h2>Bulk import proxies</h2>
+    <p style="color: var(--muted); font-size: 13px;">
+      One proxy per line. Formats: <span class="kbd">type://host:port</span>,
+      <span class="kbd">type://user:pass@host:port</span>,
+      <span class="kbd">host:port:user:pass</span>
+    </p>
+    <div class="field">
+      <label>Proxy list</label>
+      <textarea id="proxy-list-input" rows="8" placeholder="http://proxy1.com:8080&#10;socks5://user:pass@proxy2.com:1080&#10;1.2.3.4:8080:user:pass"></textarea>
+    </div>
+    <div class="field">
+      <label><input type="checkbox" id="proxy-assign-selected" checked> Assign to selected profiles only (otherwise all)</label>
+    </div>
+    <div class="row">
+      <button class="btn" onclick="closeProxyImport()">Cancel</button>
+      <button class="btn primary" onclick="submitProxyImport()">Import & assign</button>
+    </div>
+  </div>
+</div>
+
+<!-- Fingerprint edit modal -->
+<div class="modal" id="fingerprintModal">
+  <div class="panel">
+    <h2>Edit fingerprint <span id="fp-profile-name" style="color:var(--muted)"></span></h2>
+    <div class="tabs">
+      <div class="tab active" onclick="fpTab('basic')">Basic</div>
+      <div class="tab" onclick="fpTab('screen')">Screen</div>
+      <div class="tab" onclick="fpTab('hardware')">Hardware</div>
+      <div class="tab" onclick="fpTab('network')">Network</div>
+    </div>
+    <div id="fp-tab-basic">
+      <div class="field">
+        <label>User-Agent</label>
+        <input id="fp-ua">
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label>Platform</label>
+          <select id="fp-platform">
+            <option value="Win32">Windows</option>
+            <option value="MacIntel">macOS</option>
+            <option value="Linux x86_64">Linux</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Locale</label>
+          <input id="fp-locale" placeholder="en-US">
+        </div>
+        <div class="field">
+          <label>Timezone</label>
+          <input id="fp-timezone" placeholder="America/New_York">
+        </div>
+      </div>
+      <div class="field">
+        <label>Languages (comma-separated)</label>
+        <input id="fp-languages" placeholder="en-US, en">
+      </div>
+    </div>
+    <div id="fp-tab-screen" style="display:none">
+      <div class="field-row">
+        <div class="field">
+          <label>Screen width</label>
+          <input id="fp-screen-w" type="number">
+        </div>
+        <div class="field">
+          <label>Screen height</label>
+          <input id="fp-screen-h" type="number">
+        </div>
+        <div class="field">
+          <label>Pixel ratio</label>
+          <input id="fp-dpr" type="number" step="0.1">
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label>Color depth</label>
+          <select id="fp-colordepth">
+            <option value="24">24</option>
+            <option value="30">30</option>
+            <option value="48">48</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Inner width</label>
+          <input id="fp-inner-w" type="number">
+        </div>
+        <div class="field">
+          <label>Inner height</label>
+          <input id="fp-inner-h" type="number">
+        </div>
+      </div>
+    </div>
+    <div id="fp-tab-hardware" style="display:none">
+      <div class="field-row">
+        <div class="field">
+          <label>Hardware concurrency</label>
+          <select id="fp-cores">
+            <option value="2">2</option>
+            <option value="4">4</option>
+            <option value="8">8</option>
+            <option value="12">12</option>
+            <option value="16">16</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Device memory (GB)</label>
+          <select id="fp-memory">
+            <option value="4">4</option>
+            <option value="8">8</option>
+            <option value="16">16</option>
+            <option value="32">32</option>
+          </select>
+        </div>
+      </div>
+      <div class="field">
+        <label>WebGL vendor</label>
+        <input id="fp-gl-vendor">
+      </div>
+      <div class="field">
+        <label>WebGL renderer</label>
+        <input id="fp-gl-renderer">
+      </div>
+    </div>
+    <div id="fp-tab-network" style="display:none">
+      <div class="field-row">
+        <div class="field">
+          <label>Connection type</label>
+          <select id="fp-conn-type">
+            <option value="wifi">WiFi</option>
+            <option value="ethernet">Ethernet</option>
+            <option value="4g">4G</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Downlink (Mbps)</label>
+          <input id="fp-conn-downlink" type="number" step="0.1">
+        </div>
+        <div class="field">
+          <label>RTT (ms)</label>
+          <input id="fp-conn-rtt" type="number">
+        </div>
+      </div>
+      <div class="field">
+        <label><input type="checkbox" id="fp-block-webrtc" checked> Block WebRTC IP leak</label>
+      </div>
+    </div>
+    <div class="row" style="margin-top: 16px;">
+      <button class="btn" onclick="fpRegenerate()">Regenerate random</button>
+      <button class="btn" onclick="closeFingerprintModal()">Cancel</button>
+      <button class="btn primary" onclick="saveFingerprintEdit()">Save</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = "";
+let profiles = [];
+let running = new Set();
+let groups = [];
+let selected = new Set();
+let fpEditUserId = null;
+
+async function fetchJSON(path, opts) {
+  const r = await fetch(API + path, opts);
+  const j = await r.json();
+  if (!r.ok || (j.code !== undefined && j.code !== 0)) {
+    throw new Error(j.msg || j.detail || ("HTTP " + r.status));
+  }
+  return j;
+}
+
+async function refresh() {
+  try {
+    const [list, info, grp] = await Promise.all([
+      fetchJSON("/user/list?page_size=1000"),
+      fetchJSON("/info"),
+      fetchJSON("/group/list"),
+    ]);
+    profiles = list.data.list || [];
+    running = new Set((await fetchJSON("/user/active")).data.list.map(h => h.user_id));
+    groups = grp.data.list || [];
+    document.getElementById("info-meta").textContent =
+      `${info.profile_count} profiles \u00b7 ${info.running_count} running \u00b7 v${info.version}`;
+    updateGroupFilter();
+    render();
+  } catch (e) {
+    document.getElementById("tbody").innerHTML =
+      `<tr><td colspan="9" class="empty">Error: ${e.message}</td></tr>`;
+  }
+}
+
+function updateGroupFilter() {
+  const sel = document.getElementById("group-filter");
+  const current = sel.value;
+  sel.innerHTML = '<option value="">All groups</option>' +
+    groups.map(g => `<option value="${g.group_id}">Group ${g.group_id} (${g.count})</option>`).join("");
+  sel.value = current;
+}
+
+function render() {
+  const q = document.getElementById("search").value.toLowerCase();
+  const gf = document.getElementById("group-filter").value;
+  const filtered = profiles.filter(p => {
+    if (q && !p.name.toLowerCase().includes(q) && !p.user_id.includes(q)) return false;
+    if (gf && p.group_id !== gf) return false;
+    return true;
+  });
+  const tbody = document.getElementById("tbody");
+  if (filtered.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="9" class="empty">No profiles match filters.</td></tr>`;
+    updateBulkBar();
+    return;
+  }
+  tbody.innerHTML = filtered.map(p => {
+    const isRunning = running.has(p.user_id);
+    const isSelected = selected.has(p.user_id);
+    const proxy = p.user_proxy_config && p.user_proxy_config.proxy_type !== "direct"
+      ? `${p.user_proxy_config.proxy_type}://${p.user_proxy_config.proxy_host}:${p.user_proxy_config.proxy_port}`
+      : "\u2014";
+    return `
+      <tr class="${isSelected ? 'selected' : ''}">
+        <td><input type="checkbox" ${isSelected ? 'checked' : ''} onchange="toggleSelect('${p.user_id}', this)"></td>
+        <td><span class="status ${isRunning ? 'active' : 'inactive'}">${isRunning ? 'Active' : 'Inactive'}</span></td>
+        <td>${esc(p.name)}</td>
+        <td><span class="kbd">${p.user_id}</span></td>
+        <td>${esc(p.group_id)}</td>
+        <td>${(p.tags || []).map(t => `<span class="tag">${esc(t)}</span>`).join("")}</td>
+        <td>${esc(proxy)} <span id="proxy-st-${p.user_id}"></span></td>
+        <td>${p.launch_count || 0}${p.last_launched_at ? " \u00b7 " + new Date(p.last_launched_at).toLocaleString() : ""}</td>
+        <td style="white-space:nowrap">
+          ${isRunning
+            ? `<button class="btn sm danger" onclick="act('stop','${p.user_id}')">Stop</button>`
+            : `<button class="btn sm primary" onclick="act('start','${p.user_id}')">Start</button>`}
+          <button class="btn sm" onclick="openFingerprintEdit('${p.user_id}')">FP</button>
+          <button class="btn sm" onclick="checkOneProxy('${p.user_id}')">\u2714 Proxy</button>
+          <button class="btn sm" onclick="exportProfile('${p.user_id}','json')">Export</button>
+          <button class="btn sm danger" onclick="del('${p.user_id}','${esc(p.name)}')">Del</button>
+        </td>
+      </tr>`;
+  }).join("");
+  updateBulkBar();
+}
+
+function esc(s) {
+  return String(s == null ? "" : s).replace(/[<>&"']/g, c =>
+    ({"<":"&lt;",">":"&gt;","&":"&amp;",'"':"&quot;","'":"&#39;"})[c]);
+}
+
+// --- Selection & bulk ---
+function toggleSelect(uid, cb) {
+  if (cb.checked) selected.add(uid); else selected.delete(uid);
+  render();
+}
+function toggleAll(cb) {
+  const q = document.getElementById("search").value.toLowerCase();
+  const gf = document.getElementById("group-filter").value;
+  profiles.forEach(p => {
+    if (q && !p.name.toLowerCase().includes(q) && !p.user_id.includes(q)) return;
+    if (gf && p.group_id !== gf) return;
+    if (cb.checked) selected.add(p.user_id); else selected.delete(p.user_id);
+  });
+  render();
+}
+function clearSelection() { selected.clear(); render(); }
+function updateBulkBar() {
+  const bar = document.getElementById("bulk-bar");
+  const cnt = document.getElementById("bulk-count");
+  if (selected.size > 0) {
+    bar.classList.add("visible");
+    cnt.textContent = selected.size;
+  } else {
+    bar.classList.remove("visible");
+  }
+}
+
+async function bulkStart() {
+  if (!selected.size) return;
+  try {
+    await fetchJSON("/user/bulk/start", {
+      method: "POST", headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({user_ids: [...selected]}),
+    });
+    await refresh();
+  } catch (e) { alert(e.message); }
+}
+async function bulkStop() {
+  if (!selected.size) return;
+  try {
+    await fetchJSON("/user/bulk/stop", {
+      method: "POST", headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({user_ids: [...selected]}),
+    });
+    await refresh();
+  } catch (e) { alert(e.message); }
+}
+async function bulkDelete() {
+  if (!selected.size) return;
+  if (!confirm(`Delete ${selected.size} profile(s)?`)) return;
+  try {
+    await fetchJSON("/user/bulk/delete", {
+      method: "POST", headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({user_ids: [...selected]}),
+    });
+    selected.clear();
+    await refresh();
+  } catch (e) { alert(e.message); }
+}
+async function bulkExport() {
+  if (!selected.size) return;
+  try {
+    const res = await fetchJSON("/user/bulk/export", {
+      method: "POST", headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({user_ids: [...selected]}),
+    });
+    const text = (res.data.profiles || []).map(p => `// ${p.name} (${p.user_id})\n${p.cookies_json}`).join("\n\n");
+    const blob = new Blob([text], {type: "text/plain"});
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `cookies-bulk-${Date.now()}.json`;
+    a.click();
+  } catch (e) { alert(e.message); }
+}
+async function bulkProxyCheck() {
+  if (!selected.size) return;
+  for (const uid of selected) {
+    const el = document.getElementById(`proxy-st-${uid}`);
+    if (el) el.innerHTML = '<span class="proxy-status checking">...</span>';
+  }
+  for (const uid of selected) {
+    await checkOneProxy(uid);
+  }
+}
+
+// --- Single actions ---
+async function act(verb, id) {
+  try {
+    const path = verb === "start" ? "/user/start" : "/user/stop";
+    await fetchJSON(path, {
+      method: "POST", headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({user_id: id}),
+    });
+    await refresh();
+  } catch (e) { alert(e.message); }
+}
+
+async function del(id, name) {
+  if (!confirm(`Delete profile "${name}" (${id})?`)) return;
+  try {
+    await fetchJSON("/user/delete", {
+      method: "POST", headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({user_id: id}),
+    });
+    selected.delete(id);
+    await refresh();
+  } catch (e) { alert(e.message); }
+}
+
+async function checkOneProxy(uid) {
+  const el = document.getElementById(`proxy-st-${uid}`);
+  if (el) el.innerHTML = '<span class="proxy-status checking">checking...</span>';
+  try {
+    const res = await fetchJSON(`/user/${uid}/proxy/check`, {method: "POST"});
+    if (el) {
+      if (res.data.status === "ok") {
+        el.innerHTML = `<span class="proxy-status ok">${res.data.ip} ${res.data.latency_ms}ms</span>`;
+      } else if (res.data.status === "skip") {
+        el.innerHTML = '<span class="proxy-status">direct</span>';
+      } else {
+        el.innerHTML = `<span class="proxy-status error">${res.data.error || 'failed'}</span>`;
+      }
+    }
+  } catch (e) {
+    if (el) el.innerHTML = `<span class="proxy-status error">${e.message}</span>`;
+  }
+}
+
+async function exportProfile(id, format) {
+  try {
+    const r = await fetch(API + `/user/export?user_id=${id}&format=${format}`, {method: "POST"});
+    const j = await r.json();
+    const blob = new Blob([j.data.text], {type: "text/plain"});
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `cookies-${id}.${format === "netscape" ? "txt" : "json"}`;
+    a.click();
+  } catch (e) { alert(e.message); }
+}
+
+// --- Fingerprint edit ---
+function openFingerprintEdit(uid) {
+  fpEditUserId = uid;
+  const p = profiles.find(x => x.user_id === uid);
+  if (!p) return;
+  document.getElementById("fp-profile-name").textContent = `(${p.name})`;
+  const fp = p.fingerprint_config || {};
+  document.getElementById("fp-ua").value = fp.user_agent || "";
+  document.getElementById("fp-platform").value = fp.platform || "Win32";
+  document.getElementById("fp-locale").value = fp.locale || "en-US";
+  document.getElementById("fp-timezone").value = fp.timezone || "";
+  document.getElementById("fp-languages").value = (fp.languages || []).join(", ");
+  document.getElementById("fp-screen-w").value = fp.screen_width || 1920;
+  document.getElementById("fp-screen-h").value = fp.screen_height || 1080;
+  document.getElementById("fp-dpr").value = fp.pixel_ratio || 1;
+  document.getElementById("fp-colordepth").value = String(fp.color_depth || 24);
+  document.getElementById("fp-inner-w").value = fp.inner_width || 1920;
+  document.getElementById("fp-inner-h").value = fp.inner_height || 969;
+  document.getElementById("fp-cores").value = String(fp.hardware_concurrency || 8);
+  document.getElementById("fp-memory").value = String(fp.device_memory || 8);
+  document.getElementById("fp-gl-vendor").value = fp.webgl_vendor || "";
+  document.getElementById("fp-gl-renderer").value = fp.webgl_renderer || "";
+  document.getElementById("fp-conn-type").value = fp.connection_type || "wifi";
+  document.getElementById("fp-conn-downlink").value = fp.connection_downlink || 10;
+  document.getElementById("fp-conn-rtt").value = fp.connection_rtt || 50;
+  document.getElementById("fp-block-webrtc").checked = fp.block_webrtc_ip !== false;
+  fpTab("basic");
+  document.getElementById("fingerprintModal").classList.add("open");
+}
+function closeFingerprintModal() { document.getElementById("fingerprintModal").classList.remove("open"); fpEditUserId = null; }
+
+function fpTab(name) {
+  ["basic","screen","hardware","network"].forEach(t => {
+    document.getElementById(`fp-tab-${t}`).style.display = t === name ? "" : "none";
+  });
+  document.querySelectorAll(".tabs .tab").forEach((el, i) => {
+    const tabs = ["basic","screen","hardware","network"];
+    el.classList.toggle("active", tabs[i] === name);
+  });
+}
+
+async function saveFingerprintEdit() {
+  if (!fpEditUserId) return;
+  const fp = {
+    user_agent: document.getElementById("fp-ua").value,
+    platform: document.getElementById("fp-platform").value,
+    locale: document.getElementById("fp-locale").value,
+    timezone: document.getElementById("fp-timezone").value,
+    languages: document.getElementById("fp-languages").value.split(",").map(s => s.trim()).filter(Boolean),
+    screen_width: parseInt(document.getElementById("fp-screen-w").value) || 1920,
+    screen_height: parseInt(document.getElementById("fp-screen-h").value) || 1080,
+    pixel_ratio: parseFloat(document.getElementById("fp-dpr").value) || 1,
+    color_depth: parseInt(document.getElementById("fp-colordepth").value) || 24,
+    inner_width: parseInt(document.getElementById("fp-inner-w").value) || 1920,
+    inner_height: parseInt(document.getElementById("fp-inner-h").value) || 969,
+    hardware_concurrency: parseInt(document.getElementById("fp-cores").value) || 8,
+    device_memory: parseFloat(document.getElementById("fp-memory").value) || 8,
+    webgl_vendor: document.getElementById("fp-gl-vendor").value,
+    webgl_renderer: document.getElementById("fp-gl-renderer").value,
+    connection_type: document.getElementById("fp-conn-type").value,
+    connection_downlink: parseFloat(document.getElementById("fp-conn-downlink").value) || 10,
+    connection_rtt: parseInt(document.getElementById("fp-conn-rtt").value) || 50,
+    block_webrtc_ip: document.getElementById("fp-block-webrtc").checked,
+  };
+  try {
+    await fetchJSON("/user/update", {
+      method: "POST", headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({user_id: fpEditUserId, fingerprint_config: fp}),
+    });
+    closeFingerprintModal();
+    await refresh();
+  } catch (e) { alert(e.message); }
+}
+
+async function fpRegenerate() {
+  // Request a fresh fingerprint from server would be ideal,
+  // but for now randomize locally.
+  const uas = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.6200.150 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.5600.120 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.6100.80 Safari/537.36",
+  ];
+  const screens = [[1920,1080],[2560,1440],[1366,768],[1680,1050],[3840,2160]];
+  const gpus = [
+    ["Google Inc. (NVIDIA)", "ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Direct3D11 vs_5_0 ps_5_0)"],
+    ["Google Inc. (AMD)", "ANGLE (AMD, AMD Radeon RX 6700 XT Direct3D11 vs_5_0 ps_5_0)"],
+    ["Google Inc. (Intel)", "ANGLE (Intel, Intel(R) Iris Xe Graphics Direct3D11 vs_5_0 ps_5_0)"],
+  ];
+  const pick = arr => arr[Math.floor(Math.random() * arr.length)];
+  const s = pick(screens);
+  const g = pick(gpus);
+  document.getElementById("fp-ua").value = pick(uas);
+  document.getElementById("fp-screen-w").value = s[0];
+  document.getElementById("fp-screen-h").value = s[1];
+  document.getElementById("fp-inner-w").value = s[0];
+  document.getElementById("fp-inner-h").value = s[1] - 111;
+  document.getElementById("fp-gl-vendor").value = g[0];
+  document.getElementById("fp-gl-renderer").value = g[1];
+  document.getElementById("fp-cores").value = String(pick([4,8,8,12,16]));
+  document.getElementById("fp-memory").value = String(pick([8,8,16,32]));
+}
+
+// --- Modals ---
+function openCreate() { document.getElementById("createModal").classList.add("open"); }
+function closeCreate() { document.getElementById("createModal").classList.remove("open"); }
+function openImport() { document.getElementById("importModal").classList.add("open"); }
+function closeImport() { document.getElementById("importModal").classList.remove("open"); }
+function openProxyImport() { document.getElementById("proxyImportModal").classList.add("open"); }
+function closeProxyImport() { document.getElementById("proxyImportModal").classList.remove("open"); }
+
+async function submitCreate() {
+  const name = document.getElementById("create-name").value.trim();
+  if (!name) { alert("Name required"); return; }
+  const group_id = document.getElementById("create-group").value.trim() || "0";
+  const proxy_type = document.getElementById("create-proxy-type").value;
+  let user_proxy_config = {proxy_type};
+  if (proxy_type !== "direct") {
+    const hp = document.getElementById("create-proxy-host").value.trim();
+    if (!hp.includes(":")) { alert("host:port required"); return; }
+    const [host, ...rest] = hp.split(":");
+    const port = rest.join(":");
+    user_proxy_config.proxy_host = host;
+    user_proxy_config.proxy_port = parseInt(port, 10);
+    const u = document.getElementById("create-proxy-user").value.trim();
+    const p = document.getElementById("create-proxy-pass").value;
+    if (u) user_proxy_config.proxy_user = u;
+    if (p) user_proxy_config.proxy_password = p;
+  }
+  const tags = document.getElementById("create-tags").value.split(",").map(s => s.trim()).filter(Boolean);
+  try {
+    await fetchJSON("/user/create", {
+      method: "POST", headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({ name, group_id, user_proxy_config, remark: document.getElementById("create-remark").value, tags }),
+    });
+    closeCreate();
+    await refresh();
+  } catch (e) { alert(e.message); }
+}
+
+async function submitImport() {
+  const file = document.getElementById("import-file").files[0];
+  if (!file) { alert("Pick a file"); return; }
+  try {
+    const fd = new FormData();
+    fd.append("file", file);
+    await fetch(API + "/user/import", {method: "POST", body: fd});
+    closeImport();
+    await refresh();
+  } catch (e) { alert(e.message); }
+}
+
+async function submitBackupImport() {
+  const source_path = document.getElementById("backup-path").value.trim();
+  if (!source_path) { alert("Backup path required"); return; }
+  try {
+    const result = await fetchJSON("/user/import/backup", {
+      method: "POST", headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({ source_path, overwrite: document.getElementById("backup-overwrite").checked }),
+    });
+    closeImport();
+    await refresh();
+    alert(`Imported ${result.data.imported_count}, updated ${result.data.updated_count}, skipped ${result.data.skipped_count}, errors ${result.data.error_count}`);
+  } catch (e) { alert(e.message); }
+}
+
+async function submitProxyImport() {
+  const text = document.getElementById("proxy-list-input").value.trim();
+  if (!text) { alert("Enter proxy list"); return; }
+  const useSelected = document.getElementById("proxy-assign-selected").checked && selected.size > 0;
+  try {
+    const body = { proxy_list: text };
+    if (useSelected) body.user_ids = [...selected];
+    const res = await fetchJSON("/user/bulk/proxy/import", {
+      method: "POST", headers: {"Content-Type":"application/json"},
+      body: JSON.stringify(body),
+    });
+    closeProxyImport();
+    await refresh();
+    alert(`Assigned proxies to ${res.data.assigned_count} profile(s)`);
+  } catch (e) { alert(e.message); }
+}
+
+refresh();
+setInterval(refresh, 5000);
+</script>
+</body>
+</html>
