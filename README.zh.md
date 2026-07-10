@@ -188,7 +188,8 @@ src/
 │   ├── portable.py                ← 便携式 .antq 配置文件导入/导出（build_bundle，export_profile，import_profile）
 │   ├── geo.py                     ← 地理位置匹配：国家/出口代理 → 时区/语言/经纬度 (geo_for_country, geo_from_proxy, apply_geo_to_fingerprint)
 │   ├── proxy_pool.py              ← 代理池和轮换策略（sticky/round_robin/random）
-│   └── detect.py                  ← 指纹防关联自检机制（build_collector_script, score_report）
+│   ├── detect.py                  ← 指纹防关联自检机制（build_collector_script, score_report）
+│   └── chain.py                   ← EVM 链钱包监控与代币早期买家分析（Robinhood Chain 预设，ChainClient，parse_early_buyers）
 ├── api/
 │   ├── __init__.py
 │   ├── server.py                  ← FastAPI app factory、CORS、挂载 UI 与 API 路由
@@ -330,6 +331,8 @@ python -m src.cli geo-match USER_ID [--country US|DE|RU|...]     # 将时区/语
 python -m src.cli proxy-rotate USER_ID POOL.txt [--strategy sticky|round_robin|random]
 python -m src.cli detect-test USER_ID [--url URL] [--headless]   # 指纹防关联自测（输出 A-F 评级与细项报告）
 python -m src.cli create ... [--geo-country US|DE|RU|...]        # 创建时预绑定国家地理属性
+python -m src.cli chain-wallet ADDR [ADDR ...] [--chain robinhood|robinhood-testnet] [--tx-limit N] # 监控 EVM 链钱包余额与交易概览
+python -m src.cli chain-early-buyers TOKEN [--chain robinhood] [--limit N] [--from-block B] [--to-block B] [--exclude ADDR ...] # 查找代币 of 早期买家
 python -m src.cli fingerprint [--seed SEED] [--os windows|macos|linux]
 ```
 
@@ -406,6 +409,37 @@ Body: {name, source_path}   OR   multipart file=@bundle.adb
 POST /user/{user_id}/reimport
 → resets initial_state_applied so the next launch re-copies LocalStorage/IDB
   from the saved bundle path
+```
+
+### Geo / proxy-pool / portable / detect / chain (v0.2)
+
+```http
+GET  /geo/countries
+→ {code:0, data:{countries:["US","DE",...]}}
+
+POST /user/{user_id}/geo/match      Body: {country?: "DE"}   # 若为空，则从该 profile 绑定的代理国家自动推导
+→ 对齐时区/语言/地理位置；持久化并写入 fingerprint
+
+POST /proxy/pool/next               Body: {proxy_list, strategy?: sticky|round_robin|random, user_id?}
+→ {code:0, data:{proxy:{...}, assigned, server}}   # 选择性绑定代理给指定的 user_id
+
+POST /user/{user_id}/export/portable
+→ {code:0, data:{bundle:{...}}}   # .antq 打包数据 (fingerprint+proxy+cookies+tags)
+
+POST /user/import/portable          Body: {bundle:{...}, name?, user_id?}
+→ {code:0, data:{user_id, name, cookie_count}}
+
+POST /detect/score                  Body: {signals:{...}, expected?:{...}}
+→ {code:0, data:{score, grade, ok, checks, failures}}   # 纯指纹检测评分，无需运行浏览器
+
+GET  /chain/list
+→ {code:0, data:{list:[{key,name,chain_id,currency,rpc_url,...}]}}   # 支持的 EVM 链预设（包括 Robinhood Chain）
+
+POST /chain/wallets/monitor         Body: {addresses:[...], chain?: "robinhood", tx_limit?: 50}
+→ {code:0, data:{chain, chain_id, wallets:[{address, eth_balance, tx_count, sent_count, received_count, first_seen_block, last_seen_block}]}}
+
+POST /chain/token/early-buyers      Body: {token, chain?: "robinhood", limit?: 20, from_block?, to_block?, exclude?:[...]}
+→ {code:0, data:{chain, token, buyers:[{address, block_number, tx_hash, amount}], count}}
 ```
 
 ### `/user/list` 返回的 profile 形状
@@ -644,7 +678,7 @@ python -m pytest tests/test_cookie.py -v
 python -m pytest -k adb             # only .adb-related tests
 ```
 
-**250+ 个测试**（目前共 258 个）：
+**280+ 个测试**（目前共 292 个）：
 
 - `test_storage.py` —— SQLite engine、tables
 - `test_profile.py` —— ProfileStore CRUD、完整 profile 字段、session 簿记
@@ -660,12 +694,13 @@ python -m pytest -k adb             # only .adb-related tests
 - `test_detect.py` —— 指纹防关联自检机制
 - `test_console.py` —— Windows 终端 UTF-8 输出重构与 ASCII 回退验证
 - `test_api_endpoints.py` —— HTTP 级别 API 测试 (TestClient)：扩展组件回归、地理匹配、代理池、便携式导入导出、检测评分
-- `test_auth.py` —— API 鉴权 + 来源保护 (DNS-rebinding、Bearer 令牌、隧道允许列表) (新增)
+- `test_auth.py` —— API 鉴权 + 来源保护 (DNS-rebinding、Bearer 令牌、隧道允许列表)
+- `test_chain.py` —— Robinhood Chain / EVM 链分析：预设配置、交易汇总、早期买家分析、Mock 传输层、MCP 工具映射 (新增)
 
 仅运行最新的测试套件：
 
 ```bash
-python -m pytest tests/test_detect.py tests/test_console.py tests/test_api_endpoints.py tests/test_auth.py -v
+python -m pytest tests/test_chain.py tests/test_api_endpoints.py -v
 ```
 
 ---
@@ -700,7 +735,8 @@ python -m pytest tests/test_detect.py tests/test_console.py tests/test_api_endpo
 - [x] **防关联检测评估**（`detect-test` 工具，提供 0-100 综合评分与 A-F 评级报告，`src/core/detect.py`）
 - [x] **API 可选鉴权**（使用 `ANTIQUE_API_TOKEN` Bearer 令牌鉴权 + Cross-Origin/DNS Rebinding 防护）
 - [x] **Windows 终端 UTF-8 编码重构**（CLI 自适应 UTF-8 输出以彻底避免 CP1251/CP437 编码抛出 `UnicodeEncodeError` 异常）
-- [x] 250+ 个 pytest 测试通过
+- [x] **EVM 链钱包监控与早期买家分析**（集成 Robinhood Chain EVM L2, chain id 4663; `src/core/chain.py`，CLI `chain-wallet`/`chain-early-buyers`，REST `/chain/*` 路由，MCP 工具）
+- [x] 280+ 个 pytest 测试通过
 
 ### 已知限制
 
@@ -710,6 +746,7 @@ python -m pytest tests/test_detect.py tests/test_console.py tests/test_api_endpo
 - **没有 proxy provider 直连集成。** 代理需要由您以代理池方式提供；我们支持对已有的代理池进行自动轮换与故障切换。
 - **Headless 隐深为尽力而为（Best-effort）。** 已伪装 permissions 和 `window.chrome` 指标，但极其底层的渲染时序（paint timing）以及特定的 GPU 硬件指纹目前尚未完全涵盖。
 - **WebRTC 目前仅能选择阻断模式。** 阻断真实 IP 泄漏；重写 ICE 候选以暴露与代理一致的外网 IP 功能目前位于 Roadmap 中。
+- **On-chain 默认使用公共 RPC。** `ChainClient` 默认走 Robinhood Chain 的公共 RPC 与 Blockscout 接口，它们具有频次限制（rate-limited）。在面对需要大批量扫描大范围区块的 `early-buyers` 任务时，应通过自定义 `ChainConfig` 配置您的私有节点（如 Alchemy/QuickNode），并尽量缩小 `--from-block`/`--to-block` 范围。
 
 ### Roadmap
 

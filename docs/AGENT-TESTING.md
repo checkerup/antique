@@ -12,14 +12,43 @@
 | Cookie Robot / флоу-раннер | `src/core/automation.py` | `tests/test_automation.py` |
 | Портативный `.antq` | `src/core/portable.py` | `tests/test_portable.py` |
 
-## Заход 2 (текущий)
+## Заход 2
 | Фича | Код | Тесты |
 |---|---|---|
 | Гео-привязка (tz/locale/geo по IP) | `src/core/geo.py` | `tests/test_geo.py` |
 | Ротация прокси + failover | `src/core/proxy_pool.py` | `tests/test_proxy_pool.py` |
 | Geolocation + headless-стелс | `src/core/fingerprint.py` | `tests/test_webgpu_fonts.py`, `tests/test_fingerprint.py` |
-| **Детект-харнесс** (NEW) | `src/core/detect.py` | `tests/test_detect.py` |
-| **Фикс UTF-8 консоли** (NEW) | `src/consoleutil.py`, `src/cli.py` | `tests/test_console.py` |
+| Детект-харнесс | `src/core/detect.py` | `tests/test_detect.py` |
+| Фикс UTF-8 консоли | `src/consoleutil.py`, `src/cli.py` | `tests/test_console.py` |
+| API-авторизация + origin-guard | `src/api/server.py` | `tests/test_auth.py` |
+| Новые REST-эндпоинты + регресс ext_store | `src/api/routes.py`, `src/api/server.py` | `tests/test_api_endpoints.py` |
+
+## Заход 3 (текущий) — Robinhood Chain
+| Фича | Код | Тесты |
+|---|---|---|
+| **Мониторинг кошельков EVM** (NEW) | `src/core/chain.py` | `tests/test_chain.py` |
+| **Поиск ранних покупателей токена** (NEW) | `src/core/chain.py` | `tests/test_chain.py` |
+| REST + MCP для chain | `src/api/routes.py`, `src/mcp/server.py` | `tests/test_api_endpoints.py`, `tests/test_chain.py` |
+
+### Что проверяют chain-тесты (всё оффлайн, транспорт замокан)
+- Пресеты Robinhood (chain id 4663 / testnet 46630), `get_chain`, `supported_chains`.
+- Хелперы: `hex_to_int`, `wei_to_eth`, `normalize_address`, `is_valid_address`, `topic_to_address`.
+- `parse_early_buyers`: порядок по (блок, log index), дедуп, исключение zero/токен/exclude, лимит, фильтр non-Transfer.
+- `summarize_wallet_activity`: flat RPC и Blockscout-shape, sent/received, first/last block.
+- `ChainClient` с фейк-транспортами: block_number, chain_id, баланс, monitor_wallet (выживает при падении explorer), early_buyers (сборка getLogs-фильтра), hex-конверсия блоков.
+- MCP: тулы `chain_monitor_wallets` и `chain_early_buyers` отдаются в `tools/list`.
+
+### Команды прогона
+```bash
+python -m pytest tests/test_chain.py -v
+python -m pytest tests/test_chain.py tests/test_api_endpoints.py -v
+```
+
+### Живой smoke (требует сети, публичный RPC rate-limited)
+```bash
+python -m src.cli chain-wallet 0x<addr> --chain robinhood
+python -m src.cli chain-early-buyers 0x<token> --chain robinhood --limit 20 --from-block 0 --to-block latest
+```
 
 ---
 

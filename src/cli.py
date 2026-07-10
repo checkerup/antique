@@ -645,6 +645,82 @@ def detect_test(
     asyncio.run(_go())
 
 
+@app.command("chain-wallet")
+def chain_wallet(
+    addresses: list[str] = typer.Argument(..., help="One or more wallet addresses (0x...)"),
+    chain: str = typer.Option("robinhood", "--chain", "-c", help="Chain preset: robinhood | robinhood-testnet"),
+    tx_limit: int = typer.Option(50, "--tx-limit", help="Max recent txs to summarize per wallet"),
+):
+    """Monitor EVM wallets on Robinhood Chain: balance + tx-history summary."""
+    from .core.chain import ChainClient, get_chain, is_valid_address
+    try:
+        cfg = get_chain(chain)
+    except ValueError as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(1)
+    bad = [a for a in addresses if not is_valid_address(a)]
+    if bad:
+        console.print(f"[red]Invalid address(es): {', '.join(bad)}[/red]")
+        raise typer.Exit(1)
+    client = ChainClient(cfg)
+    console.print(f"[green]{cfg.name}[/green] (chain id {cfg.chain_id})")
+    t = Table(title=f"Wallets ({len(addresses)})")
+    t.add_column("address", style="cyan", no_wrap=True)
+    t.add_column(f"balance ({cfg.currency})", justify="right")
+    t.add_column("txs", justify="right")
+    t.add_column("sent", justify="right")
+    t.add_column("recv", justify="right")
+    t.add_column("first blk", justify="right")
+    t.add_column("last blk", justify="right")
+    for s in client.monitor_wallets(addresses, tx_limit=tx_limit):
+        t.add_row(
+            s.address, f"{s.eth_balance:.6f}", str(s.tx_count),
+            str(s.sent_count), str(s.received_count),
+            str(s.first_seen_block or "-"), str(s.last_seen_block or "-"),
+        )
+    console.print(t)
+
+
+@app.command("chain-early-buyers")
+def chain_early_buyers(
+    token: str = typer.Argument(..., help="Token contract address (0x...)"),
+    chain: str = typer.Option("robinhood", "--chain", "-c"),
+    limit: int = typer.Option(20, "--limit", "-n", help="How many early buyers to return"),
+    from_block: str = typer.Option("earliest", "--from-block"),
+    to_block: str = typer.Option("latest", "--to-block"),
+    exclude: Optional[list[str]] = typer.Option(None, "--exclude", help="Address to skip (LP/router/deployer); repeatable"),
+):
+    """Find the earliest distinct buyers of a token via its Transfer events."""
+    from .core.chain import ChainClient, get_chain, is_valid_address
+    try:
+        cfg = get_chain(chain)
+    except ValueError as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(1)
+    if not is_valid_address(token):
+        console.print(f"[red]Invalid token address: {token}[/red]")
+        raise typer.Exit(1)
+    client = ChainClient(cfg)
+    try:
+        buyers = client.early_buyers(
+            token, from_block=from_block, to_block=to_block,
+            exclude=list(exclude or []), limit=limit,
+        )
+    except Exception as exc:
+        console.print(f"[red]Failed: {exc}[/red]")
+        raise typer.Exit(1)
+    console.print(f"[green]{cfg.name}[/green]: {len(buyers)} early buyer(s) of [cyan]{token}[/cyan]")
+    t = Table()
+    t.add_column("#", justify="right")
+    t.add_column("buyer", style="cyan", no_wrap=True)
+    t.add_column("block", justify="right")
+    t.add_column("amount", justify="right")
+    t.add_column("tx", no_wrap=True)
+    for i, b in enumerate(buyers, 1):
+        t.add_row(str(i), b.address, str(b.block_number), f"{b.amount:.4f}", b.tx_hash[:18] + "..." if b.tx_hash else "-")
+    console.print(t)
+
+
 @app.command("mcp")
 def mcp_serve(
     transport: str = typer.Option("stdio", "--transport", "-t", help="Transport: stdio"),

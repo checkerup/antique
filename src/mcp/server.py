@@ -199,6 +199,35 @@ TOOLS = [
             "required": ["user_id"],
         },
     },
+    {
+        "name": "chain_monitor_wallets",
+        "description": "Monitor EVM wallets on Robinhood Chain (or another preset): ETH balance + tx-history summary per address.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "addresses": {"type": "array", "items": {"type": "string"}, "description": "Wallet addresses (0x...)"},
+                "chain": {"type": "string", "description": "Chain preset", "default": "robinhood"},
+                "tx_limit": {"type": "integer", "default": 50},
+            },
+            "required": ["addresses"],
+        },
+    },
+    {
+        "name": "chain_early_buyers",
+        "description": "Find the earliest distinct buyers of a token on Robinhood Chain via its Transfer events.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "token": {"type": "string", "description": "Token contract address (0x...)"},
+                "chain": {"type": "string", "default": "robinhood"},
+                "limit": {"type": "integer", "default": 20},
+                "from_block": {"description": "Start block (int or 'earliest')", "default": "earliest"},
+                "to_block": {"description": "End block (int or 'latest')", "default": "latest"},
+                "exclude": {"type": "array", "items": {"type": "string"}, "description": "Addresses to skip (LP/router/deployer)"},
+            },
+            "required": ["token"],
+        },
+    },
 ]
 
 
@@ -396,6 +425,33 @@ class MCPServer:
             cfg = parse_proxy(p.proxy)
             result = await check_proxy(cfg)
             return result
+
+        elif name == "chain_monitor_wallets":
+            from ..core.chain import ChainClient, get_chain, is_valid_address
+            cfg = get_chain(args.get("chain", "robinhood"))
+            addresses = args["addresses"]
+            bad = [a for a in addresses if not is_valid_address(a)]
+            if bad:
+                raise ValueError(f"invalid address(es): {', '.join(bad)}")
+            client = ChainClient(cfg)
+            summaries = client.monitor_wallets(addresses, tx_limit=args.get("tx_limit", 50))
+            return {"chain": cfg.name, "wallets": [s.to_dict() for s in summaries]}
+
+        elif name == "chain_early_buyers":
+            from ..core.chain import ChainClient, get_chain, is_valid_address
+            cfg = get_chain(args.get("chain", "robinhood"))
+            token = args["token"]
+            if not is_valid_address(token):
+                raise ValueError(f"invalid token address: {token}")
+            client = ChainClient(cfg)
+            buyers = client.early_buyers(
+                token,
+                from_block=args.get("from_block", "earliest"),
+                to_block=args.get("to_block", "latest"),
+                exclude=args.get("exclude"),
+                limit=args.get("limit", 20),
+            )
+            return {"chain": cfg.name, "token": token, "buyers": [b.to_dict() for b in buyers]}
 
         else:
             raise ValueError(f"Unknown tool: {name}")

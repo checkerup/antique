@@ -187,3 +187,34 @@ def test_detect_score_flags_webdriver(client):
     data = r.json()["data"]
     assert data["ok"] is False
     assert any(c["name"] == "webdriver_false" for c in data["failures"])
+
+
+# ---------------------------------------------------------------------------
+# On-chain (Robinhood Chain) endpoints
+# ---------------------------------------------------------------------------
+
+
+def test_chain_list_includes_robinhood(client):
+    r = client.get("/chain/list")
+    assert r.status_code == 200, r.text
+    keys = [c["key"] for c in r.json()["data"]["list"]]
+    assert "robinhood" in keys
+    rh = next(c for c in r.json()["data"]["list"] if c["key"] == "robinhood")
+    assert rh["chain_id"] == 4663
+
+
+def test_chain_wallets_monitor_rejects_bad_address(client):
+    r = client.post("/chain/wallets/monitor", json={"addresses": ["0x123"]})
+    assert r.status_code == 400
+
+
+def test_chain_early_buyers_rejects_bad_token(client):
+    r = client.post("/chain/token/early-buyers", json={"token": "0xnope"})
+    assert r.status_code == 400
+
+
+def test_chain_unknown_chain_400(client):
+    r = client.post("/chain/wallets/monitor", json={
+        "addresses": ["0x" + "a" * 40], "chain": "dogecoin",
+    })
+    assert r.status_code == 400
