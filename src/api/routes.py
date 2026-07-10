@@ -44,7 +44,12 @@ from ..core.cookie import (
 )
 from ..core.fingerprint import Fingerprint, generate_fingerprint
 from ..core.profile import ProfileStore
-from ..core.proxy import ProxyConfig, check_proxy, parse_proxy_list, parse_proxy
+from ..core.extension import ExtensionStore
+from ..core.proxy import ProxyConfig, check_proxy, parse_proxy_list, parse_proxy, adspower_shape
+from ..core.geo import geo_for_country, geo_from_proxy, apply_geo_to_fingerprint, supported_countries
+from ..core.proxy_pool import ProxyPool
+from ..core.portable import build_bundle, import_profile as portable_import, PortableBundleError
+from ..core.detect import score_report, expected_from_fingerprint
 
 
 log = logging.getLogger("antique.api")
@@ -54,13 +59,15 @@ router = APIRouter()
 _store: Optional[ProfileStore] = None
 _launcher: Optional[BrowserLauncher] = None
 _cdp: Optional[CDPProxy] = None
+_ext_store: Optional[ExtensionStore] = None
 
 
-def wire(store: ProfileStore, launcher: BrowserLauncher, cdp: CDPProxy) -> None:
-    global _store, _launcher, _cdp
+def wire(store: ProfileStore, launcher: BrowserLauncher, cdp: CDPProxy, ext_store: Optional[ExtensionStore] = None) -> None:
+    global _store, _launcher, _cdp, _ext_store
     _store = store
     _launcher = launcher
     _cdp = cdp
+    _ext_store = ext_store
 
 
 # ---------------------------------------------------------------------------
@@ -169,7 +176,7 @@ def _ads_response(success: bool, **data: Any) -> Dict[str, Any]:
 
 @router.get("/health")
 def health() -> Dict[str, Any]:
-    return {"status": "ok", "service": "antique", "version": "0.1.0"}
+    return {"status": "ok", "service": "antique", "version": "0.2.0"}
 
 
 # ---------------------------------------------------------------------------
@@ -616,6 +623,101 @@ def user_bulk_proxy_import(body: BulkProxyImport) -> Dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# Extensions
+# ---------------------------------------------------------------------------
+
+
+@router.get("/extension/list")
+def extension_list() -> Dict[str, Any]:
+    """List all installed extensions."""
+    assert _ext_store is not None
+    exts = _ext_store.list()
+    return _ads_response(True, list=[e.to_dict() for e in exts], total=len(exts))
+
+
+@router.post("/extension/install")
+async def extension_install(
+    source_type: str = Body("unpacked"),
+    path: Optional[str] = Body(None),
+    webstore_id: Optional[str] = Body(None),
+    name: Optional[str] = Body(None),
+    file: Optional[UploadFile] = File(None),
+) -> Dict[str, Any]:
+    """Install an extension from unpacked dir, .crx file, or Chrome Web Store ID."""
+    assert _ext_store is not None
+    if source_type == "webstore" and webstore_id:
+        ext = _ext_store.install_from_webstore(webstore_id, name=name)
+    elif source_type == "crx" and file:
+        import tempfile
+        tmp = tempfile.NamedTemporaryFile(suffix=".crx", delete=False)
+        content = await file.read()
+        tmp.write(content)
+        tmp.close()
+        try:
+            ext = _ext_store.install_from_crx(Path(tmp.name), name=name)
+        finally:
+            os.unlink(tmp.name)
+    elif source_type == "crx" and path:
+        ext = _ext_store.install_from_crx(Path(path), name=name)
+    elif path:
+        ext = _ext_store.install_from_unpacked(Path(path), name=name)
+    else:
+        raise HTTPException(status_code=400, detail="Provide path, file, or webstore_id")
+    return _ads_response(True, **ext.to_dict())
+
+
+@router.post("/extension/uninstall")
+def extension_uninstall(ext_id: str = Body(..., embed=True)) -> Dict[str, Any]:
+    """Uninstall an extension."""
+    assert _ext_store is not None
+    ok = _ext_store.uninstall(ext_id)
+    return _ads_response(True, ext_id=ext_id, deleted=ok)
+
+
+@router.post("/user/{user_id}/extensions")
+def user_set_extensions(user_id: str, extension_ids: List[str] = Body(...)) -> Dict[str, Any]:
+    """Assign extensions to a profile."""
+    assert _store is not None
+    p = _store.get(user_id)
+    if p is None:
+        raise HTTPException(status_code=404, detail="user_id not found")
+    fp = dict(p.fingerprint) if p.fingerprint else {}
+    fp["extensions"] = extension_ids
+    from ..core.fingerprint import Fingerprint
+    from dataclasses import fields as dc_fields
+    valid_keys = {f.name for f in dc_fields(Fingerprint)}
+    cleaned = {k: v for k, v in fp.items() if k in valid_keys}
+    # Store extensions separately in the fingerprint dict
+    # (extensions is not a Fingerprint dataclass field, so we handle it specially)
+    _store.update(user_id, fingerprint=Fingerprint(**cleaned))
+    # Also store extensions in the raw fingerprint JSON
+    import json
+    from ..core.storage import ProfileRecord
+    from sqlmodel import Session
+    with Session(_store.engine) as s:
+        r = s.get(ProfileRecord, user_id)
+        if r:
+            fp_data = json.loads(r.fingerprint_config) if r.fingerprint_config else {}
+            fp_data["extensions"] = extension_ids
+            r.fingerprint_config = json.dumps(fp_data)
+            r.touch()
+            s.add(r)
+            s.commit()
+    return _ads_response(True, user_id=user_id, extensions=extension_ids)
+
+
+@router.get("/user/{user_id}/extensions")
+def user_get_extensions(user_id: str) -> Dict[str, Any]:
+    """Get extensions assigned to a profile."""
+    assert _store is not None
+    p = _store.get(user_id)
+    if p is None:
+        raise HTTPException(status_code=404, detail="user_id not found")
+    ext_ids = p.fingerprint.get("extensions", []) if p.fingerprint else []
+    return _ads_response(True, user_id=user_id, extensions=ext_ids)
+
+
+# ---------------------------------------------------------------------------
 # Groups
 # ---------------------------------------------------------------------------
 
@@ -631,6 +733,132 @@ def group_list() -> Dict[str, Any]:
         groups[gid] = groups.get(gid, 0) + 1
     group_list = [{"group_id": gid, "count": cnt} for gid, cnt in sorted(groups.items())]
     return _ads_response(True, list=group_list, total=len(group_list))
+
+
+# ---------------------------------------------------------------------------
+# Geo matching (timezone / locale / geolocation)
+# ---------------------------------------------------------------------------
+
+
+class GeoMatchRequest(BaseModel):
+    country: Optional[str] = None  # ISO code; if omitted, derived from the proxy
+
+
+@router.get("/geo/countries")
+def geo_countries() -> Dict[str, Any]:
+    """List ISO country codes the geo matcher can align a profile to."""
+    return _ads_response(True, countries=supported_countries())
+
+
+@router.post("/user/{user_id}/geo/match")
+def user_geo_match(user_id: str, body: GeoMatchRequest) -> Dict[str, Any]:
+    """Align a profile's timezone/locale/languages/geolocation to a country
+    (explicit ``country``) or to its proxy's exit country."""
+    assert _store is not None
+    from dataclasses import fields as dc_fields
+    p = _store.get(user_id)
+    if p is None:
+        raise HTTPException(status_code=404, detail="user_id not found")
+    valid = {f.name for f in dc_fields(Fingerprint)}
+    fp = Fingerprint(**{k: v for k, v in (p.fingerprint or {}).items() if k in valid})
+    if body.country:
+        geo = geo_for_country(body.country)
+    else:
+        geo = geo_from_proxy(p.proxy)
+        if geo is None:
+            raise HTTPException(
+                status_code=400,
+                detail="no country given and proxy has no country to derive from",
+            )
+    apply_geo_to_fingerprint(fp, geo)
+    _store.update(user_id, fingerprint=fp)
+    return _ads_response(True, user_id=user_id, country=geo.country, timezone=geo.timezone,
+                         locale=geo.locale, latitude=geo.latitude, longitude=geo.longitude)
+
+
+# ---------------------------------------------------------------------------
+# Proxy pool rotation
+# ---------------------------------------------------------------------------
+
+
+class ProxyPoolNext(BaseModel):
+    proxy_list: str
+    strategy: str = "round_robin"  # sticky | round_robin | random
+    user_id: Optional[str] = None  # if set, assign the chosen proxy to this profile
+
+
+@router.post("/proxy/pool/next")
+def proxy_pool_next(body: ProxyPoolNext) -> Dict[str, Any]:
+    """Pick the next proxy from a pool (rotation strategy) and optionally assign
+    it to a profile. Returns the chosen proxy."""
+    try:
+        pool = ProxyPool.from_list_text(body.proxy_list, strategy=body.strategy)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    chosen = pool.next_proxy()
+    if chosen is None:
+        raise HTTPException(status_code=400, detail="no live proxy in the pool")
+    proxy_dict = adspower_shape(chosen)
+    assigned = False
+    if body.user_id:
+        assert _store is not None
+        try:
+            _store.update(body.user_id, proxy=proxy_dict)
+            assigned = True
+        except KeyError:
+            raise HTTPException(status_code=404, detail="user_id not found")
+    return _ads_response(True, proxy=proxy_dict, assigned=assigned,
+                         server=f"{chosen.type}://{chosen.host}:{chosen.port}")
+
+
+# ---------------------------------------------------------------------------
+# Portable profile export / import (.antq)
+# ---------------------------------------------------------------------------
+
+
+class PortableImport(BaseModel):
+    bundle: Dict[str, Any]
+    name: Optional[str] = None
+    user_id: Optional[str] = None
+
+
+@router.post("/user/{user_id}/export/portable")
+def user_export_portable(user_id: str) -> Dict[str, Any]:
+    """Export a profile as a portable .antq bundle (fingerprint+proxy+cookies+tags)."""
+    assert _store is not None
+    p = _store.get(user_id)
+    if p is None:
+        raise HTTPException(status_code=404, detail="user_id not found")
+    return _ads_response(True, bundle=build_bundle(p))
+
+
+@router.post("/user/import/portable")
+def user_import_portable(body: PortableImport) -> Dict[str, Any]:
+    """Import a profile from a portable .antq bundle dict."""
+    assert _store is not None
+    try:
+        p = portable_import(_store, body.bundle, name=body.name, user_id=body.user_id)
+    except PortableBundleError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return _ads_response(True, user_id=p.user_id, name=p.name, cookie_count=len(p.cookies))
+
+
+# ---------------------------------------------------------------------------
+# Stealth self-test scoring
+# ---------------------------------------------------------------------------
+
+
+class DetectScore(BaseModel):
+    signals: Dict[str, Any]
+    expected: Optional[Dict[str, Any]] = None
+
+
+@router.post("/detect/score")
+def detect_score(body: DetectScore) -> Dict[str, Any]:
+    """Score a collected signals dict (from the detect collector script) into a
+    graded stealth report. Pure scoring — no browser needed."""
+    report = score_report(body.signals, expected=body.expected)
+    return _ads_response(True, **report.to_dict())
 
 
 # ---------------------------------------------------------------------------
@@ -697,7 +925,7 @@ def info() -> Dict[str, Any]:
     running = _launcher.list_running()
     return {
         "service": "antique",
-        "version": "0.1.0",
+        "version": "0.2.0",
         "profile_count": len(profiles),
         "running_count": len(running),
         "running": [h.user_id for h in running],

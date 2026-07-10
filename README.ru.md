@@ -1,4 +1,4 @@
-﻿# antique
+# antique
 
 **Самохостируемый open-source аналог AdsPower — мульти-профильная ферма браузеров с подменой fingerprint, ротацией прокси, импортом .adb-бандлов и совместимым с AdsPower REST API.**
 
@@ -181,10 +181,18 @@ src/
 │   │                                 shape conversion
 │   ├── cookie.py                  ← Cookie dataclass, Netscape/JSON/.adb parsers,
 │   │                                 LocalStorage + IndexedDB extraction/copying
-│   ├── browser.py                 ← BrowserLauncher — launches persistent Chromium contexts,
-│   │                                 records sessions, applies imported state
-│   └── cdp.py                     ← CDPProxy — multiplexes a single debug port across
-│                                     multiple user_ids, exposes /json/list + WS routes
+│   ├── browser.py                 ← BrowserLauncher — запускает изолированные контексты Chromium,
+│   │                                 сохраняет сессии, применяет импортированное состояние
+│   ├── cdp.py                     ← CDPProxy — мультиплексирует один порт отладки для
+│   │                                 разных user_id, предоставляет роуты /json/list + WS
+│   ├── automation.py              ← Cookie Robot / no-code флоу-раннер (модель Step,
+│   │                                 parse_flow, cookie_robot_flow, FlowRunner)
+│   ├── portable.py                ← Портативный экспорт/импорт профилей .antq (build_bundle,
+│   │                                 export_profile, import_profile)
+│   ├── geo.py                     ← Привязка к стране/выходу прокси → таймзона/локаль/языки/гео
+│   │                                 (geo_for_country, geo_from_proxy, apply_geo_to_fingerprint)
+│   ├── proxy_pool.py              ← Пул прокси + ротация/failover (sticky/round_robin/random)
+│   └── detect.py                  ← Селф-тест маскировки / детект-харнесс (build_collector_script, score_report)
 ├── api/
 │   ├── __init__.py
 │   ├── server.py                  ← FastAPI app factory, CORS, mount UI + API routes
@@ -318,6 +326,14 @@ python -m src.cli delete USER_ID [--yes]
 python -m src.cli import-cookies PATH [--name NAME] [--proxy-type TYPE] [--full]
 python -m src.cli reimport USER_ID
 python -m src.cli export-cookies USER_ID [--format json|netscape] [--out FILE]
+python -m src.cli export-profile USER_ID [--out FILE.antq]
+python -m src.cli import-profile FILE.antq [--name NAME] [--user-id ID]
+python -m src.cli warm USER_ID [--url URL ...] [--urls FILE] [--dwell-min MS] [--dwell-max MS] [--scrolls N] [--headless]
+python -m src.cli run-flow USER_ID FLOW.json [--stop-on-error] [--headless]
+python -m src.cli geo-match USER_ID [--country US|DE|RU|...]     # выравнивание таймзоны/локали/гео под страну или выход прокси
+python -m src.cli proxy-rotate USER_ID POOL.txt [--strategy sticky|round_robin|random]
+python -m src.cli detect-test USER_ID [--url URL] [--headless]   # селф-тест маскировки с оценкой A-F
+python -m src.cli create ... [--geo-country US|DE|RU|...]        # создание профиля с привязкой к стране
 python -m src.cli fingerprint [--seed SEED] [--os windows|macos|linux]
 ```
 
@@ -482,6 +498,8 @@ def import_cookies(path):
 - **Screen**: width/height/colorDepth/pixelRatio + window.innerWidth/Height
 - **Locale / timezone**: navigator.languages, Intl timezone
 - **WebGL**: строки vendor + renderer (через `WEBGL_debug_renderer_info`)
+- **WebGPU**: вендор/архитектура/описание адаптера (через `navigator.gpu.requestAdapter().requestAdapterInfo()`), согласовано с WebGL GPU; профили со встроенным (software) рендером отключают `navigator.gpu`
+- **Шрифты**: белый список установленных шрифтов под каждую ОС, форсируется через `document.fonts.check`
 - **Audio**: детерминированный noise seed для джиттера AudioContext
 - **Canvas**: детерминированный noise seed для пиксельного джиттера `toDataURL`/`toBlob`
 - **WebRTC**: предотвращение утечки IP (`block_webrtc_ip`)
@@ -517,7 +535,10 @@ fp = generate_fingerprint(os_family="macos")                 # macOS UA + screen
 
 - WebGL read-only для unmasked полей в Chromium — мы патчим `getParameter` и `getExtension`, но если страница использует `WEBGL_debug_renderer_info` иначе, патч можно обойти.
 - Canvas noise мягкий (±2 на канал) — сильный шум ломает визуальный рендеринг на некоторых сайтах. Увеличивайте noise по профилю, если нужно.
-- Шрифты не перечисляются; в fingerprint нет списка шрифтов. Добавьте через патчи `document.fonts`, если они нужны.
+- Шрифты форсируются через `document.fonts.check` (эмуляция перечисления через измерение размеров возвращает белый список). Глубокие проверки шрифтов через размеры canvas, обходящие `document.fonts`, пока полностью не скрыты.
+- Подмена WebGPU патчит `requestAdapterInfo()` / `adapter.info`, но не переписывает низкоуровневые лимиты/функции `GPUAdapter`.
+- Стелс безголового режима (headless stealth) является базовым: патчатся основные детекты (`window.chrome`, permissions API), но глубокие тайминги рендеринга и специфичные для GPU тесты в headless-режиме могут палиться.
+- WebRTC работает в режиме блокировки: реальные IP блокируются, но подмена публичного IP через ICE candidates пока в планах.
 
 ---
 
@@ -626,14 +647,29 @@ python -m pytest tests/test_cookie.py -v
 python -m pytest -k adb             # only .adb-related tests
 ```
 
-**73 теста** в 6 файлах:
+**250+ тестов** (на самом деле сейчас 258):
 
 - `test_storage.py` — SQLite engine, tables
 - `test_profile.py` — ProfileStore CRUD, full-profile fields, session bookkeeping
 - `test_fingerprint.py` — Fingerprint generation + init script injection
 - `test_proxy.py` — ProxyConfig validation + Playwright shape conversion
 - `test_cookie.py` — Cookie parsing (Netscape/JSON/.adb), LocalStorage/IndexedDB extraction
-- `test_profile_import.py` — Full-profile import flow (NEW, 22 теста)
+- `test_profile_import.py` — Full-profile import flow
+- `test_webgpu_fonts.py` — подмена WebGPU адаптера + генерация и инжекция белого списка шрифтов
+- `test_automation.py` — Cookie Robot / парсер флоу, билдер и раннер на фейковой странице
+- `test_portable.py` — портативный экспорт/импорт профилей .antq
+- `test_geo.py` — сопоставление страна/прокси → таймзона/локаль/геолокация
+- `test_proxy_pool.py` — стратегии ротации прокси-пула + отказоустойчивость
+- `test_detect.py` — селф-тест маскировки / детект-харнесс
+- `test_console.py` — фикс вывода UTF-8 в Windows-консоль + ASCII-фолбэк
+- `test_api_endpoints.py` — HTTP-тесты API (TestClient): регрессии расширений, гео-матчинг, прокси-пул, экспорт, скоринг скрытности
+- `test_auth.py` — авторизация по API + Origin-guard (DNS-rebinding, Bearer-токен, разрешенные хосты) (НОВОЕ)
+
+Запустить только новые наборы тестов:
+
+```bash
+python -m pytest tests/test_detect.py tests/test_console.py tests/test_api_endpoints.py tests/test_auth.py -v
+```
 
 ---
 
@@ -651,28 +687,40 @@ python -m pytest -k adb             # only .adb-related tests
 - [x] AdsPower-compatible REST API
 - [x] CDP multiplexer (simulated)
 - [x] Single-page dashboard
-- [x] 73/73 pytest tests passing
+- [x] **Менеджер расширений** (установка из распакованных папок, .crx, Chrome Web Store; назначение на профиль)
+- [x] **MCP-сервер** (JSON-RPC 2.0 через stdio, 12 инструментов: list/open/close/navigate/screenshot/execute_script/cookies/proxy_check)
+- [x] **Поддержка нескольких движков** (Chromium, Firefox, Camoufox/ShardX; на каждый профиль или через env-var)
+- [x] **Client Hints** (Sec-CH-UA заголовки через кастомные аргументы браузера, автогенерация из фингерпринта)
+- [x] **Расширения на профиль** (`--load-extension` + `--disable-extensions-except` при запуске)
+- [x] **Подмена WebGPU фингерпринта** (согласовано с WebGL GPU)
+- [x] **Подмена шрифтов** (через белый список под каждую ОС в `document.fonts.check`)
+- [x] **Cookie Robot / автоматизация без кода** (`warm`, `run-flow`; модель шагов в JSON)
+- [x] **Портативный экспорт/импорт профилей** (бандлы `.antq`)
+- [x] **Привязка к ГЕО** (согласование таймзоны/локали/языков/геолокации под страну или выход прокси, `src/core/geo.py`)
+- [x] **Подмена геолокации** (`navigator.geolocation` совпадает с гео-профилем)
+- [x] **Ротация и отказоустойчивость прокси** (пул со стратегиями sticky/round_robin/random, `src/core/proxy_pool.py`)
+- [x] **Headless-стелс** (подмена заглушек `window.chrome`/`chrome.runtime` + согласованность `permissions.query`)
+- [x] **Детект-харнесс** (селф-тест маскировки `detect-test` с оценкой отчета 0-100, `src/core/detect.py`)
+- [x] **Опциональная авторизация по токену** (переменная `ANTIQUE_API_TOKEN` + защита от Cross-Origin/DNS-rebinding)
+- [x] **Фикс кодировки в консоли Windows** (вывод UTF-8 с ASCII-фолбэком без падений `UnicodeEncodeError`)
+- [x] 175+ тестов pytest пройдены
 
 ### Известные ограничения
 
-- **Только Chromium.** Firefox/Camoufox не реализован. `src/core/browser.py` запускает только Chromium.
-- **Нет расширений браузера.** Нет механизма загрузки `.crx` или распакованных расширений в профиль.
+- **Для Camoufox требуется отдельная установка.** Запустите `pip install camoufox` для активации движка Camoufox. Без него будет использоваться стандартный Firefox.
 - **Симулированный CDP multiplexer.** Эндпоинты `/json/list` + `/devtools/page/...` не открывают настоящий Chrome debug port для внешней автоматизации — используйте per-profile websocket из `POST /user/start`.
-- **Нет ротации прокси / health-checks.** Прокси статичны на профиль; нет auto-failover.
-- **Нет мультипользовательского auth.** REST API без auth — запускается локально на `127.0.0.1`, однопроцессный.
-- **Нет интеграции с провайдерами прокси.** Прокси поставляете вы; мы не тянем их из BrightData/Decodo/etc.
-- **Headless функциональный, но не stealth-grade.** `--headless=true` (новый headless) работает; `--headless=old` и stealth-патчи не реализованы.
+- **API-авторизация опциональна.** Задайте `ANTIQUE_API_TOKEN` для требования Bearer-токена; если не задано, доступ открыт локально на `127.0.0.1` (все еще защищено Cross-Origin гардом). Ролей и мультипользователей нет.
+- **Нет интеграции с провайдерами прокси.** Прокси поставляются пулом; автоматическая ротация поверх вашего пула реализована.
+- **Стелс безголового режима (headless stealth) базовый.** Внедрены патчи на `window.chrome` и permissions, но глубокие тесты таймингов и GPU в headless-режиме могут палиться.
+- **WebRTC работает только в режиме блокировки.** IP-адреса блокируются; подмена на публичный IP через ICE-кандидаты в планах.
 
 ### Roadmap
 
-- [ ] **Firefox/Camoufox** — реализовать `FirefoxLauncher` параллельно с `BrowserLauncher` и выбирать через конфиг профиля (`browser_type = "chromium"|"firefox"`).
-- [ ] **Расширения браузера** — загрузка распакованных расширений в user data dir профиля.
-- [ ] **Настоящий CDP на профиль** — назначать уникальный `--remote-debugging-port` для каждого профиля (сейчас `BrowserLauncher` выбирает свободный порт; надёжно его отдавать).
-- [ ] **Ротация прокси** — пул + health check + автоматический failover на профиль.
-- [ ] **Headless stealth** — `--headless=new` + stealth-патчи (navigator.webdriver, plugins, languages).
-- [ ] **Переписать dashboard** — текущий `index.html` — заглушка; полный CRUD-UI для профилей/тегов/групп.
-- [ ] **Интеграции с провайдерами прокси** — BrightData, Decodo, smartproxy.
-- [ ] **Cookie warming** — посещение страниц, симуляция browsing перед экспортом cookies.
+- [ ] **Настоящий CDP на профиль** — назначать уникальный `--remote-debugging-port` для каждого профиля (пока симулировано).
+- [ ] **Подмена WebRTC IP через ICE-кандидаты** — выдавать публичный IP прокси вместо блокировки.
+- [ ] **Интеграция MCP в UI** — запуск и остановка MCP-сервера прямо из дашборда.
+- [ ] **Поиск расширений в Web Store** — поиск и установка расширений из UI.
+- [ ] **FingerprintJS-интеграция** — использование fingerprintjs/fingerprintjs для проверки обнаружения.
 
 ---
 
@@ -683,6 +731,10 @@ python -m pytest -k adb             # only .adb-related tests
 | `ANTIQUE_DATA_DIR` | `./data` | Root for `antique.db` + profile user data dirs |
 | `ANTIQUE_DB` | `<data_dir>/antique.db` | SQLite path override |
 | `ANTIQUE_BROWSER_CHANNEL` | (unset, uses bundled Chromium) | Playwright browser channel: `chrome`, `msedge`, `chromium-beta` |
+| `ANTIQUE_API_TOKEN` | (unset, open) | Если задан, REST API требует заголовок `Authorization: Bearer <token>` |
+| `ANTIQUE_ALLOWED_ORIGINS` | (unset) | Разделенный запятыми список разрешенных подстрок Origin для удаленного/туннельного доступа (например, `ngrok-free.app`). Localhost разрешен всегда. Требуется, если дашборд открывается через внешний туннель, иначе Origin-guard выдаст 403. |
+| `ANTIDETECT_ENGINE` | `chromium` | Дефолтный браузерный движок: `chromium`, `firefox`, `camoufox` |
+| `PYTHONIOENCODING` | (auto UTF-8) | CLI сам форсирует UTF-8 вывод; задавайте `utf-8` только если отключаете фикс |
 | `HOST` (CLI only) | `127.0.0.1` | Bind address for `serve` |
 | `UI_PORT` (CLI only) | `8080` | Port for `serve` |
 

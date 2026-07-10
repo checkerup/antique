@@ -27,7 +27,41 @@ from rich.console import Console
 from rich.table import Table
 
 
+def force_utf8_stdio(streams=None) -> list:
+    """Reconfigure stdio streams to UTF-8 so Unicode glyphs (✓, ✗, …) don't
+    crash on legacy Windows codepages (cp1251/cp866) in PowerShell / cmd.
+
+    Without this, printing a check mark raises:
+        UnicodeEncodeError: 'charmap' codec can't encode character '\u2713'
+
+    Returns the list of stream names successfully reconfigured (for testing).
+    Safe to call unconditionally: streams that don't support ``reconfigure``
+    (already-UTF-8 or wrapped) are skipped silently.
+    """
+    if streams is None:
+        streams = [getattr(sys, name, None) for name in ("stdout", "stderr")]
+    done = []
+    for stream in streams:
+        if stream is None:
+            continue
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is None:
+            continue
+        try:
+            reconfigure(encoding="utf-8", errors="replace")
+            done.append(getattr(stream, "name", repr(stream)))
+        except Exception:
+            pass
+    return done
+
+
+# Apply as early as possible so every command's output is UTF-8 safe.
+force_utf8_stdio()
+
 app = typer.Typer(add_completion=False, no_args_is_help=True, help="antique CLI")
+# ``Console`` with an explicit legacy_windows=False + safe box keeps Rich from
+# falling back to the console codepage. errors are already handled by the
+# stdio reconfigure above.
 console = Console()
 
 
@@ -114,11 +148,15 @@ def create(
     tags: str = typer.Option("", "--tags", help="Comma-separated"),
     user_id: Optional[str] = typer.Option(None, "--user-id"),
     fingerprint_seed: Optional[str] = typer.Option(None, "--fingerprint-seed"),
+    geo_country: Optional[str] = typer.Option(None, "--geo-country", help="ISO country (US, DE, RU…) to align timezone/locale/geolocation"),
 ):
     """Create a new profile with a generated fingerprint."""
     from .core.fingerprint import generate_fingerprint
     store = _store()
     fp = generate_fingerprint(seed=fingerprint_seed) if fingerprint_seed else generate_fingerprint()
+    if geo_country:
+        from .core.geo import geo_for_country, apply_geo_to_fingerprint
+        apply_geo_to_fingerprint(fp, geo_for_country(geo_country))
     proxy: dict = {"proxy_type": proxy_type}
     if proxy_type != "direct":
         if not (proxy_host and proxy_port):
@@ -377,6 +415,253 @@ def export_cookies(
         sys.stdout.write(text)
 
 
+@app.command("export-profile")
+def export_profile_cmd(
+    user_id: str = typer.Argument(...),
+    out: Optional[Path] = typer.Option(None, "--out", "-o", help="Output .antq file (defaults to <user_id>.antq)"),
+):
+    """Export a profile to a portable .antq bundle (fingerprint+proxy+cookies+tags)."""
+    from .core.portable import export_profile
+    store = _store()
+    p = store.get(user_id)
+    if p is None:
+        console.print(f"[red]user_id {user_id} not found[/red]")
+        raise typer.Exit(1)
+    dest = out or Path(f"{user_id}.antq")
+    written = export_profile(p, dest)
+    console.print(f"[green]✓[/green] exported [bold]{p.name}[/bold] → [cyan]{written}[/cyan]")
+
+
+@app.command("import-profile")
+def import_profile_cmd(
+    path: Path = typer.Argument(..., exists=True, dir_okay=False),
+    name: Optional[str] = typer.Option(None, "--name", "-n", help="Override the imported profile's name"),
+    user_id: Optional[str] = typer.Option(None, "--user-id"),
+):
+    """Import a profile from a portable .antq bundle → new profile."""
+    from .core.portable import import_profile, PortableBundleError
+    store = _store()
+    try:
+        p = import_profile(store, path, name=name, user_id=user_id)
+    except PortableBundleError as exc:
+        console.print(f"[red]Bad bundle: {exc}[/red]")
+        raise typer.Exit(1)
+    console.print(
+        f"[green]✓[/green] imported [bold]{p.name}[/bold] → id [cyan]{p.user_id}[/cyan] "
+        f"({len(p.cookies)} cookies)"
+    )
+
+
+@app.command("geo-match")
+def geo_match(
+    user_id: str = typer.Argument(...),
+    country: Optional[str] = typer.Option(None, "--country", "-c", help="ISO country code (US, DE, RU…). If omitted, derived from the profile's proxy country field."),
+):
+    """Align a profile's timezone/locale/languages/geolocation to a country
+    (or to its proxy's exit country)."""
+    from .core.fingerprint import Fingerprint
+    from dataclasses import fields as _fields, asdict
+    from .core.geo import geo_for_country, geo_from_proxy, apply_geo_to_fingerprint
+    store = _store()
+    p = store.get(user_id)
+    if p is None:
+        console.print(f"[red]user_id {user_id} not found[/red]")
+        raise typer.Exit(1)
+    # Rebuild the Fingerprint object from the stored dict.
+    valid = {f.name for f in _fields(Fingerprint)}
+    fp = Fingerprint(**{k: v for k, v in (p.fingerprint or {}).items() if k in valid})
+    if country:
+        geo = geo_for_country(country)
+    else:
+        geo = geo_from_proxy(p.proxy)
+        if geo is None:
+            console.print("[yellow]No --country given and proxy has no country. Nothing to match.[/yellow]")
+            raise typer.Exit(1)
+    apply_geo_to_fingerprint(fp, geo)
+    store.update(user_id, fingerprint=fp)
+    console.print(
+        f"[green]✓[/green] {p.name}: aligned to [cyan]{geo.country}[/cyan] "
+        f"(tz={geo.timezone}, locale={geo.locale}, geo={geo.latitude},{geo.longitude})"
+    )
+
+
+@app.command("proxy-rotate")
+def proxy_rotate(
+    user_id: str = typer.Argument(...),
+    pool_file: Path = typer.Argument(..., exists=True, dir_okay=False, help="Text file with a proxy list (one per line)"),
+    strategy: str = typer.Option("round_robin", "--strategy", "-s", help="sticky | round_robin | random"),
+):
+    """Pick the next proxy from a pool file and assign it to the profile."""
+    from .core.proxy_pool import ProxyPool
+    from .core.proxy import adspower_shape
+    store = _store()
+    p = store.get(user_id)
+    if p is None:
+        console.print(f"[red]user_id {user_id} not found[/red]")
+        raise typer.Exit(1)
+    try:
+        pool = ProxyPool.from_list_text(pool_file.read_text(encoding="utf-8"), strategy=strategy)
+    except ValueError as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(1)
+    chosen = pool.next_proxy()
+    if chosen is None:
+        console.print("[red]No live proxy in the pool[/red]")
+        raise typer.Exit(1)
+    store.update(user_id, proxy=adspower_shape(chosen))
+    console.print(
+        f"[green]✓[/green] {p.name}: assigned [cyan]{chosen.type}://{chosen.host}:{chosen.port}[/cyan] "
+        f"(strategy={strategy})"
+    )
+
+
+@app.command("warm")
+def warm(
+    user_id: str = typer.Argument(...),
+    urls: Optional[Path] = typer.Option(None, "--urls", help="Text file with one URL per line"),
+    url: Optional[list[str]] = typer.Option(None, "--url", help="URL to visit (repeatable)"),
+    dwell_min_ms: int = typer.Option(2000, "--dwell-min"),
+    dwell_max_ms: int = typer.Option(6000, "--dwell-max"),
+    scrolls: int = typer.Option(3, "--scrolls"),
+    headless: bool = typer.Option(False, "--headless"),
+):
+    """Cookie Robot: visit a list of URLs to accumulate cookies + localStorage."""
+    import asyncio
+    from .core.automation import cookie_robot_flow, FlowRunner, FlowValidationError
+    from .core.browser import BrowserLauncher
+    store = _store()
+    p = store.get(user_id)
+    if p is None:
+        console.print(f"[red]user_id {user_id} not found[/red]")
+        raise typer.Exit(1)
+    url_list: list[str] = list(url or [])
+    if urls:
+        url_list += [ln.strip() for ln in urls.read_text(encoding="utf-8").splitlines() if ln.strip()]
+    if not url_list:
+        console.print("[red]Provide --url and/or --urls with at least one URL[/red]")
+        raise typer.Exit(1)
+    try:
+        flow = cookie_robot_flow(
+            url_list, dwell_min_ms=dwell_min_ms, dwell_max_ms=dwell_max_ms, scrolls=scrolls
+        )
+    except FlowValidationError as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(1)
+    launcher = BrowserLauncher(store, headless=headless)
+
+    async def _go():
+        h = await launcher.start(p)
+        try:
+            page = await h.context.new_page()
+            runner = FlowRunner(page)
+            res = await runner.run(flow)
+            console.print(
+                f"[green]✓[/green] warmed {p.name}: {res.completed}/{len(res.results)} steps ok"
+            )
+        finally:
+            await launcher.stop(user_id)
+    asyncio.run(_go())
+
+
+@app.command("run-flow")
+def run_flow(
+    user_id: str = typer.Argument(...),
+    flow_file: Path = typer.Argument(..., exists=True, dir_okay=False),
+    stop_on_error: bool = typer.Option(False, "--stop-on-error"),
+    headless: bool = typer.Option(False, "--headless"),
+):
+    """Run a JSON automation flow (list of steps) against a profile's browser."""
+    import asyncio
+    from .core.automation import parse_flow, FlowRunner, FlowValidationError
+    from .core.browser import BrowserLauncher
+    store = _store()
+    p = store.get(user_id)
+    if p is None:
+        console.print(f"[red]user_id {user_id} not found[/red]")
+        raise typer.Exit(1)
+    try:
+        flow = parse_flow(json.loads(flow_file.read_text(encoding="utf-8")))
+    except (FlowValidationError, json.JSONDecodeError) as exc:
+        console.print(f"[red]Invalid flow: {exc}[/red]")
+        raise typer.Exit(1)
+    launcher = BrowserLauncher(store, headless=headless)
+
+    async def _go():
+        h = await launcher.start(p)
+        try:
+            page = await h.context.new_page()
+            runner = FlowRunner(page, stop_on_error=stop_on_error)
+            res = await runner.run(flow)
+            for r in res.results:
+                mark = "[green]✓[/green]" if r.ok else "[red]✗[/red]"
+                console.print(f"  {mark} [{r.index}] {r.action}" + (f"  [red]{r.error}[/red]" if r.error else ""))
+            console.print(f"[bold]{res.completed}/{len(res.results)}[/bold] steps ok")
+        finally:
+            await launcher.stop(user_id)
+    asyncio.run(_go())
+
+
+@app.command("detect-test")
+def detect_test(
+    user_id: str = typer.Argument(...),
+    url: str = typer.Option("about:blank", "--url", help="Page to run the collector on (a local/hosted CreepJS works too)"),
+    headless: bool = typer.Option(False, "--headless"),
+):
+    """Run the stealth self-test harness against a profile and print a graded report."""
+    import asyncio
+    from dataclasses import fields as _fields
+    from .core.browser import BrowserLauncher
+    from .core.detect import build_collector_script, score_report, expected_from_fingerprint
+    from .core.fingerprint import Fingerprint
+    store = _store()
+    p = store.get(user_id)
+    if p is None:
+        console.print(f"[red]user_id {user_id} not found[/red]")
+        raise typer.Exit(1)
+    valid = {f.name for f in _fields(Fingerprint)}
+    fp = Fingerprint(**{k: v for k, v in (p.fingerprint or {}).items() if k in valid})
+    launcher = BrowserLauncher(store, headless=headless)
+
+    async def _go():
+        h = await launcher.start(p)
+        try:
+            page = await h.context.new_page()
+            if url and url != "about:blank":
+                try:
+                    await page.goto(url, wait_until="domcontentloaded")
+                except Exception:
+                    pass
+            signals = await page.evaluate(build_collector_script())
+            report = score_report(signals, expected=expected_from_fingerprint(fp))
+            d = report.to_dict()
+            grade_color = "green" if d["grade"] in ("A", "B") else "yellow" if d["grade"] == "C" else "red"
+            console.print(f"[bold]Stealth score:[/bold] {d['score']}/100  [{grade_color}]grade {d['grade']}[/{grade_color}]  ({d['passed']}/{d['total']} checks)")
+            for c in d["failures"]:
+                console.print(f"  [red]✗[/red] [{c['severity']}] {c['name']}: {c['detail']}")
+            if not d["failures"]:
+                console.print("  [green]✓[/green] no leaks detected")
+        finally:
+            await launcher.stop(user_id)
+    asyncio.run(_go())
+
+
+@app.command("mcp")
+def mcp_serve(
+    transport: str = typer.Option("stdio", "--transport", "-t", help="Transport: stdio"),
+):
+    """Start the MCP server for AI agent integration (Claude Desktop, Cursor, etc.).
+
+    The MCP server exposes tools for browser automation:
+    list_profiles, open_browser, close_browser, navigate, screenshot,
+    execute_script, get_cookies, set_cookies, check_proxy.
+    """
+    import asyncio
+    from .mcp.server import run_stdio_server
+    console.print("[green]antique MCP[/green] starting on stdio...")
+    console.print("  Tools: list_profiles, open_browser, close_browser, navigate, screenshot, execute_script, get/set_cookies, check_proxy")
+    asyncio.run(run_stdio_server())
+
+
 @app.command()
 def fingerprint(
     seed: Optional[str] = typer.Option(None, "--seed"),
@@ -394,6 +679,9 @@ def fingerprint(
         "locale": fp.locale,
         "languages": fp.languages,
         "webgl": f"{fp.webgl_vendor} / {fp.webgl_renderer}",
+        "webgpu": (f"{fp.webgpu_vendor}/{fp.webgpu_architecture} ({fp.webgpu_description})" if fp.webgpu_enabled else "disabled"),
+        "fonts": f"{len(fp.fonts)} installed",
+        "geolocation": (f"{fp.geo_latitude},{fp.geo_longitude}" if fp.spoof_geolocation else "off"),
         "noise_seed": fp.noise[:16],
         "id": fp.id,
     }, indent=2))

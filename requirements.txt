@@ -5,8 +5,9 @@ pydantic>=2.6
 
 # Browser automation (Chromium-based fingerprint manipulation)
 playwright>=1.42
-# Optional Firefox alternative for better anti-detect (camoufox)
-# camoufox>=0.2.0
+# Optional: Firefox anti-detect engine (enables "camoufox" engine type)
+# pip install camoufox to enable
+camoufox>=0.4.0; python_version>="3.10"
 
 # Storage
 sqlmodel>=0.0.16

@@ -37,7 +37,6 @@ from __future__ import annotations
 import hashlib
 import json
 import random
-import string
 from dataclasses import asdict, dataclass, field
 from typing import Any, Dict, List, Optional
 
@@ -121,6 +120,68 @@ _UA_PRESETS = {
     ],
 }
 
+# WebGPU adapter profiles, coherent with the WebGL GPU vendor.
+# Each entry: (match-substring-in-webgl-vendor, gpu_vendor, gpu_architecture, gpu_description)
+# navigator.gpu.requestAdapter().requestAdapterInfo() exposes these.
+_WEBGPU_PROFILES = [
+    ("NVIDIA", "nvidia", "ampere", "NVIDIA GeForce RTX 3060"),
+    ("NVIDIA", "nvidia", "ada-lovelace", "NVIDIA GeForce RTX 4070"),
+    ("AMD", "amd", "rdna2", "AMD Radeon RX 6700 XT"),
+    ("AMD", "amd", "gcn", "AMD Radeon RX 580"),
+    ("Intel", "intel", "gen-12lp", "Intel(R) Iris(R) Xe Graphics"),
+    ("Intel", "intel", "gen-9", "Intel(R) UHD Graphics 630"),
+    ("Apple", "apple", "metal-3", "Apple M1 Pro"),
+    ("Apple", "apple", "metal-3", "Apple M2"),
+    ("Mozilla", "", "", ""),  # llvmpipe / software → no WebGPU adapter
+]
+
+# Font sets per OS family. A realistic-but-not-exhaustive base set that a
+# clean install of each OS ships. Detection scripts measure text width to
+# enumerate installed fonts, so a coherent per-OS list matters.
+_FONTS_BY_OS = {
+    "windows": [
+        "Arial", "Arial Black", "Bahnschrift", "Calibri", "Cambria",
+        "Cambria Math", "Candara", "Comic Sans MS", "Consolas", "Constantia",
+        "Corbel", "Courier New", "Ebrima", "Franklin Gothic Medium", "Gabriola",
+        "Gadugi", "Georgia", "Impact", "Ink Free", "Javanese Text",
+        "Leelawadee UI", "Lucida Console", "Lucida Sans Unicode", "Malgun Gothic",
+        "Marlett", "Microsoft Himalaya", "Microsoft JhengHei", "Microsoft New Tai Lue",
+        "Microsoft PhagsPa", "Microsoft Sans Serif", "Microsoft Tai Le",
+        "Microsoft YaHei", "MingLiU-ExtB", "Mongolian Baiti", "MS Gothic",
+        "MV Boli", "Myanmar Text", "Nirmala UI", "Palatino Linotype",
+        "Segoe MDL2 Assets", "Segoe Print", "Segoe Script", "Segoe UI",
+        "Segoe UI Emoji", "Segoe UI Historic", "Segoe UI Symbol", "SimSun",
+        "Sitka", "Sylfaen", "Symbol", "Tahoma", "Times New Roman",
+        "Trebuchet MS", "Verdana", "Webdings", "Wingdings", "Yu Gothic",
+    ],
+    "macos": [
+        "American Typewriter", "Andale Mono", "Arial", "Arial Black",
+        "Arial Narrow", "Arial Rounded MT Bold", "Arial Unicode MS",
+        "Avenir", "Avenir Next", "Avenir Next Condensed", "Baskerville",
+        "Big Caslon", "Bodoni 72", "Bradley Hand", "Brush Script MT",
+        "Chalkboard", "Chalkboard SE", "Chalkduster", "Charter", "Cochin",
+        "Comic Sans MS", "Copperplate", "Courier", "Courier New", "Didot",
+        "DIN Alternate", "DIN Condensed", "Futura", "Geneva", "Georgia",
+        "Gill Sans", "Helvetica", "Helvetica Neue", "Herculanum",
+        "Hoefler Text", "Impact", "Lucida Grande", "Luminari", "Marker Felt",
+        "Menlo", "Monaco", "Noteworthy", "Optima", "Palatino", "Papyrus",
+        "Phosphate", "Rockwell", "San Francisco", "Savoye LET", "SignPainter",
+        "Skia", "Snell Roundhand", "Tahoma", "Times", "Times New Roman",
+        "Trattatello", "Trebuchet MS", "Verdana", "Zapfino",
+    ],
+    "linux": [
+        "Bitstream Vera Sans", "Bitstream Vera Sans Mono", "Bitstream Vera Serif",
+        "Century Schoolbook L", "DejaVu Sans", "DejaVu Sans Mono",
+        "DejaVu Serif", "Dingbats", "FreeMono", "FreeSans", "FreeSerif",
+        "Liberation Mono", "Liberation Sans", "Liberation Serif",
+        "Nimbus Mono L", "Nimbus Roman No9 L", "Nimbus Sans L", "Noto Sans",
+        "Noto Serif", "Standard Symbols L", "Ubuntu", "Ubuntu Condensed",
+        "Ubuntu Mono", "URW Bookman L", "URW Chancery L", "URW Gothic L",
+        "URW Palladio L",
+    ],
+}
+
+
 _OS_PROFILES = {
     "windows": {
         "platform": "Win32",
@@ -186,6 +247,24 @@ class Fingerprint:
     # WebGL
     webgl_vendor: str = "Google Inc. (NVIDIA)"
     webgl_renderer: str = "ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Direct3D11 vs_5_0 ps_5_0)"
+
+    # WebGPU (navigator.gpu.requestAdapter().requestAdapterInfo()).
+    # Empty gpu_vendor means "no WebGPU adapter available" (software renderer).
+    webgpu_enabled: bool = True
+    webgpu_vendor: str = "nvidia"
+    webgpu_architecture: str = "ampere"
+    webgpu_description: str = "NVIDIA GeForce RTX 3060"
+
+    # Installed fonts (enumerated by width-measurement detection scripts)
+    fonts: List[str] = field(default_factory=list)
+
+    # Geolocation (navigator.geolocation). When spoof_geolocation is True the
+    # init script overrides getCurrentPosition/watchPosition with these coords.
+    # These are normally derived from the proxy's exit country (see core.geo).
+    spoof_geolocation: bool = False
+    geo_latitude: float = 0.0
+    geo_longitude: float = 0.0
+    geo_accuracy: float = 50.0
 
     # Audio (deterministic noise seed for AudioContext)
     audio_noise_seed: int = 0
@@ -308,6 +387,29 @@ def generate_fingerprint(
     # GPU
     fp.webgl_vendor, fp.webgl_renderer = rng.choice(_GPU_PROFILES)
 
+    # WebGPU adapter — keep it coherent with the chosen WebGL GPU vendor.
+    _webgpu_matches = [
+        prof for prof in _WEBGPU_PROFILES if prof[0] in fp.webgl_vendor
+    ] or [_WEBGPU_PROFILES[-1]]
+    _wg = rng.choice(_webgpu_matches)
+    fp.webgpu_vendor = _wg[1]
+    fp.webgpu_architecture = _wg[2]
+    fp.webgpu_description = _wg[3]
+    # Software renderers (Mozilla/llvmpipe) don't expose a WebGPU adapter.
+    fp.webgpu_enabled = bool(_wg[1])
+
+    # Fonts — a randomized-but-deterministic subset of the OS base set.
+    _font_pool = list(_FONTS_BY_OS.get(os_family, _FONTS_BY_OS["windows"]))
+    # Always keep the core cross-app fonts; sample the rest so profiles differ.
+    _core_fonts = [f for f in _font_pool if f in (
+        "Arial", "Courier New", "Times New Roman", "Verdana", "Georgia",
+        "Tahoma", "Trebuchet MS", "Comic Sans MS", "Impact",
+    )]
+    _rest = [f for f in _font_pool if f not in _core_fonts]
+    rng.shuffle(_rest)
+    _keep = _rest[: max(0, len(_rest) - rng.randint(0, 6))]
+    fp.fonts = sorted(set(_core_fonts) | set(_keep))
+
     # Audio / canvas noise seeds
     fp.audio_noise_seed = rng.randint(1, 2**30)
     fp.canvas_noise_seed = rng.randint(1, 2**30)
@@ -371,6 +473,15 @@ def to_playwright_launch_options(fp: Fingerprint, proxy: Optional[Dict[str, Any]
     # Color scheme & reduced motion are nice but not fingerprint-critical
     if proxy:
         opts["proxy"] = proxy
+    # Align the Geolocation API + permission grant with the spoofed coords so
+    # the JS override in the init script isn't contradicted by a hard denial.
+    if fp.spoof_geolocation:
+        opts["geolocation"] = {
+            "latitude": fp.geo_latitude,
+            "longitude": fp.geo_longitude,
+            "accuracy": fp.geo_accuracy,
+        }
+        opts["permissions"] = ["geolocation"]
     return opts
 
 
@@ -576,6 +687,124 @@ INIT_SCRIPT_TEMPLATE = r"""
     } catch (e) {}
   }
 
+  // ---- WebGPU adapter info ----
+  try {
+    if (navigator.gpu && typeof navigator.gpu.requestAdapter === 'function') {
+      if (!cfg.webgpu_enabled) {
+        // Software renderer: no adapter available.
+        Object.defineProperty(Navigator.prototype, 'gpu', {
+          get: () => undefined,
+          configurable: true,
+        });
+      } else {
+        const origRequestAdapter = navigator.gpu.requestAdapter.bind(navigator.gpu);
+        navigator.gpu.requestAdapter = async function (...args) {
+          const adapter = await origRequestAdapter(...args);
+          if (!adapter) return adapter;
+          const info = {
+            vendor: cfg.webgpu_vendor,
+            architecture: cfg.webgpu_architecture,
+            device: '',
+            description: cfg.webgpu_description,
+          };
+          // requestAdapterInfo (deprecated) + info getter (current)
+          if (typeof adapter.requestAdapterInfo === 'function') {
+            adapter.requestAdapterInfo = async () => info;
+          }
+          try {
+            Object.defineProperty(adapter, 'info', { get: () => info, configurable: true });
+          } catch (e) {}
+          return adapter;
+        };
+      }
+    }
+  } catch (e) {}
+
+  // ---- Font enumeration spoofing ----
+  // Detection scripts measure text width for a probe string in each candidate
+  // font vs a fallback. We force the fallback (font "not installed") for any
+  // font that isn't in our allow-list, and allow those that are.
+  try {
+    if (Array.isArray(cfg.fonts) && cfg.fonts.length) {
+      const allow = new Set(cfg.fonts.map((f) => f.toLowerCase()));
+      // document.fonts.check(font) → true only for allowed families
+      if (document.fonts && typeof document.fonts.check === 'function') {
+        const origCheck = document.fonts.check.bind(document.fonts);
+        document.fonts.check = function (fontSpec, text) {
+          try {
+            // fontSpec looks like: '12px "Some Font"'
+            const m = /\d+px\s+[\"']?([^\"']+)[\"']?/.exec(fontSpec);
+            if (m) {
+              const fam = m[1].trim().toLowerCase();
+              const generic = new Set(['serif', 'sans-serif', 'monospace', 'cursive', 'fantasy', 'system-ui']);
+              if (!generic.has(fam) && !allow.has(fam)) return false;
+            }
+          } catch (e) {}
+          return origCheck(fontSpec, text);
+        };
+      }
+      // Expose the count via a non-standard hook some scripts read
+      try {
+        Object.defineProperty(navigator, '__installedFontCount', {
+          get: () => cfg.fonts.length,
+          configurable: true,
+        });
+      } catch (e) {}
+    }
+  } catch (e) {}
+
+  // ---- Geolocation spoofing ----
+  if (cfg.spoof_geolocation && navigator.geolocation) {
+    try {
+      const coords = {
+        latitude: cfg.geo_latitude,
+        longitude: cfg.geo_longitude,
+        accuracy: cfg.geo_accuracy,
+        altitude: null,
+        altitudeAccuracy: null,
+        heading: null,
+        speed: null,
+      };
+      const makePosition = () => ({
+        coords,
+        timestamp: Date.now(),
+      });
+      navigator.geolocation.getCurrentPosition = function (success, error) {
+        try { success(makePosition()); } catch (e) {}
+      };
+      navigator.geolocation.watchPosition = function (success, error) {
+        try { success(makePosition()); } catch (e) {}
+        return 0;
+      };
+    } catch (e) {}
+  }
+
+  // ---- Headless stealth: window.chrome + permissions coherence ----
+  try {
+    if (!window.chrome) {
+      Object.defineProperty(window, 'chrome', {
+        value: { runtime: {}, app: {}, csi: function () {}, loadTimes: function () {} },
+        configurable: true,
+        writable: true,
+      });
+    } else if (!window.chrome.runtime) {
+      window.chrome.runtime = {};
+    }
+  } catch (e) {}
+  try {
+    // In headless, permissions.query for 'notifications' returns 'denied'
+    // while Notification.permission is 'default' — a classic tell. Align them.
+    if (navigator.permissions && navigator.permissions.query) {
+      const origQuery = navigator.permissions.query.bind(navigator.permissions);
+      navigator.permissions.query = function (params) {
+        if (params && params.name === 'notifications') {
+          return Promise.resolve({ state: Notification.permission, onchange: null });
+        }
+        return origQuery(params);
+      };
+    }
+  } catch (e) {}
+
   // ---- Screen / window size consistency ----
   try {
     Object.defineProperty(window.screen, 'width', { get: () => cfg.screen_width });
@@ -618,6 +847,15 @@ def build_init_script(fp: Fingerprint) -> str:
         "avail_screen_height": fp.avail_screen_height,
         "color_depth": fp.color_depth,
         "pixel_ratio": fp.pixel_ratio,
+        "webgpu_enabled": fp.webgpu_enabled,
+        "webgpu_vendor": fp.webgpu_vendor,
+        "webgpu_architecture": fp.webgpu_architecture,
+        "webgpu_description": fp.webgpu_description,
+        "fonts": fp.fonts,
+        "spoof_geolocation": fp.spoof_geolocation,
+        "geo_latitude": fp.geo_latitude,
+        "geo_longitude": fp.geo_longitude,
+        "geo_accuracy": fp.geo_accuracy,
     }
     cfg_json = json.dumps(cfg, separators=(",", ":"))
     return INIT_SCRIPT_TEMPLATE.replace("__AD_CFG__", cfg_json)

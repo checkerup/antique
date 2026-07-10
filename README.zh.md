@@ -1,4 +1,4 @@
-﻿# antique
+# antique
 
 **一个自托管、开源的 AdsPower 替代方案 —— 多 profile 浏览器农场，具备 fingerprint 伪装、proxy 轮换、.adb bundle 导入，以及 AdsPower 兼容的 REST API。**
 
@@ -182,10 +182,13 @@ src/
 │   │                                 格式互转
 │   ├── cookie.py                  ← Cookie dataclass、Netscape/JSON/.adb parser、
 │   │                                 LocalStorage + IndexedDB 抽取与拷贝
-│   ├── browser.py                 ← BrowserLauncher —— 启动 persistent Chromium context，
-│   │                                 记录 session，应用导入的初始状态
-│   └── cdp.py                     ← CDPProxy —— 在多个 user_id 间复用单个 debug port，
-│                                     暴露 /json/list + WS 路由
+│   ├── browser.py                 ← BrowserLauncher —— 启动 persistent Chromium context，记录 session，应用导入的初始状态
+│   ├── cdp.py                     ← CDPProxy —— 在多个 user_id 间复用单个 debug port，暴露 /json/list + WS 路由
+│   ├── automation.py              ← Cookie Robot / 无代码自动化流程执行器（Step 模型，parse_flow，cookie_robot_flow，FlowRunner）
+│   ├── portable.py                ← 便携式 .antq 配置文件导入/导出（build_bundle，export_profile，import_profile）
+│   ├── geo.py                     ← 地理位置匹配：国家/出口代理 → 时区/语言/经纬度 (geo_for_country, geo_from_proxy, apply_geo_to_fingerprint)
+│   ├── proxy_pool.py              ← 代理池和轮换策略（sticky/round_robin/random）
+│   └── detect.py                  ← 指纹防关联自检机制（build_collector_script, score_report）
 ├── api/
 │   ├── __init__.py
 │   ├── server.py                  ← FastAPI app factory、CORS、挂载 UI 与 API 路由
@@ -319,6 +322,14 @@ python -m src.cli delete USER_ID [--yes]
 python -m src.cli import-cookies PATH [--name NAME] [--proxy-type TYPE] [--full]
 python -m src.cli reimport USER_ID
 python -m src.cli export-cookies USER_ID [--format json|netscape] [--out FILE]
+python -m src.cli export-profile USER_ID [--out FILE.antq]
+python -m src.cli import-profile FILE.antq [--name NAME] [--user-id ID]
+python -m src.cli warm USER_ID [--url URL ...] [--urls FILE] [--dwell-min MS] [--dwell-max MS] [--scrolls N] [--headless]
+python -m src.cli run-flow USER_ID FLOW.json [--stop-on-error] [--headless]
+python -m src.cli geo-match USER_ID [--country US|DE|RU|...]     # 将时区/语言/地理位置自动对齐到国家或代理出口IP
+python -m src.cli proxy-rotate USER_ID POOL.txt [--strategy sticky|round_robin|random]
+python -m src.cli detect-test USER_ID [--url URL] [--headless]   # 指纹防关联自测（输出 A-F 评级与细项报告）
+python -m src.cli create ... [--geo-country US|DE|RU|...]        # 创建时预绑定国家地理属性
 python -m src.cli fingerprint [--seed SEED] [--os windows|macos|linux]
 ```
 
@@ -483,6 +494,8 @@ Parser 流程：
 - **Screen**：width/height/colorDepth/pixelRatio + window.innerWidth/Height
 - **Locale / timezone**：navigator.languages、Intl timezone
 - **WebGL**：vendor + renderer 字符串（通过 `WEBGL_debug_renderer_info`）
+- **WebGPU**：adapter vendor/architecture/description（通过 `navigator.gpu.requestAdapter().requestAdapterInfo()`），与 WebGL GPU 一致；使用软件渲染的 profile 会禁用 `navigator.gpu`
+- **Fonts**：每个 OS 独立的文件字体白名单，通过 `document.fonts.check` 强制执行
 - **Audio**：用于 AudioContext jitter 的确定性 noise seed
 - **Canvas**：用于 `toDataURL`/`toBlob` 像素抖动 的确定性 noise seed
 - **WebRTC**：防止 IP 泄漏（`block_webrtc_ip`）
@@ -519,7 +532,10 @@ fp = generate_fingerprint(os_family="macos")                 # macOS UA + screen
 
 - WebGL 在 Chromium 上对未掩码字段是只读的 —— 我们 patch `getParameter` 和 `getExtension`，但如果页面以其他方式使用 `WEBGL_debug_renderer_info`，patch 可以被绕过。
 - Canvas noise 幅度较轻（每通道 ±2）—— 强 noise 会破坏某些站点的视觉渲染。如有需要可按 profile 增加 noise。
-- 未枚举字体，fingerprint 中没有字体列表。如有需要可通过对 `document.fonts` 的 patch 添加。
+- 字体通过 `document.fonts.check` 强制执行（通过尺寸测量的字体枚举将返回白名单）。目前尚未完全覆盖绕过 `document.fonts` 的深层 canvas 尺寸字体探测。
+- WebGPU 伪装仅 patch 了 `requestAdapterInfo()` / `adapter.info`，并不重写底层的 `GPUAdapter` 限制/特性。
+- 无头模式防关联（headless stealth）属于基础性规避：已 patch `window.chrome` 以及 permissions API，但深层的渲染时序（paint timing）以及特定于 GPU 硬件的无头特征可能会被标记。
+- WebRTC 仅支持“禁用/阻断”模式：已对真实 IP 进行拦截阻断，通过重写 ICE 候选者来实现与代理一致的外网 IP 功能目前处于计划阶段。
 
 ---
 
@@ -628,14 +644,29 @@ python -m pytest tests/test_cookie.py -v
 python -m pytest -k adb             # only .adb-related tests
 ```
 
-**73 个测试**，分布在 6 个文件中：
+**250+ 个测试**（目前共 258 个）：
 
 - `test_storage.py` —— SQLite engine、tables
 - `test_profile.py` —— ProfileStore CRUD、完整 profile 字段、session 簿记
 - `test_fingerprint.py` —— Fingerprint 生成 + init script 注入
 - `test_proxy.py` —— ProxyConfig 校验 + Playwright 格式互转
 - `test_cookie.py` —— Cookie 解析（Netscape/JSON/.adb）、LocalStorage/IndexedDB 抽取
-- `test_profile_import.py` —— 完整 profile 导入流程（新增，22 个测试）
+- `test_profile_import.py` —— 完整 profile 导入流程
+- `test_webgpu_fonts.py` —— WebGPU adapter 伪装 + font 白名单生成与注入
+- `test_automation.py` —— Cookie Robot / flow 语法解析、构建与执行
+- `test_portable.py` —— 便携式 `.antq` 导出与导入验证
+- `test_geo.py` —— 国家/出口代理与时区/语言/地理位置自动对齐
+- `test_proxy_pool.py` —— 代理池轮换策略及健康度容灾测试
+- `test_detect.py` —— 指纹防关联自检机制
+- `test_console.py` —— Windows 终端 UTF-8 输出重构与 ASCII 回退验证
+- `test_api_endpoints.py` —— HTTP 级别 API 测试 (TestClient)：扩展组件回归、地理匹配、代理池、便携式导入导出、检测评分
+- `test_auth.py` —— API 鉴权 + 来源保护 (DNS-rebinding、Bearer 令牌、隧道允许列表) (新增)
+
+仅运行最新的测试套件：
+
+```bash
+python -m pytest tests/test_detect.py tests/test_console.py tests/test_api_endpoints.py tests/test_auth.py -v
+```
 
 ---
 
@@ -643,7 +674,7 @@ python -m pytest -k adb             # only .adb-related tests
 
 ### 已完成（本次构建）
 
-- [x] 多 profile 隔离的 Chromium context
+- [x] 多 profile 隔离 of Chromium context
 - [x] Fingerprint 生成 + JS 注入
 - [x] HTTP/HTTPS/SOCKS5 proxy
 - [x] Cookie 导入（Netscape、JSON、.adb bundle）
@@ -653,28 +684,40 @@ python -m pytest -k adb             # only .adb-related tests
 - [x] AdsPower 兼容的 REST API
 - [x] CDP multiplexer（模拟）
 - [x] 单页 dashboard
-- [x] 73/73 pytest 测试通过
+- [x] **扩展管理器**（支持从解压目录、.crx、Chrome Web Store 安装；支持 profile 分配）
+- [x] **MCP 服务端**（基于 stdio 的 JSON-RPC 2.0，提供 12 个工具：list/open/close/navigate/screenshot/execute_script/cookies/proxy_check 等）
+- [x] **多浏览器引擎支持**（Chromium、Firefox、Camoufox/ShardX；支持按 profile 或环境变量指定）
+- [x] **Client Hints**（通过自定义浏览器启动参数伪装 Sec-CH-UA 请求头，基于 fingerprint 自动生成）
+- [x] **Profile 级扩展加载**（启动时加载 `--load-extension` 与 `--disable-extensions-except`）
+- [x] **WebGPU fingerprint 伪装**（与 WebGL GPU 一致）
+- [x] **字体 fingerprint 伪装**（每个 OS 独立的字体白名单）
+- [x] **Cookie Robot / 无代码自动化流程**（支持 `warm` 预热、`run-flow` 执行，提供 JSON 语法步骤）
+- [x] **便携式 profile 导出/导入**（使用 `.antq` 压缩包迁移 fingerprint + proxy + cookies + tags）
+- [x] **地理位置匹配 (Geo matching)**（自动根据国家/出口代理 IP 对齐时区、语言和经纬度，`src/core/geo.py`）
+- [x] **地理定位伪装**（`navigator.geolocation` 的坐标与精度和地理配置保持一致）
+- [x] **代理轮换与健康容灾**（提供 sticky/round_robin/random 策略的代理池，`src/core/proxy_pool.py`）
+- [x] **Headless 隐身 (Headless stealth)**（支持 `window.chrome`/`chrome.runtime` 接口仿真与 `permissions.query` 接口一致性）
+- [x] **防关联检测评估**（`detect-test` 工具，提供 0-100 综合评分与 A-F 评级报告，`src/core/detect.py`）
+- [x] **API 可选鉴权**（使用 `ANTIQUE_API_TOKEN` Bearer 令牌鉴权 + Cross-Origin/DNS Rebinding 防护）
+- [x] **Windows 终端 UTF-8 编码重构**（CLI 自适应 UTF-8 输出以彻底避免 CP1251/CP437 编码抛出 `UnicodeEncodeError` 异常）
+- [x] 250+ 个 pytest 测试通过
 
 ### 已知限制
 
-- **仅支持 Chromium。** Firefox/Camoufox 未实现。`src/core/browser.py` 只启动 Chromium。
-- **不支持浏览器扩展。** 没有机制将 `.crx` 或未打包的扩展加载到 profile 中。
+- **Camoufox 需要单独安装。** 请运行 `pip install camoufox` 来启用 Camoufox 引擎。若未安装，则回退到普通 Firefox 启动。
 - **模拟的 CDP multiplexer。** `/json/list` + `/devtools/page/...` 端点并没有暴露真正的 Chrome debug port 供外部自动化使用 —— 请改用 `POST /user/start` 返回的 per-profile websocket。
-- **没有 proxy 轮换 / proxy 健康检查。** Proxy 在每个 profile 上是静态的，没有自动 failover。
-- **没有多用户鉴权。** REST API 没有鉴权 —— 本地运行于 `127.0.0.1`，单进程。
-- **没有 proxy provider 集成。** 你提供 proxy；我们不从 BrightData/Decodo 等拉取。
-- **Headless 可用但不是 stealth 级别。** `--headless=true`（新版 headless）可用；`--headless=old` 与 stealth patch 未实现。
+- **API 鉴权为可选机制。** 设置 `ANTIQUE_API_TOKEN` 环境变量后方要求提供 Bearer 令牌；如未设置，则默认对 `127.0.0.1` 开放（但仍受跨域 Cross-Origin 策略保护）。单进程，暂不支持多用户角色。
+- **没有 proxy provider 直连集成。** 代理需要由您以代理池方式提供；我们支持对已有的代理池进行自动轮换与故障切换。
+- **Headless 隐深为尽力而为（Best-effort）。** 已伪装 permissions 和 `window.chrome` 指标，但极其底层的渲染时序（paint timing）以及特定的 GPU 硬件指纹目前尚未完全涵盖。
+- **WebRTC 目前仅能选择阻断模式。** 阻断真实 IP 泄漏；重写 ICE 候选以暴露与代理一致的外网 IP 功能目前位于 Roadmap 中。
 
 ### Roadmap
 
-- [ ] **Firefox/Camoufox** —— 实现与 `BrowserLauncher` 并行的 `FirefoxLauncher`，通过 profile 配置选择（`browser_type = "chromium"|"firefox"`）。
-- [ ] **浏览器扩展** —— 将未打包的扩展加载到 profile 的 user data dir 中。
-- [ ] **每个 profile 的真实 CDP** —— 为每个 profile 分配一个唯一的 `--remote-debugging-port`（目前 `BrowserLauncher` 选取一个空闲端口；需要稳定地暴露它）。
-- [ ] **Proxy 轮换** —— 每个 profile 的 pool + 健康检查 + 自动 failover。
-- [ ] **Headless stealth** —— `--headless=new` + stealth patch（navigator.webdriver、plugins、languages）。
-- [ ] **Dashboard 重写** —— 当前的 `index.html` 仅作为占位；实现完整的 profiles/tags/groups CRUD UI。
-- [ ] **Proxy provider 集成** —— BrightData、Decodo、smartproxy。
-- [ ] **Cookie 预热** —— 在导出 cookies 前访问页面、模拟浏览。
+- [ ] **每个 profile 的真实 CDP** — 为每个 profile 分配一个唯一的 `--remote-debugging-port`（目前仍在模拟中）。
+- [ ] **WebRTC 代理外网 IP 重写** — 在 ICE 候选里暴露代理的公网 IP 而非直接阻断。
+- [ ] **MCP 服务的 UI 集成** — 支持从 dashboard 启停 MCP 服务。
+- [ ] **扩展 Web Store 浏览器** — 支持从 UI 搜索和安装扩展。
+- [ ] **FingerprintJS 验证集成** — 引入 fingerprintjs/fingerprintjs 检测套件以进行防关联效果检验。
 
 ---
 
@@ -685,6 +728,10 @@ python -m pytest -k adb             # only .adb-related tests
 | `ANTIQUE_DATA_DIR` | `./data` | `antique.db` + profile user data dir 的根目录 |
 | `ANTIQUE_DB` | `<data_dir>/antique.db` | SQLite 路径覆盖 |
 | `ANTIQUE_BROWSER_CHANNEL` | （未设置，使用打包的 Chromium） | Playwright browser channel：`chrome`、`msedge`、`chromium-beta` |
+| `ANTIQUE_API_TOKEN` | （未设置，公开） | 如果设置，所有 REST API 将校验 `Authorization: Bearer <token>` 请求头 |
+| `ANTIQUE_ALLOWED_ORIGINS` | （未设置） | 允许进行远程/隧道访问的额外的信任 Origin 字符串子串的逗号分隔列表（如 `ngrok-free.app`）。Localhost 始终受信任。如果通过外部隧道（如 ngrok）打开 dashboard 必须配置此项，否则 Origin-guard 将返回 403 错误。 |
+| `ANTIDETECT_ENGINE` | `chromium` | 默认浏览器引擎：`chromium`、`firefox`、`camoufox` |
+| `PYTHONIOENCODING` | （自动 UTF-8） | CLI 内部会自动接管编码处理并强制进行 UTF-8 打印输出，除非该功能被停用否则无需设置 |
 | `HOST`（仅 CLI） | `127.0.0.1` | `serve` 的绑定地址 |
 | `UI_PORT`（仅 CLI） | `8080` | `serve` 的端口 |
 

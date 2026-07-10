@@ -40,7 +40,8 @@ antique is a Python service that:
 - Imports `.adb` profile bundles exported from AdsPower (cookies + LocalStorage + IndexedDB). The import uses native Chromium reading instead of brittle LevelDB parsing — we copy the source directories into Playwright's `user_data_dir` and let Chromium read them itself.
 - Exposes an AdsPower-compatible REST API on `http://127.0.0.1:<port>/...` so existing scripts that already talk to AdsPower can switch by changing the base URL.
 - Ships a single-page dashboard at `/` (or `/dashboard`) and a FastAPI Swagger at `/docs`.
-- 80+ pytest tests passing.
+- 175+ pytest tests passing.
+- Geo matching (timezone/locale/geolocation aligned to the proxy exit country), proxy rotation/failover, headless stealth, and a stealth self-test harness.
 - Bulk operations: start/stop/delete/export multiple profiles, bulk proxy import/assign.
 - Group management and filtering.
 - Proxy health-check with IP detection and latency measurement.
@@ -173,7 +174,9 @@ python -m src.cli import-cookies path/to/bundle.adb --full --name "Full import"
 src/
 ├── __init__.py
 ├── cli.py                         ← typer CLI (serve, create, list, start, stop, delete,
-│                                    import-cookies, reimport, export-cookies, fingerprint)
+│                                    import-cookies, reimport, export-cookies, export/import-profile,
+│                                    warm, run-flow, geo-match, proxy-rotate, detect-test, fingerprint)
+├── consoleutil.py                  ← UTF-8 console fix + ASCII fallback (Windows CP1251/CP437)
 ├── core/
 │   ├── __init__.py
 │   ├── storage.py                 ← SQLModel models (ProfileRecord, SessionRecord, TagRecord,
@@ -187,8 +190,16 @@ src/
 │   │                                 LocalStorage + IndexedDB extraction/copying
 │   ├── browser.py                 ← BrowserLauncher — launches persistent Chromium contexts,
 │   │                                 records sessions, applies imported state
-│   └── cdp.py                     ← CDPProxy — multiplexes a single debug port across
-│                                     multiple user_ids, exposes /json/list + WS routes
+│   ├── cdp.py                     ← CDPProxy — multiplexes a single debug port across
+│   │                                 multiple user_ids, exposes /json/list + WS routes
+│   ├── automation.py              ← Cookie Robot / no-code flow runner (Step model,
+│   │                                 parse_flow, cookie_robot_flow, FlowRunner)
+│   ├── portable.py                ← Portable .antq profile export/import (build_bundle,
+│   │                                 export_profile, import_profile)
+│   ├── geo.py                     ← Country/proxy-exit → timezone/locale/languages/geo
+│   │                                 (geo_for_country, geo_from_proxy, apply_geo_to_fingerprint)
+│   ├── proxy_pool.py              ← Proxy pool + rotation/failover (sticky/round_robin/random)
+│   └── detect.py                  ← Stealth self-test harness (build_collector_script, score_report)
 ├── api/
 │   ├── __init__.py
 │   ├── server.py                  ← FastAPI app factory, CORS, mount UI + API routes
@@ -322,6 +333,14 @@ python -m src.cli delete USER_ID [--yes]
 python -m src.cli import-cookies PATH [--name NAME] [--proxy-type TYPE] [--full]
 python -m src.cli reimport USER_ID
 python -m src.cli export-cookies USER_ID [--format json|netscape] [--out FILE]
+python -m src.cli export-profile USER_ID [--out FILE.antq]
+python -m src.cli import-profile FILE.antq [--name NAME] [--user-id ID]
+python -m src.cli warm USER_ID [--url URL ...] [--urls FILE] [--dwell-min MS] [--dwell-max MS] [--scrolls N] [--headless]
+python -m src.cli run-flow USER_ID FLOW.json [--stop-on-error] [--headless]
+python -m src.cli geo-match USER_ID [--country US|DE|RU|...]     # align tz/locale/geolocation to a country or the proxy exit
+python -m src.cli proxy-rotate USER_ID POOL.txt [--strategy sticky|round_robin|random]
+python -m src.cli detect-test USER_ID [--url URL] [--headless]   # stealth self-test, graded report
+python -m src.cli create ... [--geo-country US|DE|RU|...]        # create already aligned to a country
 python -m src.cli fingerprint [--seed SEED] [--os windows|macos|linux]
 ```
 
@@ -398,6 +417,28 @@ Body: {name, source_path}   OR   multipart file=@bundle.adb
 POST /user/{user_id}/reimport
 → resets initial_state_applied so the next launch re-copies LocalStorage/IDB
   from the saved bundle path
+```
+
+### Geo / proxy-pool / portable / detect (v0.2)
+
+```http
+GET  /geo/countries
+→ {code:0, data:{countries:["US","DE",...]}}
+
+POST /user/{user_id}/geo/match      Body: {country?: "DE"}   # omit to derive from the profile's proxy country
+→ aligns timezone/locale/languages/geolocation; persists onto the fingerprint
+
+POST /proxy/pool/next               Body: {proxy_list, strategy?: sticky|round_robin|random, user_id?}
+→ {code:0, data:{proxy:{...}, assigned, server}}   # optionally assigns to user_id
+
+POST /user/{user_id}/export/portable
+→ {code:0, data:{bundle:{...}}}   # .antq bundle (fingerprint+proxy+cookies+tags)
+
+POST /user/import/portable          Body: {bundle:{...}, name?, user_id?}
+→ {code:0, data:{user_id, name, cookie_count}}
+
+POST /detect/score                  Body: {signals:{...}, expected?:{...}}
+→ {code:0, data:{score, grade, ok, checks, failures}}   # pure stealth scoring, no browser
 ```
 
 ### Profile shape returned by `/user/list`
@@ -486,12 +527,39 @@ A `Fingerprint` is a coherent bundle of browser-visible attributes:
 - **Screen**: width/height/colorDepth/pixelRatio + window.innerWidth/Height
 - **Locale / timezone**: navigator.languages, Intl timezone
 - **WebGL**: vendor + renderer strings (via `WEBGL_debug_renderer_info`)
+- **WebGPU**: adapter vendor/architecture/description (via `navigator.gpu.requestAdapter().requestAdapterInfo()`), coherent with the WebGL GPU; software-renderer profiles disable `navigator.gpu`
+- **Fonts**: per-OS installed-font allow-list, enforced through `document.fonts.check`
 - **Audio**: deterministic noise seed for AudioContext jitter
 - **Canvas**: deterministic noise seed for `toDataURL`/`toBlob` pixel jitter
 - **WebRTC**: IP-leak prevention (`block_webrtc_ip`)
+- **Geolocation**: `navigator.geolocation` coordinates + accuracy, spoofable and aligned to the proxy exit country (see [geo matching](#geo-matching-timezone--locale--geolocation))
+- **Headless stealth**: `window.chrome`/`chrome.runtime` shims + `permissions.query` coherence so new-headless doesn't leak the classic tells
 - **Plugins**: realistic Chrome plugin list (2-5 entries)
 - **Connection**: type/downlink/rtt (Network Information API)
 - **Hardware**: hardwareConcurrency, deviceMemory
+
+### Geo matching (timezone / locale / geolocation)
+
+`src/core/geo.py` maps an ISO country code (or a proxy's exit country) to a
+coherent `GeoProfile` (timezone, locale, `navigator.languages`, lat/lon) and
+applies it onto a fingerprint so a US proxy never ships a Moscow timezone.
+
+```python
+from src.core.geo import geo_for_country, geo_from_proxy, apply_geo_to_fingerprint
+apply_geo_to_fingerprint(fp, geo_for_country("DE"))          # explicit country
+apply_geo_to_fingerprint(fp, geo_from_proxy(profile.proxy))  # from proxy exit
+```
+
+CLI: `create --geo-country DE`, or `geo-match USER_ID --country DE` (omit
+`--country` to derive it from the profile's proxy).
+
+### Stealth self-test
+
+`src/core/detect.py` collects live signals from a profile page
+(`build_collector_script`) and grades them (`score_report`): a 0-100 stealth
+score + letter grade, flagging automation tells (webdriver, missing
+`window.chrome`, permission mismatch, platform/UA disagreement) and
+fingerprint drift vs the intended values. CLI: `detect-test USER_ID`.
 
 ### Generation
 
@@ -521,7 +589,8 @@ Two layers:
 
 - WebGL is read-only on Chromium for the unmasked fields — we patch `getParameter` and `getExtension`, but if the page uses `WEBGL_debug_renderer_info` differently, the patch can be bypassed.
 - Canvas noise is mild (±2 per channel) — strong noise breaks visual rendering on some sites. Increase noise on a per-profile basis if needed.
-- Fonts are not enumerated; the fingerprint has no font list. Add via `document.fonts` patches if you need them.
+- Fonts are enforced via `document.fonts.check` (measure-based enumeration returns the allow-list). Deep canvas-measurement font probes that bypass `document.fonts` are not fully covered yet.
+- WebGPU spoofing patches `requestAdapterInfo()`/`adapter.info`; it does not rewrite low-level `GPUAdapter` limits/features.
 
 ---
 
@@ -630,14 +699,29 @@ python -m pytest tests/test_cookie.py -v
 python -m pytest -k adb             # only .adb-related tests
 ```
 
-**73 tests** across 6 files:
+Test files:
 
 - `test_storage.py` — SQLite engine, tables
 - `test_profile.py` — ProfileStore CRUD, full-profile fields, session bookkeeping
 - `test_fingerprint.py` — Fingerprint generation + init script injection
 - `test_proxy.py` — ProxyConfig validation + Playwright shape conversion
 - `test_cookie.py` — Cookie parsing (Netscape/JSON/.adb), LocalStorage/IndexedDB extraction
-- `test_profile_import.py` — Full-profile import flow (NEW, 22 tests)
+- `test_profile_import.py` — Full-profile import flow
+- `test_webgpu_fonts.py` — WebGPU adapter spoofing + font allow-list generation & injection
+- `test_automation.py` — Cookie Robot / flow parser, builder, and runner against a fake page
+- `test_portable.py` — Portable `.antq` export/import round-trip
+- `test_geo.py` — Country/proxy → timezone/locale/geolocation matching
+- `test_proxy_pool.py` — Proxy pool rotation strategies + failover
+- `test_detect.py` — Stealth self-test scoring + collector script
+- `test_console.py` — Windows UTF-8 console fix + ASCII fallback
+- `test_api_endpoints.py` — HTTP-level tests (TestClient): extension wiring regression, geo-match, proxy-pool, portable round-trip, detect scoring
+- `test_auth.py` — API auth + origin guard (DNS-rebinding, Bearer token, tunnel allow-list) (NEW)
+
+Run only the newest suites:
+
+```bash
+python -m pytest tests/test_detect.py tests/test_console.py tests/test_api_endpoints.py tests/test_auth.py -v
+```
 
 ---
 
@@ -662,28 +746,44 @@ python -m pytest -k adb             # only .adb-related tests
 - [x] **Fingerprint editing from UI** (tabbed modal: UA, screen, hardware, network, WebGL)
 - [x] **Bulk proxy assignment** (`POST /user/bulk/proxy/assign`)
 - [x] Proxy list parser (supports `type://host:port`, `type://user:pass@host:port`, `host:port:user:pass`)
-- [x] 80+ pytest tests passing
+- [x] **Extension manager** (install from unpacked dir, .crx, Chrome Web Store; per-profile assignment)
+- [x] **MCP server** (JSON-RPC 2.0 over stdio, 12 tools: list/open/close/navigate/screenshot/execute_script/cookies/proxy_check)
+- [x] **Multi-engine support** (Chromium, Firefox, Camoufox/ShardX; per-profile or env-var)
+- [x] **Client Hints** (Sec-CH-UA headers via custom browser args, auto-generated from fingerprint)
+- [x] **Extensions per profile** (`--load-extension` + `--disable-extensions-except` at launch)
+- [x] **WebGPU fingerprint spoofing** (adapter vendor/architecture/description, coherent with WebGL GPU)
+- [x] **Font fingerprint spoofing** (per-OS installed-font allow-list via `document.fonts.check`)
+- [x] **Cookie Robot / no-code automation flows** (`warm`, `run-flow`; JSON step model: goto/wait/scroll/click/type/press/hover/screenshot/eval)
+- [x] **Portable profile export/import** (`.antq` bundles: fingerprint + proxy + cookies + tags, transfer between machines)
+- [x] **Geo matching** (timezone/locale/languages/geolocation aligned to country or proxy exit, `src/core/geo.py`)
+- [x] **Geolocation spoofing** (`navigator.geolocation` coords + accuracy, coherent with the geo profile)
+- [x] **Proxy rotation + failover** (pool with sticky/round_robin/random strategies, `src/core/proxy_pool.py`)
+- [x] **Headless stealth** (`window.chrome`/`chrome.runtime` shims + `permissions.query` coherence)
+- [x] **Stealth self-test harness** (`detect-test`, graded 0-100 report, `src/core/detect.py`)
+- [x] **Optional API auth** (`ANTIQUE_API_TOKEN` Bearer token + cross-origin/DNS-rebinding guard)
+- [x] **Windows UTF-8 console fix** (no more `UnicodeEncodeError` on CP1251/CP437 terminals)
+- [x] 175+ pytest tests passing
 
 ### Known limitations
 
-- **Chromium only.** Firefox/Camoufox not implemented. `src/core/browser.py` only launches Chromium.
-- **No browser extensions.** No mechanism to load `.crx` or unpacked extensions into a profile.
+- **Camoufox requires separate install.** Run `pip install camoufox` to enable the Camoufox engine. Without it, falls back to plain Firefox.
 - **Simulated CDP multiplexer.** The `/json/list` + `/devtools/page/...` endpoints don't expose a real Chrome debug port for external automation — use the per-profile websocket from `POST /user/start` instead.
-- **No multi-user auth.** The REST API has no auth — runs locally on `127.0.0.1`, single-process.
-- **No proxy provider integration.** You supply proxies; we don't pull them from BrightData/Decodo/etc.
-- **Headless is functional but not stealth-grade.** `--headless=true` (new headless) works; `--headless=old` and stealth patches are not implemented.
+- **API auth is opt-in.** Set `ANTIQUE_API_TOKEN` to require a Bearer token; unset, the API is open on `127.0.0.1` (still protected by the cross-origin guard). Single-process, no multi-user roles.
+- **No proxy provider integration.** You supply proxies; we don't pull them from BrightData/Decodo/etc. Rotation/failover over a supplied pool is implemented.
+- **Headless stealth is best-effort.** `window.chrome` + permissions tells are patched; deep headless heuristics (paint timing, GPU quirks) are not fully covered.
+- **WebRTC is block-only.** IPs are blocked; exposing a proxy-matched public IP via ICE candidate rewriting is on the roadmap.
 
 ### Roadmap
 
-- [ ] **Firefox/Camoufox** — implement `FirefoxLauncher` parallel to `BrowserLauncher` and pick via profile config (`browser_type = "chromium"|"firefox"`).
-- [ ] **Browser extensions** — load unpacked `.crx` extensions into a profile's user data dir.
-- [ ] **Real CDP per profile** — assign a unique `--remote-debugging-port` per profile.
-- [ ] **Proxy rotation** — pool + automatic failover per profile (health-check is done, rotation is next).
-- [ ] **Headless stealth** — `--headless=new` + stealth patches.
-- [ ] **MCP server** — launch from UI, expose AdsPower-compatible tools for AI agents.
+- [ ] **Real CDP per profile** — assign a unique `--remote-debugging-port` per profile (still simulated).
+- [ ] **WebRTC proxy-IP rewriting** — expose the proxy's public IP via ICE candidates instead of blocking.
+- [ ] **MCP server UI integration** — start/stop MCP from the dashboard.
 - [ ] **Proxy provider integrations** — BrightData, Decodo, smartproxy.
-- [ ] **Cookie warming** — visit pages, simulate browsing before exporting cookies.
-- [ ] **FingerprintJS integration** — use fingerprintjs/fingerprintjs for detection testing.
+- [ ] **Extension Web Store browser** — search and install extensions from UI.
+- [x] **Cookie warming** — done via the Cookie Robot (`warm` command + automation flows).
+- [x] **Proxy rotation** — done (`src/core/proxy_pool.py`, `proxy-rotate` CLI).
+- [x] **Headless stealth** — done (`window.chrome` + permissions patches).
+- [x] **Detection self-test** — done (`detect-test`, `src/core/detect.py`).
 
 ---
 
@@ -694,6 +794,10 @@ python -m pytest -k adb             # only .adb-related tests
 | `ANTIQUE_DATA_DIR` | `./data` | Root for `antique.db` + profile user data dirs |
 | `ANTIQUE_DB` | `<data_dir>/antique.db` | SQLite path override |
 | `ANTIQUE_BROWSER_CHANNEL` | (unset, uses bundled Chromium) | Playwright browser channel: `chrome`, `msedge`, `chromium-beta` |
+| `ANTIQUE_API_TOKEN` | (unset, open) | If set, REST API requires `Authorization: Bearer <token>` |
+| `ANTIQUE_ALLOWED_ORIGINS` | (unset) | Comma-separated extra trusted Origin substrings for remote/tunnel access (e.g. `ngrok-free.app`). Localhost is always trusted. Needed when the dashboard is exposed through a tunnel, otherwise the DNS-rebinding guard returns 403. |
+| `ANTIDETECT_ENGINE` | `chromium` | Default browser engine: `chromium`, `firefox`, `camoufox` |
+| `PYTHONIOENCODING` | (auto UTF-8) | The CLI now forces UTF-8 stdio itself; set to `utf-8` only if you disable that |
 | `HOST` (CLI only) | `127.0.0.1` | Bind address for `serve` |
 | `UI_PORT` (CLI only) | `8080` | Port for `serve` |
 
