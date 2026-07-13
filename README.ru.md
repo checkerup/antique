@@ -39,13 +39,19 @@ antique — это Python-сервис, который:
 - Сохраняет профили в SQLite (`data/antique.db`) — proxies, fingerprints, cookies, tags, sessions, import bookkeeping.
 - Импортирует `.adb`-бандлы профилей, экспортированные из AdsPower (cookies + LocalStorage + IndexedDB). Импорт использует нативное чтение Chromium вместо хрупкого парсинга LevelDB — мы копируем исходные директории в Playwright `user_data_dir` и позволяем Chromium читать их самостоятельно.
 - Предоставляет совместимый с AdsPower REST API на `http://127.0.0.1:<port>/...`, так что существующие скрипты, которые уже работают с AdsPower, могут переключиться, поменяв только базовый URL.
-- Включает одностраничный dashboard на `/` (или `/dashboard`) и FastAPI Swagger на `/docs`.
-- 73/73 pytest-тестов проходят.
+- Включает одностраничный дашборд на `/` (или `/dashboard`) и FastAPI Swagger на `/docs`.
+- 270+ тестов pytest успешно пройдено.
+- Сменяемые браузерные движки: Chromium, Google Chrome, Microsoft Edge, Firefox, Camoufox (глубокий стелс на уровне движка), WebKit.
+- Импорт резервных копий AdsPower в один клик (как целой папки бэкапа, так и отдельного профиля) с сохранением user_id, кук, прокси и тегов.
+- Дашборд с поддержкой светлой/темной темы, выбором движка и флоу импорта AdsPower.
+- Массовые операции: запуск/остановка/удаление/экспорт нескольких профилей, массовый импорт и назначение прокси.
+- Менеджер групп и тегов.
+- Проверка работоспособности прокси с детекцией IP и измерением задержки (latency).
+- Редактирование фингерпринта прямо из веб-интерфейса дашборда.
 
 **Чем этот проект НЕ является (пока):**
-- Не Firefox/Camoufox — пока это stub (`src/core/browser.py` запускает только Chromium).
 - Не headless-ферма браузеров на тысячи профилей — рассчитана на десятки профилей на машину.
-- Не мультипользовательский auth-слой — однопроцессный, без auth в REST API, запускается локально.
+- Не мультипользовательский auth-слой — однопроцессный, без auth в REST API по умолчанию, запускается локально.
 - Не провайдер прокси — использует прокси, которые вы предоставляете сами.
 
 **Когда использовать:** когда нужна совместимая с AdsPower локальная ферма браузеров с полной изоляцией профилей, контролем fingerprint и импортом .adb-бандлов — без оплаты AdsPower.
@@ -193,7 +199,7 @@ src/
 │   │                                 (geo_for_country, geo_from_proxy, apply_geo_to_fingerprint)
 │   ├── proxy_pool.py              ← Пул прокси + ротация/failover (sticky/round_robin/random)
 │   ├── detect.py                  ← Селф-тест маскировки / детект-харнесс (build_collector_script, score_report)
-│   └── chain.py                   ← Мониторинг EVM-кошельков + парсинг ранних покупателей (пресет Robinhood Chain, ChainClient, parse_early_buyers)
+│   └── engines.py                 ← Реестр браузерных движков (EngineSpec, resolve_engine, list_engines)
 ├── api/
 │   ├── __init__.py
 │   ├── server.py                  ← FastAPI app factory, CORS, mount UI + API routes
@@ -331,12 +337,11 @@ python -m src.cli export-profile USER_ID [--out FILE.antq]
 python -m src.cli import-profile FILE.antq [--name NAME] [--user-id ID]
 python -m src.cli warm USER_ID [--url URL ...] [--urls FILE] [--dwell-min MS] [--dwell-max MS] [--scrolls N] [--headless]
 python -m src.cli run-flow USER_ID FLOW.json [--stop-on-error] [--headless]
-python -m src.cli geo-match USER_ID [--country US|DE|RU|...]     # выравнивание таймзоны/локали/гео под страну или выход прокси
-python -m src.cli proxy-rotate USER_ID POOL.txt [--strategy sticky|round_robin|random]
 python -m src.cli detect-test USER_ID [--url URL] [--headless]   # селф-тест маскировки с оценкой A-F
 python -m src.cli create ... [--geo-country US|DE|RU|...]        # создание профиля с привязкой к стране
-python -m src.cli chain-wallet ADDR [ADDR ...] [--chain robinhood|robinhood-testnet] [--tx-limit N] # мониторинг EVM-кошельков
-python -m src.cli chain-early-buyers TOKEN [--chain robinhood] [--limit N] [--from-block B] [--to-block B] [--exclude ADDR ...] # поиск ранних покупателей токена
+python -m src.cli engines                                        # список поддерживаемых движков и их стелс-уровней
+python -m src.cli create ... [--engine chromium|chrome|edge|firefox|camoufox|webkit] # создание с указанием движка
+python -m src.cli import-backup PATH [--overwrite] [--limit N]   # импорт папки резервной копии AdsPower
 python -m src.cli fingerprint [--seed SEED] [--os windows|macos|linux]
 ```
 
@@ -436,14 +441,11 @@ POST /user/import/portable          Body: {bundle:{...}, name?, user_id?}
 POST /detect/score                  Body: {signals:{...}, expected?:{...}}
 → {code:0, data:{score, grade, ok, checks, failures}}   # чистый скоринг скрытности, без браузера
 
-GET  /chain/list
-→ {code:0, data:{list:[{key,name,chain_id,currency,rpc_url,...}]}}   # поддерживаемые EVM-сети (включая Robinhood Chain)
+GET  /engine/list
+→ {code:0, data:{list:[{key,label,base,stealth,channel,needs_install,supports_extensions,supports_cdp}]}}
 
-POST /chain/wallets/monitor         Body: {addresses:[...], chain?: "robinhood", tx_limit?: 50}
-→ {code:0, data:{chain, chain_id, wallets:[{address, eth_balance, tx_count, sent_count, received_count, first_seen_block, last_seen_block}]}}
-
-POST /chain/token/early-buyers      Body: {token, chain?: "robinhood", limit?: 20, from_block?, to_block?, exclude?:[...]}
-→ {code:0, data:{chain, token, buyers:[{address, block_number, tx_hash, amount}], count}}
+POST /user/import/backup            Body: {source_path, overwrite?, limit?}
+→ {code:0, data:{imported_count, updated_count, skipped_count, error_count, cookie_sources, ...}}
 ```
 
 ### Форма профиля, возвращаемая `/user/list`
@@ -738,18 +740,22 @@ python -m pytest tests/test_chain.py tests/test_api_endpoints.py -v
 - [x] **Детект-харнесс** (селф-тест маскировки `detect-test` с оценкой отчета 0-100, `src/core/detect.py`)
 - [x] **Опциональная авторизация по токену** (переменная `ANTIQUE_API_TOKEN` + защита от Cross-Origin/DNS-rebinding)
 - [x] **Фикс кодировки в консоли Windows** (вывод UTF-8 с ASCII-фолбэком без падений `UnicodeEncodeError`)
-- [x] **Мониторинг EVM-кошельков + ранних покупателей** (Robinhood Chain EVM L2, chain id 4663; `src/core/chain.py`, CLI `chain-wallet`/`chain-early-buyers`, роуты `/chain/*`, MCP инструменты)
-- [x] 280+ тестов pytest пройдены
+- [x] **Сменяемые браузерные движки** (Chromium/Chrome/Edge/Firefox/Camoufox/WebKit, `src/core/engines.py`, `/engine/list`, `create --engine`)
+- [x] **Движок Camoufox deep-stealth** (Gecko-уровень подмены отпечатков; откатывается на стандартный Firefox, если не установлен)
+- [x] **Импорт бэкапа AdsPower в один клик** (всей папки бэкапа или одного профиля; CLI `import-backup` + `/user/import/backup` + дашборд)
+- [x] **Редизайн дашборда** (поддержка темной/светлой темы, выбор движка, импорт из бэкапа AdsPower, всплывающие уведомления)
+- [x] 270+ тестов pytest пройдены
 
 ### Известные ограничения
 
-- **Для Camoufox требуется отдельная установка.** Запустите `pip install camoufox` для активации движка Camoufox. Без него будет использоваться стандартный Firefox.
 - **Симулированный CDP multiplexer.** Эндпоинты `/json/list` + `/devtools/page/...` не открывают настоящий Chrome debug port для внешней автоматизации — используйте per-profile websocket из `POST /user/start`.
 - **API-авторизация опциональна.** Задайте `ANTIQUE_API_TOKEN` для требования Bearer-токена; если не задано, доступ открыт локально на `127.0.0.1` (все еще защищено Cross-Origin гардом). Ролей и мультипользователей нет.
 - **Нет интеграции с провайдерами прокси.** Прокси поставляются пулом; автоматическая ротация поверх вашего пула реализована.
 - **Стелс безголового режима (headless stealth) базовый.** Внедрены патчи на `window.chrome` и permissions, но глубокие тесты таймингов и GPU в headless-режиме могут палиться.
 - **WebRTC работает только в режиме блокировки.** IP-адреса блокируются; подмена на публичный IP через ICE-кандидаты в планах.
-- **По умолчанию ончейн использует публичный RPC.** `ChainClient` по умолчанию использует публичные RPC и Blockscout для Robinhood Chain, которые имеют лимиты запросов (rate limits). Для тяжелых запросов `early-buyers` с широким диапазоном блоков настройте свой приватный эндпоинт (Alchemy/QuickNode) через `ChainConfig` и сужайте `--from-block`/`--to-block`.
+- **Для Camoufox требуется отдельная установка.** Запустите `pip install camoufox && python -m camoufox fetch`. Без установки движок `camoufox` автоматически откатывается на bundled Firefox (стандартный стелс вместо глубокого).
+- **Для движков Chrome/Edge требуется установленный реальный браузер** в системе. Иначе используйте стандартный `chromium`.
+- **Движки Firefox/Camoufox/WebKit не поддерживают per-profile CDP и загрузку расширений .crx** — эти возможности эксклюзивны для Chromium.
 
 ### Roadmap
 

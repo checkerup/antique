@@ -1,816 +1,319 @@
-﻿<!DOCTYPE html>
-<html lang="en">
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>antique</title>
+<title>antique — anti-detect browser</title>
 <style>
 :root {
-  --bg: #0e1117;
-  --panel: #161b22;
-  --border: #30363d;
-  --text: #c9d1d9;
-  --muted: #8b949e;
-  --accent: #58a6ff;
-  --green: #3fb950;
-  --red: #f85149;
-  --yellow: #d29922;
+  --radius: 10px; --radius-sm: 7px;
+  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --shadow: 0 1px 3px rgba(0,0,0,.12), 0 8px 24px rgba(0,0,0,.16);
+  --speed: .16s;
 }
-* { box-sizing: border-box; }
-body {
-  margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  background: var(--bg);
-  color: var(--text);
-  font-size: 14px;
+html[data-theme="dark"] {
+  --bg:#0b0e14; --bg-2:#11151d; --panel:#151a23; --panel-2:#1b2029;
+  --border:#262c38; --border-2:#333b4a; --text:#e6edf3; --muted:#8b95a5; --faint:#5b6472;
+  --accent:#6ea8fe; --accent-strong:#4d8dfd; --green:#46c56a; --red:#f26d6d; --yellow:#e0b341; --purple:#b98cff;
+  --chip:rgba(110,168,254,.14);
 }
-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 16px 24px;
-  border-bottom: 1px solid var(--border);
-  background: var(--panel);
+html[data-theme="light"] {
+  --bg:#f5f7fb; --bg-2:#eef1f6; --panel:#fff; --panel-2:#f7f9fc;
+  --border:#e2e7ef; --border-2:#d3dae5; --text:#16202e; --muted:#5d6b7e; --faint:#93a0b2;
+  --accent:#2f6fed; --accent-strong:#205ad6; --green:#1f9d4d; --red:#d64545; --yellow:#b7851b; --purple:#7a4ddb;
+  --chip:rgba(47,111,237,.10); --shadow:0 1px 2px rgba(20,32,46,.06), 0 8px 24px rgba(20,32,46,.08);
 }
-header h1 { margin: 0; font-size: 18px; font-weight: 600; }
-header .meta { color: var(--muted); font-size: 12px; margin-top: 2px; }
-header .actions { display: flex; gap: 8px; }
-main { padding: 24px; max-width: 1400px; margin: 0 auto; }
-.toolbar { display: flex; gap: 8px; margin-bottom: 16px; align-items: center; flex-wrap: wrap; }
-.toolbar input[type="search"] {
-  flex: 1; min-width: 200px; padding: 8px 12px; background: var(--panel);
-  border: 1px solid var(--border); border-radius: 6px;
-  color: var(--text); font-size: 13px;
-}
-.toolbar select {
-  padding: 8px 12px; background: var(--panel);
-  border: 1px solid var(--border); border-radius: 6px;
-  color: var(--text); font-size: 13px;
-}
-.btn {
-  padding: 8px 14px; border: 1px solid var(--border); border-radius: 6px;
-  background: var(--panel); color: var(--text); cursor: pointer; font-size: 13px;
-  transition: all .15s;
-}
-.btn:hover { background: #1c2129; border-color: var(--accent); }
-.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-.btn.primary:hover { background: #79b8ff; }
-.btn.danger { background: var(--red); border-color: var(--red); color: #fff; }
-.btn.danger:hover { background: #ff6e6e; }
-.btn.warning { background: var(--yellow); border-color: var(--yellow); color: #000; }
-.btn:disabled { opacity: .5; cursor: not-allowed; }
-.btn.sm { padding: 4px 8px; font-size: 12px; }
-table { width: 100%; border-collapse: collapse; background: var(--panel); border-radius: 6px; overflow: hidden; }
-th, td { padding: 10px 14px; text-align: left; border-bottom: 1px solid var(--border); }
-th { background: #0d1117; font-weight: 600; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .5px; }
-tbody tr:hover { background: #1c2129; }
-tbody tr:last-child td { border-bottom: none; }
-tbody tr.selected { background: rgba(88, 166, 255, .08); }
-.status { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; text-transform: uppercase; }
-.status.active { background: rgba(63, 185, 80, .15); color: var(--green); }
-.status.inactive { background: rgba(139, 148, 158, .15); color: var(--muted); }
-.tag { display: inline-block; padding: 2px 6px; background: rgba(88, 166, 255, .15); color: var(--accent); border-radius: 3px; font-size: 11px; margin-right: 4px; }
-.empty { text-align: center; padding: 60px; color: var(--muted); }
-.modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.6); align-items: center; justify-content: center; z-index: 100; }
-.modal.open { display: flex; }
-.modal .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 24px; max-width: 700px; width: 90%; max-height: 90vh; overflow: auto; }
-.modal h2 { margin: 0 0 16px; font-size: 16px; }
-.field { margin-bottom: 12px; }
-.field label { display: block; margin-bottom: 4px; color: var(--muted); font-size: 12px; }
-.field input, .field textarea, .field select {
-  width: 100%; padding: 8px 12px; background: var(--bg);
-  border: 1px solid var(--border); border-radius: 6px;
-  color: var(--text); font-size: 13px; font-family: inherit;
-}
-.field textarea { min-height: 80px; font-family: ui-monospace, monospace; }
-.field-row { display: flex; gap: 8px; }
-.field-row .field { flex: 1; }
-.row { display: flex; gap: 8px; justify-content: flex-end; }
-.kbd { font-family: ui-monospace, monospace; font-size: 11px; padding: 2px 6px; background: var(--bg); border: 1px solid var(--border); border-radius: 3px; color: var(--muted); }
-.bulk-bar { display: none; padding: 12px 24px; background: rgba(88,166,255,.08); border: 1px solid var(--accent); border-radius: 6px; margin-bottom: 16px; align-items: center; gap: 8px; }
-.bulk-bar.visible { display: flex; }
-.bulk-bar .count { font-weight: 600; color: var(--accent); }
-.proxy-status { display: inline-block; padding: 2px 6px; border-radius: 3px; font-size: 11px; }
-.proxy-status.ok { background: rgba(63,185,80,.15); color: var(--green); }
-.proxy-status.error { background: rgba(248,81,73,.15); color: var(--red); }
-.proxy-status.checking { background: rgba(210,153,34,.15); color: var(--yellow); }
-.tabs { display: flex; gap: 0; border-bottom: 1px solid var(--border); margin-bottom: 16px; }
-.tab { padding: 8px 16px; cursor: pointer; color: var(--muted); border-bottom: 2px solid transparent; }
-.tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+* { box-sizing:border-box; }
+body { margin:0; font-family:var(--font); background:var(--bg); color:var(--text); font-size:14px; line-height:1.5; -webkit-font-smoothing:antialiased; transition:background var(--speed), color var(--speed); }
+a { color:var(--accent); text-decoration:none; }
+header { position:sticky; top:0; z-index:40; display:flex; align-items:center; justify-content:space-between; padding:14px 22px; background:var(--panel); border-bottom:1px solid var(--border); }
+.brand { display:flex; align-items:center; gap:12px; }
+.logo { width:34px; height:34px; border-radius:9px; background:linear-gradient(135deg,var(--accent),var(--purple)); display:grid; place-items:center; color:#fff; font-weight:800; font-size:17px; }
+.brand h1 { margin:0; font-size:16px; font-weight:700; }
+.brand .sub { color:var(--muted); font-size:12px; }
+.header-actions { display:flex; align-items:center; gap:8px; }
+.btn { display:inline-flex; align-items:center; gap:6px; padding:8px 14px; border:1px solid var(--border-2); border-radius:var(--radius-sm); background:var(--panel-2); color:var(--text); cursor:pointer; font-size:13px; font-weight:500; transition:all var(--speed); white-space:nowrap; }
+.btn:hover { border-color:var(--accent); background:var(--bg-2); }
+.btn.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+.btn.primary:hover { background:var(--accent-strong); }
+.btn.danger { background:transparent; color:var(--red); }
+.btn.danger:hover { background:rgba(242,109,109,.12); border-color:var(--red); }
+.btn.ghost { background:transparent; border-color:transparent; }
+.btn.ghost:hover { background:var(--bg-2); border-color:var(--border); }
+.btn.sm { padding:5px 10px; font-size:12px; }
+.btn:disabled { opacity:.5; cursor:not-allowed; }
+.icon-btn { width:38px; height:38px; padding:0; display:grid; place-items:center; border-radius:var(--radius-sm); border:1px solid var(--border-2); background:var(--panel-2); color:var(--text); cursor:pointer; font-size:16px; transition:all var(--speed); }
+.icon-btn:hover { border-color:var(--accent); }
+main { padding:22px; max-width:1500px; margin:0 auto; }
+.stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; margin-bottom:20px; }
+.stat { background:var(--panel); border:1px solid var(--border); border-radius:var(--radius); padding:14px 16px; }
+.stat .n { font-size:24px; font-weight:700; letter-spacing:-.5px; }
+.stat .n.green { color:var(--green); }
+.stat .l { color:var(--muted); font-size:12px; margin-top:2px; }
+.toolbar { display:flex; gap:8px; margin-bottom:14px; align-items:center; flex-wrap:wrap; }
+.toolbar input[type=search], .toolbar select { padding:9px 12px; background:var(--panel); border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--text); font-size:13px; font-family:inherit; }
+.toolbar input[type=search] { flex:1; min-width:220px; }
+.toolbar input:focus, .toolbar select:focus { outline:none; border-color:var(--accent); }
+.bulk-bar { display:none; padding:10px 16px; margin-bottom:14px; align-items:center; gap:8px; background:var(--chip); border:1px solid var(--accent); border-radius:var(--radius); }
+.bulk-bar.visible { display:flex; }
+.bulk-bar .count { font-weight:700; color:var(--accent); }
+.table-wrap { background:var(--panel); border:1px solid var(--border); border-radius:var(--radius); overflow:hidden; }
+table { width:100%; border-collapse:collapse; }
+th,td { padding:12px 14px; text-align:left; border-bottom:1px solid var(--border); }
+th { background:var(--panel-2); font-weight:600; color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.6px; }
+tbody tr { transition:background var(--speed); }
+tbody tr:hover { background:var(--bg-2); }
+tbody tr:last-child td { border-bottom:none; }
+tbody tr.selected { background:var(--chip); }
+td.name-cell { font-weight:600; }
+.status { display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:600; }
+.dot { width:8px; height:8px; border-radius:50%; display:inline-block; }
+.dot.active { background:var(--green); box-shadow:0 0 0 3px rgba(70,197,106,.18); }
+.dot.inactive { background:var(--faint); }
+.status.active { color:var(--green); } .status.inactive { color:var(--muted); }
+.badge { display:inline-block; padding:2px 8px; border-radius:20px; font-size:11px; font-weight:600; border:1px solid var(--border-2); }
+.badge.deep { color:var(--green); border-color:rgba(70,197,106,.4); background:rgba(70,197,106,.10); }
+.badge.standard { color:var(--accent); border-color:rgba(110,168,254,.4); background:var(--chip); }
+.badge.basic { color:var(--muted); }
+.tag { display:inline-block; padding:2px 7px; background:var(--chip); color:var(--accent); border-radius:5px; font-size:11px; margin:1px 3px 1px 0; }
+.kbd { font-family:var(--mono); font-size:11px; padding:1px 6px; background:var(--bg-2); border:1px solid var(--border); border-radius:5px; color:var(--muted); }
+.proxy-status { font-size:11px; padding:1px 6px; border-radius:5px; margin-left:6px; }
+.proxy-status.ok { color:var(--green); background:rgba(70,197,106,.12); }
+.proxy-status.error { color:var(--red); background:rgba(242,109,109,.12); }
+.proxy-status.checking { color:var(--yellow); }
+.empty { text-align:center; padding:64px 20px; color:var(--muted); }
+.empty .big { font-size:15px; color:var(--text); margin-bottom:6px; font-weight:600; }
+.checkbox { width:16px; height:16px; accent-color:var(--accent); cursor:pointer; }
+.modal { display:none; position:fixed; inset:0; background:rgba(0,0,0,.55); align-items:flex-start; justify-content:center; z-index:100; padding:40px 16px; overflow-y:auto; }
+.modal.open { display:flex; }
+.modal .panel { background:var(--panel); border:1px solid var(--border); border-radius:14px; padding:22px; max-width:640px; width:100%; box-shadow:var(--shadow); }
+.modal h2 { margin:0 0 4px; font-size:17px; }
+.modal .desc { color:var(--muted); font-size:13px; margin:0 0 16px; }
+.field { margin-bottom:13px; }
+.field label { display:block; margin-bottom:5px; color:var(--muted); font-size:12px; font-weight:500; }
+.field input, .field textarea, .field select { width:100%; padding:9px 12px; background:var(--bg-2); border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--text); font-size:13px; font-family:inherit; }
+.field input:focus, .field textarea:focus, .field select:focus { outline:none; border-color:var(--accent); }
+.field textarea { min-height:90px; font-family:var(--mono); resize:vertical; }
+.field .hint { color:var(--faint); font-size:11px; margin-top:4px; }
+.field-row { display:flex; gap:10px; }
+.field-row .field { flex:1; }
+.row { display:flex; gap:8px; justify-content:flex-end; margin-top:18px; }
+.tabs { display:flex; gap:4px; margin-bottom:16px; background:var(--bg-2); padding:4px; border-radius:var(--radius-sm); }
+.tab { flex:1; text-align:center; padding:8px; cursor:pointer; color:var(--muted); border-radius:6px; font-size:13px; font-weight:500; transition:all var(--speed); }
+.tab.active { color:var(--text); background:var(--panel); box-shadow:var(--shadow); }
+.engine-opt { font-size:11px; color:var(--faint); margin-top:4px; min-height:15px; }
+.toast { position:fixed; bottom:22px; left:50%; transform:translateX(-50%); background:var(--panel); border:1px solid var(--border-2); border-left:3px solid var(--accent); padding:12px 18px; border-radius:var(--radius-sm); box-shadow:var(--shadow); z-index:200; opacity:0; transition:opacity .2s, transform .2s; pointer-events:none; }
+.toast.show { opacity:1; transform:translateX(-50%) translateY(-4px); }
+.toast.err { border-left-color:var(--red); } .toast.ok { border-left-color:var(--green); }
 </style>
 </head>
 <body>
 <header>
-  <div>
-    <h1>antique</h1>
-    <div class="meta" id="info-meta">connecting...</div>
+  <div class="brand">
+    <div class="logo">a</div>
+    <div><h1>antique</h1><div class="sub">self-hosted anti-detect browser</div></div>
   </div>
-  <div class="actions">
-    <button class="btn" onclick="window.open('/docs', '_blank')">API docs</button>
-    <button class="btn" onclick="openProxyImport()">Import proxies</button>
+  <div class="header-actions">
+    <button class="icon-btn" id="theme-toggle" title="Toggle theme">☀️</button>
+    <button class="btn" onclick="window.open('/docs','_blank')">API</button>
+    <button class="btn" onclick="openImport()">Import</button>
     <button class="btn primary" onclick="openCreate()">+ New profile</button>
   </div>
 </header>
-
 <main>
-  <div class="toolbar">
-    <input type="search" id="search" placeholder="Search profiles..." oninput="render()">
-    <select id="group-filter" onchange="render()">
-      <option value="">All groups</option>
-    </select>
-    <button class="btn" onclick="openImport()">Import cookies</button>
-    <button class="btn" onclick="refresh()">&#x21bb; Refresh</button>
+  <div class="stats">
+    <div class="stat"><div class="n" id="stat-total">—</div><div class="l">Profiles</div></div>
+    <div class="stat"><div class="n green" id="stat-running">—</div><div class="l">Running</div></div>
+    <div class="stat"><div class="n" id="stat-groups">—</div><div class="l">Groups</div></div>
+    <div class="stat"><div class="n" id="stat-version">—</div><div class="l">Version</div></div>
   </div>
-
+  <div class="toolbar">
+    <input type="search" id="search" placeholder="Search by name or ID…" oninput="render()">
+    <select id="group-filter" onchange="render()"><option value="">All groups</option></select>
+    <select id="engine-filter" onchange="render()"><option value="">All engines</option></select>
+    <button class="btn" onclick="refresh()">↻ Refresh</button>
+  </div>
   <div class="bulk-bar" id="bulk-bar">
-    <span class="count" id="bulk-count">0</span> selected:
-    <button class="btn sm primary" onclick="bulkStart()">Start all</button>
-    <button class="btn sm warning" onclick="bulkStop()">Stop all</button>
+    <span><span class="count" id="bulk-count">0</span> selected</span>
+    <button class="btn sm primary" onclick="bulk('start')">Start</button>
+    <button class="btn sm" onclick="bulk('stop')">Stop</button>
     <button class="btn sm" onclick="bulkExport()">Export cookies</button>
     <button class="btn sm" onclick="bulkProxyCheck()">Check proxies</button>
-    <button class="btn sm danger" onclick="bulkDelete()">Delete</button>
+    <button class="btn sm danger" onclick="bulk('delete')">Delete</button>
     <span style="flex:1"></span>
-    <button class="btn sm" onclick="clearSelection()">Clear selection</button>
+    <button class="btn sm ghost" onclick="clearSel()">Clear</button>
   </div>
-
-  <table id="profiles">
-    <thead>
-      <tr>
-        <th><input type="checkbox" id="select-all" onchange="toggleAll(this)"></th>
-        <th>Status</th>
-        <th>Name</th>
-        <th>User ID</th>
-        <th>Group</th>
-        <th>Tags</th>
-        <th>Proxy</th>
-        <th>Launched</th>
-        <th>Actions</th>
-      </tr>
-    </thead>
-    <tbody id="tbody">
-      <tr><td colspan="9" class="empty">Loading...</td></tr>
-    </tbody>
-  </table>
+  <div class="table-wrap">
+    <table>
+      <thead><tr>
+        <th style="width:36px"><input type="checkbox" class="checkbox" id="sel-all" onchange="toggleAll(this)"></th>
+        <th>Status</th><th>Name</th><th>ID</th><th>Engine</th><th>Group</th><th>Tags</th><th>Proxy</th><th>Launches</th><th style="text-align:right">Actions</th>
+      </tr></thead>
+      <tbody id="tbody"><tr><td colspan="10" class="empty">Loading…</td></tr></tbody>
+    </table>
+  </div>
 </main>
-
-<!-- Create profile modal -->
-<div class="modal" id="createModal">
-  <div class="panel">
-    <h2>New profile</h2>
-    <div class="field">
-      <label>Name</label>
-      <input id="create-name" placeholder="my-profile-01">
-    </div>
-    <div class="field">
-      <label>Group ID</label>
-      <input id="create-group" placeholder="0" value="0">
-    </div>
-    <div class="field">
-      <label>Proxy type</label>
-      <select id="create-proxy-type">
-        <option value="direct">direct (no proxy)</option>
-        <option value="http">HTTP</option>
-        <option value="https">HTTPS</option>
-        <option value="socks5">SOCKS5</option>
-      </select>
-    </div>
+<div class="modal" id="createModal"><div class="panel">
+  <h2>New profile</h2>
+  <p class="desc">A fresh, internally-consistent fingerprint is generated automatically.</p>
+  <div class="field"><label>Name</label><input id="c-name" placeholder="profile-01"></div>
+  <div class="field-row">
+    <div class="field"><label>Engine</label><select id="c-engine"></select><div class="engine-opt" id="c-engine-hint"></div></div>
+    <div class="field"><label>Geo (align tz/locale to country)</label><select id="c-geo"><option value="">— none —</option></select></div>
+  </div>
+  <div class="field-row">
+    <div class="field"><label>Group ID</label><input id="c-group" value="0"></div>
+    <div class="field"><label>Tags (comma-separated)</label><input id="c-tags" placeholder="social, ads"></div>
+  </div>
+  <div class="field"><label>Proxy type</label><select id="c-ptype" onchange="toggleProxy()"><option value="direct">Direct (no proxy)</option><option value="http">HTTP</option><option value="https">HTTPS</option><option value="socks5">SOCKS5</option></select></div>
+  <div id="c-proxy-fields" style="display:none"><div class="field-row">
+    <div class="field"><label>host:port</label><input id="c-phost" placeholder="1.2.3.4:8080"></div>
+    <div class="field"><label>User</label><input id="c-puser"></div>
+    <div class="field"><label>Password</label><input id="c-ppass" type="password"></div>
+  </div></div>
+  <div class="row"><button class="btn ghost" onclick="close_('createModal')">Cancel</button><button class="btn primary" onclick="submitCreate()">Create profile</button></div>
+</div></div>
+<div class="modal" id="importModal"><div class="panel">
+  <h2>Import profiles</h2>
+  <div class="tabs">
+    <div class="tab active" data-tab="backup" onclick="importTab('backup')">AdsPower backup folder</div>
+    <div class="tab" data-tab="file" onclick="importTab('file')">Single file / .adb</div>
+  </div>
+  <div id="tab-backup">
+    <p class="desc">Point to a full AdsPower backup directory (the one containing <span class="kbd">all_profiles_list.json</span>). Every profile, its cookies, proxy, tags and local state are imported and the AdsPower <span class="kbd">user_id</span> is preserved.</p>
+    <div class="field"><label>Backup folder path</label><input id="b-path" value="C:\\ai_workflow\\adspower_profiles_backup"><div class="hint">Also accepts a single AdsPower profile folder.</div></div>
+    <div class="field"><label><input type="checkbox" class="checkbox" id="b-overwrite"> Overwrite profiles that already exist</label></div>
+    <div class="row"><button class="btn ghost" onclick="close_('importModal')">Cancel</button><button class="btn primary" onclick="submitBackup()">Import backup</button></div>
+  </div>
+  <div id="tab-file" style="display:none">
+    <p class="desc">Upload an AdsPower <span class="kbd">.adb</span> / <span class="kbd">.zip</span> bundle, a Netscape <span class="kbd">cookies.txt</span>, or a Playwright/Chrome JSON.</p>
+    <div class="field"><label>File</label><input type="file" id="f-file"></div>
+    <div class="row"><button class="btn ghost" onclick="close_('importModal')">Cancel</button><button class="btn primary" onclick="submitFile()">Import file</button></div>
+  </div>
+</div></div>
+<div class="modal" id="fpModal"><div class="panel">
+  <h2>Fingerprint <span id="fp-name" style="color:var(--muted);font-weight:400"></span></h2>
+  <div class="tabs">
+    <div class="tab active" data-fptab="basic" onclick="fpTab('basic')">Basic</div>
+    <div class="tab" data-fptab="screen" onclick="fpTab('screen')">Screen</div>
+    <div class="tab" data-fptab="hw" onclick="fpTab('hw')">Hardware</div>
+    <div class="tab" data-fptab="net" onclick="fpTab('net')">Network</div>
+  </div>
+  <div id="fp-basic">
+    <div class="field"><label>Engine</label><select id="fp-engine"></select></div>
+    <div class="field"><label>User-Agent</label><input id="fp-ua"></div>
     <div class="field-row">
-      <div class="field">
-        <label>Proxy host:port</label>
-        <input id="create-proxy-host" placeholder="proxy.example.com:8080">
-      </div>
-      <div class="field">
-        <label>User (optional)</label>
-        <input id="create-proxy-user">
-      </div>
-      <div class="field">
-        <label>Password</label>
-        <input id="create-proxy-pass" type="password">
-      </div>
+      <div class="field"><label>Platform</label><select id="fp-platform"><option value="Win32">Windows</option><option value="MacIntel">macOS</option><option value="Linux x86_64">Linux</option></select></div>
+      <div class="field"><label>Locale</label><input id="fp-locale"></div>
+      <div class="field"><label>Timezone</label><input id="fp-tz"></div>
     </div>
-    <div class="field">
-      <label>Remark (optional)</label>
-      <input id="create-remark">
-    </div>
-    <div class="field">
-      <label>Tags (comma-separated)</label>
-      <input id="create-tags" placeholder="social, crypto">
-    </div>
-    <div class="row">
-      <button class="btn" onclick="closeCreate()">Cancel</button>
-      <button class="btn primary" onclick="submitCreate()">Create</button>
-    </div>
+    <div class="field"><label>Languages</label><input id="fp-langs" placeholder="en-US, en"></div>
   </div>
-</div>
-
-<!-- Import modal -->
-<div class="modal" id="importModal">
-  <div class="panel">
-    <h2>Import cookies / AdsPower profile</h2>
-    <p style="color: var(--muted); font-size: 13px;">
-      Upload a single AdsPower export (.adb / .zip), a Netscape
-      <span class="kbd">cookies.txt</span>, or a Playwright/Chrome JSON.
-    </p>
-    <div class="field">
-      <label>File</label>
-      <input type="file" id="import-file">
-    </div>
-    <div class="row" style="margin-bottom: 16px;">
-      <button class="btn" onclick="submitImport()">Import file</button>
-    </div>
-    <hr style="border: 0; border-top: 1px solid var(--border); margin: 16px 0;">
-    <p style="color: var(--muted); font-size: 13px;">
-      Or import an entire local AdsPower backup directory.
-    </p>
-    <div class="field">
-      <label>Local backup path</label>
-      <input id="backup-path" placeholder="C:\\ai_workflow\\adspower_profiles_backup">
-    </div>
-    <div class="field">
-      <label><input type="checkbox" id="backup-overwrite"> Overwrite existing profiles</label>
-    </div>
-    <div class="row">
-      <button class="btn" onclick="closeImport()">Cancel</button>
-      <button class="btn primary" onclick="submitBackupImport()">Import backup folder</button>
-    </div>
+  <div id="fp-screen" style="display:none"><div class="field-row">
+    <div class="field"><label>Screen W</label><input id="fp-sw" type="number"></div>
+    <div class="field"><label>Screen H</label><input id="fp-sh" type="number"></div>
+    <div class="field"><label>Pixel ratio</label><input id="fp-dpr" type="number" step="0.1"></div>
+  </div></div>
+  <div id="fp-hw" style="display:none">
+    <div class="field-row"><div class="field"><label>CPU cores</label><input id="fp-cores" type="number"></div><div class="field"><label>Memory (GB)</label><input id="fp-mem" type="number"></div></div>
+    <div class="field"><label>WebGL vendor</label><input id="fp-glv"></div>
+    <div class="field"><label>WebGL renderer</label><input id="fp-glr"></div>
   </div>
-</div>
-
-<!-- Proxy import modal -->
-<div class="modal" id="proxyImportModal">
-  <div class="panel">
-    <h2>Bulk import proxies</h2>
-    <p style="color: var(--muted); font-size: 13px;">
-      One proxy per line. Formats: <span class="kbd">type://host:port</span>,
-      <span class="kbd">type://user:pass@host:port</span>,
-      <span class="kbd">host:port:user:pass</span>
-    </p>
-    <div class="field">
-      <label>Proxy list</label>
-      <textarea id="proxy-list-input" rows="8" placeholder="http://proxy1.com:8080&#10;socks5://user:pass@proxy2.com:1080&#10;1.2.3.4:8080:user:pass"></textarea>
-    </div>
-    <div class="field">
-      <label><input type="checkbox" id="proxy-assign-selected" checked> Assign to selected profiles only (otherwise all)</label>
-    </div>
-    <div class="row">
-      <button class="btn" onclick="closeProxyImport()">Cancel</button>
-      <button class="btn primary" onclick="submitProxyImport()">Import & assign</button>
-    </div>
-  </div>
-</div>
-
-<!-- Fingerprint edit modal -->
-<div class="modal" id="fingerprintModal">
-  <div class="panel">
-    <h2>Edit fingerprint <span id="fp-profile-name" style="color:var(--muted)"></span></h2>
-    <div class="tabs">
-      <div class="tab active" onclick="fpTab('basic')">Basic</div>
-      <div class="tab" onclick="fpTab('screen')">Screen</div>
-      <div class="tab" onclick="fpTab('hardware')">Hardware</div>
-      <div class="tab" onclick="fpTab('network')">Network</div>
-    </div>
-    <div id="fp-tab-basic">
-      <div class="field">
-        <label>User-Agent</label>
-        <input id="fp-ua">
-      </div>
-      <div class="field-row">
-        <div class="field">
-          <label>Platform</label>
-          <select id="fp-platform">
-            <option value="Win32">Windows</option>
-            <option value="MacIntel">macOS</option>
-            <option value="Linux x86_64">Linux</option>
-          </select>
-        </div>
-        <div class="field">
-          <label>Locale</label>
-          <input id="fp-locale" placeholder="en-US">
-        </div>
-        <div class="field">
-          <label>Timezone</label>
-          <input id="fp-timezone" placeholder="America/New_York">
-        </div>
-      </div>
-      <div class="field">
-        <label>Languages (comma-separated)</label>
-        <input id="fp-languages" placeholder="en-US, en">
-      </div>
-    </div>
-    <div id="fp-tab-screen" style="display:none">
-      <div class="field-row">
-        <div class="field">
-          <label>Screen width</label>
-          <input id="fp-screen-w" type="number">
-        </div>
-        <div class="field">
-          <label>Screen height</label>
-          <input id="fp-screen-h" type="number">
-        </div>
-        <div class="field">
-          <label>Pixel ratio</label>
-          <input id="fp-dpr" type="number" step="0.1">
-        </div>
-      </div>
-      <div class="field-row">
-        <div class="field">
-          <label>Color depth</label>
-          <select id="fp-colordepth">
-            <option value="24">24</option>
-            <option value="30">30</option>
-            <option value="48">48</option>
-          </select>
-        </div>
-        <div class="field">
-          <label>Inner width</label>
-          <input id="fp-inner-w" type="number">
-        </div>
-        <div class="field">
-          <label>Inner height</label>
-          <input id="fp-inner-h" type="number">
-        </div>
-      </div>
-    </div>
-    <div id="fp-tab-hardware" style="display:none">
-      <div class="field-row">
-        <div class="field">
-          <label>Hardware concurrency</label>
-          <select id="fp-cores">
-            <option value="2">2</option>
-            <option value="4">4</option>
-            <option value="8">8</option>
-            <option value="12">12</option>
-            <option value="16">16</option>
-          </select>
-        </div>
-        <div class="field">
-          <label>Device memory (GB)</label>
-          <select id="fp-memory">
-            <option value="4">4</option>
-            <option value="8">8</option>
-            <option value="16">16</option>
-            <option value="32">32</option>
-          </select>
-        </div>
-      </div>
-      <div class="field">
-        <label>WebGL vendor</label>
-        <input id="fp-gl-vendor">
-      </div>
-      <div class="field">
-        <label>WebGL renderer</label>
-        <input id="fp-gl-renderer">
-      </div>
-    </div>
-    <div id="fp-tab-network" style="display:none">
-      <div class="field-row">
-        <div class="field">
-          <label>Connection type</label>
-          <select id="fp-conn-type">
-            <option value="wifi">WiFi</option>
-            <option value="ethernet">Ethernet</option>
-            <option value="4g">4G</option>
-          </select>
-        </div>
-        <div class="field">
-          <label>Downlink (Mbps)</label>
-          <input id="fp-conn-downlink" type="number" step="0.1">
-        </div>
-        <div class="field">
-          <label>RTT (ms)</label>
-          <input id="fp-conn-rtt" type="number">
-        </div>
-      </div>
-      <div class="field">
-        <label><input type="checkbox" id="fp-block-webrtc" checked> Block WebRTC IP leak</label>
-      </div>
-    </div>
-    <div class="row" style="margin-top: 16px;">
-      <button class="btn" onclick="fpRegenerate()">Regenerate random</button>
-      <button class="btn" onclick="closeFingerprintModal()">Cancel</button>
-      <button class="btn primary" onclick="saveFingerprintEdit()">Save</button>
-    </div>
-  </div>
-</div>
-
+  <div id="fp-net" style="display:none"><div class="field"><label><input type="checkbox" class="checkbox" id="fp-webrtc"> Block WebRTC IP leak</label></div></div>
+  <div class="row"><button class="btn ghost" onclick="close_('fpModal')">Cancel</button><button class="btn primary" onclick="saveFp()">Save</button></div>
+</div></div>
+<div class="toast" id="toast"></div>
 <script>
-const API = "";
-let profiles = [];
-let running = new Set();
-let groups = [];
-let selected = new Set();
-let fpEditUserId = null;
-
-async function fetchJSON(path, opts) {
-  const r = await fetch(API + path, opts);
-  const j = await r.json();
-  if (!r.ok || (j.code !== undefined && j.code !== 0)) {
-    throw new Error(j.msg || j.detail || ("HTTP " + r.status));
-  }
-  return j;
-}
-
-async function refresh() {
-  try {
-    const [list, info, grp] = await Promise.all([
-      fetchJSON("/user/list?page_size=1000"),
-      fetchJSON("/info"),
-      fetchJSON("/group/list"),
-    ]);
-    profiles = list.data.list || [];
-    running = new Set((await fetchJSON("/user/active")).data.list.map(h => h.user_id));
-    groups = grp.data.list || [];
-    document.getElementById("info-meta").textContent =
-      `${info.profile_count} profiles \u00b7 ${info.running_count} running \u00b7 v${info.version}`;
-    updateGroupFilter();
-    render();
-  } catch (e) {
-    document.getElementById("tbody").innerHTML =
-      `<tr><td colspan="9" class="empty">Error: ${e.message}</td></tr>`;
-  }
-}
-
-function updateGroupFilter() {
-  const sel = document.getElementById("group-filter");
-  const current = sel.value;
-  sel.innerHTML = '<option value="">All groups</option>' +
-    groups.map(g => `<option value="${g.group_id}">Group ${g.group_id} (${g.count})</option>`).join("");
-  sel.value = current;
-}
-
-function render() {
-  const q = document.getElementById("search").value.toLowerCase();
-  const gf = document.getElementById("group-filter").value;
-  const filtered = profiles.filter(p => {
-    if (q && !p.name.toLowerCase().includes(q) && !p.user_id.includes(q)) return false;
-    if (gf && p.group_id !== gf) return false;
-    return true;
-  });
-  const tbody = document.getElementById("tbody");
-  if (filtered.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="9" class="empty">No profiles match filters.</td></tr>`;
-    updateBulkBar();
-    return;
-  }
-  tbody.innerHTML = filtered.map(p => {
-    const isRunning = running.has(p.user_id);
-    const isSelected = selected.has(p.user_id);
-    const proxy = p.user_proxy_config && p.user_proxy_config.proxy_type !== "direct"
-      ? `${p.user_proxy_config.proxy_type}://${p.user_proxy_config.proxy_host}:${p.user_proxy_config.proxy_port}`
-      : "\u2014";
-    return `
-      <tr class="${isSelected ? 'selected' : ''}">
-        <td><input type="checkbox" ${isSelected ? 'checked' : ''} onchange="toggleSelect('${p.user_id}', this)"></td>
-        <td><span class="status ${isRunning ? 'active' : 'inactive'}">${isRunning ? 'Active' : 'Inactive'}</span></td>
-        <td>${esc(p.name)}</td>
-        <td><span class="kbd">${p.user_id}</span></td>
-        <td>${esc(p.group_id)}</td>
-        <td>${(p.tags || []).map(t => `<span class="tag">${esc(t)}</span>`).join("")}</td>
-        <td>${esc(proxy)} <span id="proxy-st-${p.user_id}"></span></td>
-        <td>${p.launch_count || 0}${p.last_launched_at ? " \u00b7 " + new Date(p.last_launched_at).toLocaleString() : ""}</td>
-        <td style="white-space:nowrap">
-          ${isRunning
-            ? `<button class="btn sm danger" onclick="act('stop','${p.user_id}')">Stop</button>`
-            : `<button class="btn sm primary" onclick="act('start','${p.user_id}')">Start</button>`}
-          <button class="btn sm" onclick="openFingerprintEdit('${p.user_id}')">FP</button>
-          <button class="btn sm" onclick="checkOneProxy('${p.user_id}')">\u2714 Proxy</button>
-          <button class="btn sm" onclick="exportProfile('${p.user_id}','json')">Export</button>
-          <button class="btn sm danger" onclick="del('${p.user_id}','${esc(p.name)}')">Del</button>
-        </td>
-      </tr>`;
-  }).join("");
-  updateBulkBar();
-}
-
-function esc(s) {
-  return String(s == null ? "" : s).replace(/[<>&"']/g, c =>
-    ({"<":"&lt;",">":"&gt;","&":"&amp;",'"':"&quot;","'":"&#39;"})[c]);
-}
-
-// --- Selection & bulk ---
-function toggleSelect(uid, cb) {
-  if (cb.checked) selected.add(uid); else selected.delete(uid);
+const API="";
+let profiles=[],running=new Set(),groups=[],engines=[],selected=new Set(),fpUid=null;
+function initTheme(){setTheme(localStorage.getItem("antique-theme")||"dark");}
+function setTheme(t){document.documentElement.setAttribute("data-theme",t);localStorage.setItem("antique-theme",t);document.getElementById("theme-toggle").textContent=t==="dark"?"☀️":"🌙";}
+document.getElementById("theme-toggle").onclick=()=>setTheme(document.documentElement.getAttribute("data-theme")==="dark"?"light":"dark");
+let toastT;function toast(m,k){const e=document.getElementById("toast");e.textContent=m;e.className="toast show "+(k||"");clearTimeout(toastT);toastT=setTimeout(()=>e.className="toast",2600);}
+async function api(path,opts){const r=await fetch(API+path,opts);let j={};try{j=await r.json();}catch(e){}if(!r.ok||(j.code!==undefined&&j.code!==0))throw new Error(j.msg||j.detail||("HTTP "+r.status));return j;}
+async function loadEngines(){try{engines=(await api("/engine/list")).data.list||[];}catch(e){engines=[];}
+  document.getElementById("engine-filter").innerHTML='<option value="">All engines</option>'+engines.map(e=>`<option value="${e.key}">${e.label}</option>`).join("");
+  const opts=engines.map(e=>`<option value="${e.key}">${e.label} · ${e.stealth}${e.needs_install?" (install)":""}</option>`).join("");
+  document.getElementById("c-engine").innerHTML=opts;
+  document.getElementById("fp-engine").innerHTML='<option value="">— default —</option>'+opts;
+  engineHint();}
+function engineHint(){const k=document.getElementById("c-engine").value,e=engines.find(x=>x.key===k);document.getElementById("c-engine-hint").textContent=e?(e.description+(e.needs_install?"  ⚠ "+e.install_hint:"")):"";}
+document.getElementById("c-engine").addEventListener("change",engineHint);
+async function loadGeo(){try{const cs=(await api("/geo/countries")).data.countries||[];document.getElementById("c-geo").innerHTML='<option value="">— none —</option>'+cs.map(c=>`<option value="${c}">${c}</option>`).join("");}catch(e){}}
+async function refresh(){try{
+  const [list,info,grp]=await Promise.all([api("/user/list?page_size=1000"),api("/info"),api("/group/list")]);
+  profiles=list.data.list||[];running=new Set((await api("/user/active")).data.list.map(h=>h.user_id));groups=grp.data.list||[];
+  document.getElementById("stat-total").textContent=info.profile_count;document.getElementById("stat-running").textContent=info.running_count;
+  document.getElementById("stat-groups").textContent=groups.length;document.getElementById("stat-version").textContent="v"+info.version;
+  const gf=document.getElementById("group-filter"),cur=gf.value;
+  gf.innerHTML='<option value="">All groups</option>'+groups.map(g=>`<option value="${g.group_id}">Group ${g.group_id} (${g.count})</option>`).join("");gf.value=cur;
   render();
+}catch(e){document.getElementById("tbody").innerHTML=`<tr><td colspan="10" class="empty"><div class="big">Can't reach the server</div>${esc(e.message)}</td></tr>`;}}
+function engineBadge(k){const e=engines.find(x=>x.key===k);if(!e)return `<span class="badge basic">${esc(k||"chromium")}</span>`;return `<span class="badge ${e.stealth}" title="${esc(e.description)}">${esc(e.label.split(" ")[0])}</span>`;}
+function render(){
+  const q=document.getElementById("search").value.toLowerCase(),gf=document.getElementById("group-filter").value,ef=document.getElementById("engine-filter").value;
+  const rows=profiles.filter(p=>{if(q&&!p.name.toLowerCase().includes(q)&&!p.user_id.includes(q))return false;if(gf&&p.group_id!==gf)return false;const eng=(p.fingerprint_config||{}).browser_engine||"chromium";if(ef&&eng!==ef)return false;return true;});
+  const tb=document.getElementById("tbody");
+  if(!rows.length){tb.innerHTML=`<tr><td colspan="10" class="empty"><div class="big">No profiles</div>Create one with “+ New profile” or import an AdsPower backup.</td></tr>`;updateBulk();return;}
+  tb.innerHTML=rows.map(p=>{const on=running.has(p.user_id),sel=selected.has(p.user_id);const eng=(p.fingerprint_config||{}).browser_engine||"chromium";
+    const px=p.user_proxy_config&&p.user_proxy_config.proxy_type&&p.user_proxy_config.proxy_type!=="direct"?`${p.user_proxy_config.proxy_type}://${p.user_proxy_config.proxy_host}:${p.user_proxy_config.proxy_port}`:"—";
+    return `<tr class="${sel?'selected':''}">
+      <td><input type="checkbox" class="checkbox" ${sel?'checked':''} onchange="toggleSel('${p.user_id}',this)"></td>
+      <td><span class="status ${on?'active':'inactive'}"><span class="dot ${on?'active':'inactive'}"></span>${on?'Active':'Idle'}</span></td>
+      <td class="name-cell">${esc(p.name)}</td>
+      <td><span class="kbd">${p.user_id}</span></td>
+      <td>${engineBadge(eng)}</td>
+      <td>${esc(p.group_id)}</td>
+      <td>${(p.tags||[]).map(t=>`<span class="tag">${esc(t)}</span>`).join("")||'<span style="color:var(--faint)">—</span>'}</td>
+      <td style="font-size:12px">${esc(px)}<span id="px-${p.user_id}"></span></td>
+      <td>${p.launch_count||0}</td>
+      <td style="text-align:right;white-space:nowrap">
+        ${on?`<button class="btn sm danger" onclick="act('stop','${p.user_id}')">Stop</button>`:`<button class="btn sm primary" onclick="act('start','${p.user_id}')">Start</button>`}
+        <button class="btn sm ghost" onclick="openFp('${p.user_id}')">FP</button>
+        <button class="btn sm ghost" onclick="checkProxy('${p.user_id}')" title="Check proxy">⚡</button>
+        <button class="btn sm ghost danger" onclick="del('${p.user_id}','${esc(p.name)}')">✕</button>
+      </td></tr>`;}).join("");
+  updateBulk();
 }
-function toggleAll(cb) {
-  const q = document.getElementById("search").value.toLowerCase();
-  const gf = document.getElementById("group-filter").value;
-  profiles.forEach(p => {
-    if (q && !p.name.toLowerCase().includes(q) && !p.user_id.includes(q)) return;
-    if (gf && p.group_id !== gf) return;
-    if (cb.checked) selected.add(p.user_id); else selected.delete(p.user_id);
-  });
-  render();
+function esc(s){return String(s==null?"":s).replace(/[<>&"']/g,c=>({"<":"&lt;",">":"&gt;","&":"&amp;",'"':"&quot;","'":"&#39;"}[c]));}
+function toggleSel(id,cb){cb.checked?selected.add(id):selected.delete(id);render();}
+function toggleAll(cb){const q=document.getElementById("search").value.toLowerCase(),gf=document.getElementById("group-filter").value;profiles.forEach(p=>{if(q&&!p.name.toLowerCase().includes(q)&&!p.user_id.includes(q))return;if(gf&&p.group_id!==gf)return;cb.checked?selected.add(p.user_id):selected.delete(p.user_id);});render();}
+function clearSel(){selected.clear();render();}
+function updateBulk(){const b=document.getElementById("bulk-bar");document.getElementById("bulk-count").textContent=selected.size;b.classList.toggle("visible",selected.size>0);}
+async function act(v,id){try{await api("/user/"+v,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({user_id:id})});toast(v==="start"?"Started":"Stopped","ok");await refresh();}catch(e){toast(e.message,"err");}}
+async function del(id,name){if(!confirm(`Delete profile "${name}"?`))return;try{await api("/user/delete",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({user_id:id})});selected.delete(id);toast("Deleted","ok");await refresh();}catch(e){toast(e.message,"err");}}
+async function checkProxy(id){const el=document.getElementById("px-"+id);if(el)el.innerHTML='<span class="proxy-status checking"> …</span>';try{const r=await api(`/user/${id}/proxy/check`,{method:"POST"});const d=r.data;if(el)el.innerHTML=d.status==="ok"?`<span class="proxy-status ok">${esc(d.ip)} ${d.latency_ms}ms</span>`:d.status==="skip"?'<span class="proxy-status">direct</span>':`<span class="proxy-status error">${esc(d.error||"fail")}</span>`;}catch(e){if(el)el.innerHTML=`<span class="proxy-status error">${esc(e.message)}</span>`;}}
+async function bulk(v){if(!selected.size)return;if(v==="delete"&&!confirm(`Delete ${selected.size} profile(s)?`))return;try{await api("/user/bulk/"+v,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({user_ids:[...selected]})});if(v==="delete")selected.clear();toast("Done","ok");await refresh();}catch(e){toast(e.message,"err");}}
+async function bulkProxyCheck(){for(const id of selected)await checkProxy(id);}
+async function bulkExport(){if(!selected.size)return;try{const r=await api("/user/bulk/export",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({user_ids:[...selected]})});const txt=(r.data.profiles||[]).map(p=>`// ${p.name} (${p.user_id})\n${p.cookies_json}`).join("\n\n");dl(txt,`cookies-${Date.now()}.json`);}catch(e){toast(e.message,"err");}}
+function dl(t,n){const b=new Blob([t],{type:"text/plain"});const a=document.createElement("a");a.href=URL.createObjectURL(b);a.download=n;a.click();}
+function open_(id){document.getElementById(id).classList.add("open");}
+function close_(id){document.getElementById(id).classList.remove("open");}
+function openCreate(){open_("createModal");}
+function toggleProxy(){document.getElementById("c-proxy-fields").style.display=document.getElementById("c-ptype").value==="direct"?"none":"block";}
+function openImport(){importTab("backup");open_("importModal");}
+function importTab(t){document.querySelectorAll("#importModal .tab").forEach(el=>el.classList.toggle("active",el.dataset.tab===t));document.getElementById("tab-backup").style.display=t==="backup"?"block":"none";document.getElementById("tab-file").style.display=t==="file"?"block":"none";}
+async function submitCreate(){
+  const name=document.getElementById("c-name").value.trim();if(!name){toast("Name required","err");return;}
+  const body={name,group_id:document.getElementById("c-group").value.trim()||"0",tags:document.getElementById("c-tags").value.split(",").map(s=>s.trim()).filter(Boolean)};
+  const fp={};const eng=document.getElementById("c-engine").value;if(eng)fp.browser_engine=eng;if(Object.keys(fp).length)body.fingerprint_config=fp;
+  const pt=document.getElementById("c-ptype").value,pxc={proxy_type:pt};
+  if(pt!=="direct"){const hp=document.getElementById("c-phost").value.trim();if(!hp.includes(":")){toast("host:port required","err");return;}const[h,...r]=hp.split(":");pxc.proxy_host=h;pxc.proxy_port=parseInt(r.join(":"),10);const u=document.getElementById("c-puser").value.trim(),p=document.getElementById("c-ppass").value;if(u)pxc.proxy_user=u;if(p)pxc.proxy_password=p;}
+  body.user_proxy_config=pxc;
+  try{const r=await api("/user/create",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});const uid=r.data.user_id;const geo=document.getElementById("c-geo").value;if(geo)await api(`/user/${uid}/geo/match`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({country:geo})});close_("createModal");toast("Profile created","ok");["c-name","c-tags","c-phost","c-puser","c-ppass"].forEach(i=>document.getElementById(i).value="");await refresh();}catch(e){toast(e.message,"err");}
 }
-function clearSelection() { selected.clear(); render(); }
-function updateBulkBar() {
-  const bar = document.getElementById("bulk-bar");
-  const cnt = document.getElementById("bulk-count");
-  if (selected.size > 0) {
-    bar.classList.add("visible");
-    cnt.textContent = selected.size;
-  } else {
-    bar.classList.remove("visible");
-  }
-}
-
-async function bulkStart() {
-  if (!selected.size) return;
-  try {
-    await fetchJSON("/user/bulk/start", {
-      method: "POST", headers: {"Content-Type":"application/json"},
-      body: JSON.stringify({user_ids: [...selected]}),
-    });
-    await refresh();
-  } catch (e) { alert(e.message); }
-}
-async function bulkStop() {
-  if (!selected.size) return;
-  try {
-    await fetchJSON("/user/bulk/stop", {
-      method: "POST", headers: {"Content-Type":"application/json"},
-      body: JSON.stringify({user_ids: [...selected]}),
-    });
-    await refresh();
-  } catch (e) { alert(e.message); }
-}
-async function bulkDelete() {
-  if (!selected.size) return;
-  if (!confirm(`Delete ${selected.size} profile(s)?`)) return;
-  try {
-    await fetchJSON("/user/bulk/delete", {
-      method: "POST", headers: {"Content-Type":"application/json"},
-      body: JSON.stringify({user_ids: [...selected]}),
-    });
-    selected.clear();
-    await refresh();
-  } catch (e) { alert(e.message); }
-}
-async function bulkExport() {
-  if (!selected.size) return;
-  try {
-    const res = await fetchJSON("/user/bulk/export", {
-      method: "POST", headers: {"Content-Type":"application/json"},
-      body: JSON.stringify({user_ids: [...selected]}),
-    });
-    const text = (res.data.profiles || []).map(p => `// ${p.name} (${p.user_id})\n${p.cookies_json}`).join("\n\n");
-    const blob = new Blob([text], {type: "text/plain"});
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = `cookies-bulk-${Date.now()}.json`;
-    a.click();
-  } catch (e) { alert(e.message); }
-}
-async function bulkProxyCheck() {
-  if (!selected.size) return;
-  for (const uid of selected) {
-    const el = document.getElementById(`proxy-st-${uid}`);
-    if (el) el.innerHTML = '<span class="proxy-status checking">...</span>';
-  }
-  for (const uid of selected) {
-    await checkOneProxy(uid);
-  }
-}
-
-// --- Single actions ---
-async function act(verb, id) {
-  try {
-    const path = verb === "start" ? "/user/start" : "/user/stop";
-    await fetchJSON(path, {
-      method: "POST", headers: {"Content-Type":"application/json"},
-      body: JSON.stringify({user_id: id}),
-    });
-    await refresh();
-  } catch (e) { alert(e.message); }
-}
-
-async function del(id, name) {
-  if (!confirm(`Delete profile "${name}" (${id})?`)) return;
-  try {
-    await fetchJSON("/user/delete", {
-      method: "POST", headers: {"Content-Type":"application/json"},
-      body: JSON.stringify({user_id: id}),
-    });
-    selected.delete(id);
-    await refresh();
-  } catch (e) { alert(e.message); }
-}
-
-async function checkOneProxy(uid) {
-  const el = document.getElementById(`proxy-st-${uid}`);
-  if (el) el.innerHTML = '<span class="proxy-status checking">checking...</span>';
-  try {
-    const res = await fetchJSON(`/user/${uid}/proxy/check`, {method: "POST"});
-    if (el) {
-      if (res.data.status === "ok") {
-        el.innerHTML = `<span class="proxy-status ok">${res.data.ip} ${res.data.latency_ms}ms</span>`;
-      } else if (res.data.status === "skip") {
-        el.innerHTML = '<span class="proxy-status">direct</span>';
-      } else {
-        el.innerHTML = `<span class="proxy-status error">${res.data.error || 'failed'}</span>`;
-      }
-    }
-  } catch (e) {
-    if (el) el.innerHTML = `<span class="proxy-status error">${e.message}</span>`;
-  }
-}
-
-async function exportProfile(id, format) {
-  try {
-    const r = await fetch(API + `/user/export?user_id=${id}&format=${format}`, {method: "POST"});
-    const j = await r.json();
-    const blob = new Blob([j.data.text], {type: "text/plain"});
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = `cookies-${id}.${format === "netscape" ? "txt" : "json"}`;
-    a.click();
-  } catch (e) { alert(e.message); }
-}
-
-// --- Fingerprint edit ---
-function openFingerprintEdit(uid) {
-  fpEditUserId = uid;
-  const p = profiles.find(x => x.user_id === uid);
-  if (!p) return;
-  document.getElementById("fp-profile-name").textContent = `(${p.name})`;
-  const fp = p.fingerprint_config || {};
-  document.getElementById("fp-ua").value = fp.user_agent || "";
-  document.getElementById("fp-platform").value = fp.platform || "Win32";
-  document.getElementById("fp-locale").value = fp.locale || "en-US";
-  document.getElementById("fp-timezone").value = fp.timezone || "";
-  document.getElementById("fp-languages").value = (fp.languages || []).join(", ");
-  document.getElementById("fp-screen-w").value = fp.screen_width || 1920;
-  document.getElementById("fp-screen-h").value = fp.screen_height || 1080;
-  document.getElementById("fp-dpr").value = fp.pixel_ratio || 1;
-  document.getElementById("fp-colordepth").value = String(fp.color_depth || 24);
-  document.getElementById("fp-inner-w").value = fp.inner_width || 1920;
-  document.getElementById("fp-inner-h").value = fp.inner_height || 969;
-  document.getElementById("fp-cores").value = String(fp.hardware_concurrency || 8);
-  document.getElementById("fp-memory").value = String(fp.device_memory || 8);
-  document.getElementById("fp-gl-vendor").value = fp.webgl_vendor || "";
-  document.getElementById("fp-gl-renderer").value = fp.webgl_renderer || "";
-  document.getElementById("fp-conn-type").value = fp.connection_type || "wifi";
-  document.getElementById("fp-conn-downlink").value = fp.connection_downlink || 10;
-  document.getElementById("fp-conn-rtt").value = fp.connection_rtt || 50;
-  document.getElementById("fp-block-webrtc").checked = fp.block_webrtc_ip !== false;
-  fpTab("basic");
-  document.getElementById("fingerprintModal").classList.add("open");
-}
-function closeFingerprintModal() { document.getElementById("fingerprintModal").classList.remove("open"); fpEditUserId = null; }
-
-function fpTab(name) {
-  ["basic","screen","hardware","network"].forEach(t => {
-    document.getElementById(`fp-tab-${t}`).style.display = t === name ? "" : "none";
-  });
-  document.querySelectorAll(".tabs .tab").forEach((el, i) => {
-    const tabs = ["basic","screen","hardware","network"];
-    el.classList.toggle("active", tabs[i] === name);
-  });
-}
-
-async function saveFingerprintEdit() {
-  if (!fpEditUserId) return;
-  const fp = {
-    user_agent: document.getElementById("fp-ua").value,
-    platform: document.getElementById("fp-platform").value,
-    locale: document.getElementById("fp-locale").value,
-    timezone: document.getElementById("fp-timezone").value,
-    languages: document.getElementById("fp-languages").value.split(",").map(s => s.trim()).filter(Boolean),
-    screen_width: parseInt(document.getElementById("fp-screen-w").value) || 1920,
-    screen_height: parseInt(document.getElementById("fp-screen-h").value) || 1080,
-    pixel_ratio: parseFloat(document.getElementById("fp-dpr").value) || 1,
-    color_depth: parseInt(document.getElementById("fp-colordepth").value) || 24,
-    inner_width: parseInt(document.getElementById("fp-inner-w").value) || 1920,
-    inner_height: parseInt(document.getElementById("fp-inner-h").value) || 969,
-    hardware_concurrency: parseInt(document.getElementById("fp-cores").value) || 8,
-    device_memory: parseFloat(document.getElementById("fp-memory").value) || 8,
-    webgl_vendor: document.getElementById("fp-gl-vendor").value,
-    webgl_renderer: document.getElementById("fp-gl-renderer").value,
-    connection_type: document.getElementById("fp-conn-type").value,
-    connection_downlink: parseFloat(document.getElementById("fp-conn-downlink").value) || 10,
-    connection_rtt: parseInt(document.getElementById("fp-conn-rtt").value) || 50,
-    block_webrtc_ip: document.getElementById("fp-block-webrtc").checked,
-  };
-  try {
-    await fetchJSON("/user/update", {
-      method: "POST", headers: {"Content-Type":"application/json"},
-      body: JSON.stringify({user_id: fpEditUserId, fingerprint_config: fp}),
-    });
-    closeFingerprintModal();
-    await refresh();
-  } catch (e) { alert(e.message); }
-}
-
-async function fpRegenerate() {
-  // Request a fresh fingerprint from server would be ideal,
-  // but for now randomize locally.
-  const uas = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.6200.150 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.5600.120 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.6100.80 Safari/537.36",
-  ];
-  const screens = [[1920,1080],[2560,1440],[1366,768],[1680,1050],[3840,2160]];
-  const gpus = [
-    ["Google Inc. (NVIDIA)", "ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Direct3D11 vs_5_0 ps_5_0)"],
-    ["Google Inc. (AMD)", "ANGLE (AMD, AMD Radeon RX 6700 XT Direct3D11 vs_5_0 ps_5_0)"],
-    ["Google Inc. (Intel)", "ANGLE (Intel, Intel(R) Iris Xe Graphics Direct3D11 vs_5_0 ps_5_0)"],
-  ];
-  const pick = arr => arr[Math.floor(Math.random() * arr.length)];
-  const s = pick(screens);
-  const g = pick(gpus);
-  document.getElementById("fp-ua").value = pick(uas);
-  document.getElementById("fp-screen-w").value = s[0];
-  document.getElementById("fp-screen-h").value = s[1];
-  document.getElementById("fp-inner-w").value = s[0];
-  document.getElementById("fp-inner-h").value = s[1] - 111;
-  document.getElementById("fp-gl-vendor").value = g[0];
-  document.getElementById("fp-gl-renderer").value = g[1];
-  document.getElementById("fp-cores").value = String(pick([4,8,8,12,16]));
-  document.getElementById("fp-memory").value = String(pick([8,8,16,32]));
-}
-
-// --- Modals ---
-function openCreate() { document.getElementById("createModal").classList.add("open"); }
-function closeCreate() { document.getElementById("createModal").classList.remove("open"); }
-function openImport() { document.getElementById("importModal").classList.add("open"); }
-function closeImport() { document.getElementById("importModal").classList.remove("open"); }
-function openProxyImport() { document.getElementById("proxyImportModal").classList.add("open"); }
-function closeProxyImport() { document.getElementById("proxyImportModal").classList.remove("open"); }
-
-async function submitCreate() {
-  const name = document.getElementById("create-name").value.trim();
-  if (!name) { alert("Name required"); return; }
-  const group_id = document.getElementById("create-group").value.trim() || "0";
-  const proxy_type = document.getElementById("create-proxy-type").value;
-  let user_proxy_config = {proxy_type};
-  if (proxy_type !== "direct") {
-    const hp = document.getElementById("create-proxy-host").value.trim();
-    if (!hp.includes(":")) { alert("host:port required"); return; }
-    const [host, ...rest] = hp.split(":");
-    const port = rest.join(":");
-    user_proxy_config.proxy_host = host;
-    user_proxy_config.proxy_port = parseInt(port, 10);
-    const u = document.getElementById("create-proxy-user").value.trim();
-    const p = document.getElementById("create-proxy-pass").value;
-    if (u) user_proxy_config.proxy_user = u;
-    if (p) user_proxy_config.proxy_password = p;
-  }
-  const tags = document.getElementById("create-tags").value.split(",").map(s => s.trim()).filter(Boolean);
-  try {
-    await fetchJSON("/user/create", {
-      method: "POST", headers: {"Content-Type":"application/json"},
-      body: JSON.stringify({ name, group_id, user_proxy_config, remark: document.getElementById("create-remark").value, tags }),
-    });
-    closeCreate();
-    await refresh();
-  } catch (e) { alert(e.message); }
-}
-
-async function submitImport() {
-  const file = document.getElementById("import-file").files[0];
-  if (!file) { alert("Pick a file"); return; }
-  try {
-    const fd = new FormData();
-    fd.append("file", file);
-    await fetch(API + "/user/import", {method: "POST", body: fd});
-    closeImport();
-    await refresh();
-  } catch (e) { alert(e.message); }
-}
-
-async function submitBackupImport() {
-  const source_path = document.getElementById("backup-path").value.trim();
-  if (!source_path) { alert("Backup path required"); return; }
-  try {
-    const result = await fetchJSON("/user/import/backup", {
-      method: "POST", headers: {"Content-Type":"application/json"},
-      body: JSON.stringify({ source_path, overwrite: document.getElementById("backup-overwrite").checked }),
-    });
-    closeImport();
-    await refresh();
-    alert(`Imported ${result.data.imported_count}, updated ${result.data.updated_count}, skipped ${result.data.skipped_count}, errors ${result.data.error_count}`);
-  } catch (e) { alert(e.message); }
-}
-
-async function submitProxyImport() {
-  const text = document.getElementById("proxy-list-input").value.trim();
-  if (!text) { alert("Enter proxy list"); return; }
-  const useSelected = document.getElementById("proxy-assign-selected").checked && selected.size > 0;
-  try {
-    const body = { proxy_list: text };
-    if (useSelected) body.user_ids = [...selected];
-    const res = await fetchJSON("/user/bulk/proxy/import", {
-      method: "POST", headers: {"Content-Type":"application/json"},
-      body: JSON.stringify(body),
-    });
-    closeProxyImport();
-    await refresh();
-    alert(`Assigned proxies to ${res.data.assigned_count} profile(s)`);
-  } catch (e) { alert(e.message); }
-}
-
-refresh();
-setInterval(refresh, 5000);
+async function submitBackup(){const path=document.getElementById("b-path").value.trim();if(!path){toast("Path required","err");return;}toast("Importing… this can take a moment");try{const r=await api("/user/import/backup",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({source_path:path,overwrite:document.getElementById("b-overwrite").checked})});const d=r.data;close_("importModal");toast(`Imported ${d.imported_count}, updated ${d.updated_count}, skipped ${d.skipped_count}`,"ok");await refresh();}catch(e){toast(e.message,"err");}}
+async function submitFile(){const f=document.getElementById("f-file").files[0];if(!f){toast("Pick a file","err");return;}try{const fd=new FormData();fd.append("file",f);const r=await fetch(API+"/user/import",{method:"POST",body:fd});const j=await r.json();if(j.code!==0)throw new Error(j.msg||"import failed");close_("importModal");toast("Imported "+(j.data.cookie_count||0)+" cookies","ok");await refresh();}catch(e){toast(e.message,"err");}}
+function openFp(uid){fpUid=uid;const p=profiles.find(x=>x.user_id===uid);if(!p)return;const fp=p.fingerprint_config||{};
+  document.getElementById("fp-name").textContent="· "+p.name;document.getElementById("fp-engine").value=fp.browser_engine||"";document.getElementById("fp-ua").value=fp.user_agent||"";
+  document.getElementById("fp-platform").value=fp.platform||"Win32";document.getElementById("fp-locale").value=fp.locale||"";document.getElementById("fp-tz").value=fp.timezone||"";document.getElementById("fp-langs").value=(fp.languages||[]).join(", ");
+  document.getElementById("fp-sw").value=fp.screen_width||1920;document.getElementById("fp-sh").value=fp.screen_height||1080;document.getElementById("fp-dpr").value=fp.pixel_ratio||1;
+  document.getElementById("fp-cores").value=fp.hardware_concurrency||8;document.getElementById("fp-mem").value=fp.device_memory||8;document.getElementById("fp-glv").value=fp.webgl_vendor||"";document.getElementById("fp-glr").value=fp.webgl_renderer||"";
+  document.getElementById("fp-webrtc").checked=fp.block_webrtc_ip!==false;fpTab("basic");open_("fpModal");}
+function fpTab(t){document.querySelectorAll("#fpModal .tab").forEach(el=>el.classList.toggle("active",el.dataset.fptab===t));["basic","screen","hw","net"].forEach(x=>document.getElementById("fp-"+x).style.display=x===t?"block":"none");}
+async function saveFp(){if(!fpUid)return;const fp={browser_engine:document.getElementById("fp-engine").value,user_agent:document.getElementById("fp-ua").value,platform:document.getElementById("fp-platform").value,locale:document.getElementById("fp-locale").value,timezone:document.getElementById("fp-tz").value,languages:document.getElementById("fp-langs").value.split(",").map(s=>s.trim()).filter(Boolean),screen_width:parseInt(document.getElementById("fp-sw").value)||1920,screen_height:parseInt(document.getElementById("fp-sh").value)||1080,pixel_ratio:parseFloat(document.getElementById("fp-dpr").value)||1,hardware_concurrency:parseInt(document.getElementById("fp-cores").value)||8,device_memory:parseFloat(document.getElementById("fp-mem").value)||8,webgl_vendor:document.getElementById("fp-glv").value,webgl_renderer:document.getElementById("fp-glr").value,block_webrtc_ip:document.getElementById("fp-webrtc").checked};try{await api("/user/update",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({user_id:fpUid,fingerprint_config:fp})});close_("fpModal");toast("Fingerprint saved","ok");await refresh();}catch(e){toast(e.message,"err");}}
+initTheme();(async()=>{await loadEngines();await loadGeo();await refresh();})();setInterval(refresh,6000);
 </script>
 </body>
 </html>

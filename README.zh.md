@@ -40,13 +40,19 @@ antique 是一个 Python 服务，功能如下：
 - 导入从 AdsPower 导出的 `.adb` profile bundle（cookies + LocalStorage + IndexedDB）。导入采用原生 Chromium 读取，而非脆弱的 LevelDB 解析 —— 我们把源目录拷贝到 Playwright 的 `user_data_dir`，让 Chromium 自己读取。
 - 在 `http://127.0.0.1:<port>/...` 上暴露 AdsPower 兼容的 REST API，因此已经对接 AdsPower 的现有脚本只需修改 base URL 即可切换。
 - 在 `/`（或 `/dashboard`）提供一个单页 dashboard，在 `/docs` 提供 FastAPI Swagger。
-- 73/73 pytest 测试通过。
+- 270+ 个 pytest 测试通过。
+- 可更换的浏览器引擎：Chromium, Google Chrome, Microsoft Edge, Firefox, Camoufox（引擎级深层防关联）, WebKit。
+- 一键式 AdsPower 备份导入（导入整个备份目录或单个 profile），保留 user_id, cookies, proxy, tags。
+- 支持亮色/暗色主题、引擎选择器和 AdsPower 导入工作流的单页 Dashboard。
+- 批量操作：支持批量启动/停止/删除/导出 profile，批量导入和分配代理。
+- 分组管理与过滤。
+- 代理健康度检查（检测出口 IP 与网络延迟）。
+- 直接在 Dashboard 界面编辑指纹信息。
 
 **它还不是（尚未实现的功能）：**
 
-- 还不支持 Firefox/Camoufox —— 目前仅作为 stub（`src/core/browser.py` 只启动 Chromium）。
 - 不是为数千个 profile 设计的无头浏览器农场 —— 设计目标是单机几十个 profile。
-- 没有多用户鉴权层 —— 单进程，REST API 没有鉴权，本地运行。
+- 不是多用户鉴权层 —— 单进程，REST API 默认无鉴权，本地运行。
 - 不是 proxy provider —— 使用你提供的 proxy。
 
 **何时使用它：** 当需要一个 AdsPower 兼容的本地浏览器农场，具备完整 profile 隔离、fingerprint 控制和 .adb bundle 导入能力时 —— 并且不想为 AdsPower 付费。
@@ -189,7 +195,7 @@ src/
 │   ├── geo.py                     ← 地理位置匹配：国家/出口代理 → 时区/语言/经纬度 (geo_for_country, geo_from_proxy, apply_geo_to_fingerprint)
 │   ├── proxy_pool.py              ← 代理池和轮换策略（sticky/round_robin/random）
 │   ├── detect.py                  ← 指纹防关联自检机制（build_collector_script, score_report）
-│   └── chain.py                   ← EVM 链钱包监控与代币早期买家分析（Robinhood Chain 预设，ChainClient，parse_early_buyers）
+│   └── engines.py                 ← 浏览器引擎注册表 (EngineSpec, resolve_engine, list_engines)
 ├── api/
 │   ├── __init__.py
 │   ├── server.py                  ← FastAPI app factory、CORS、挂载 UI 与 API 路由
@@ -331,8 +337,9 @@ python -m src.cli geo-match USER_ID [--country US|DE|RU|...]     # 将时区/语
 python -m src.cli proxy-rotate USER_ID POOL.txt [--strategy sticky|round_robin|random]
 python -m src.cli detect-test USER_ID [--url URL] [--headless]   # 指纹防关联自测（输出 A-F 评级与细项报告）
 python -m src.cli create ... [--geo-country US|DE|RU|...]        # 创建时预绑定国家地理属性
-python -m src.cli chain-wallet ADDR [ADDR ...] [--chain robinhood|robinhood-testnet] [--tx-limit N] # 监控 EVM 链钱包余额与交易概览
-python -m src.cli chain-early-buyers TOKEN [--chain robinhood] [--limit N] [--from-block B] [--to-block B] [--exclude ADDR ...] # 查找代币 of 早期买家
+python -m src.cli engines                                        # 列出支持的浏览器引擎及其防关联等级
+python -m src.cli create ... [--engine chromium|chrome|edge|firefox|camoufox|webkit] # 创建指定引擎的 profile
+python -m src.cli import-backup PATH [--overwrite] [--limit N]   # 导入 AdsPower 备份目录
 python -m src.cli fingerprint [--seed SEED] [--os windows|macos|linux]
 ```
 
@@ -432,14 +439,11 @@ POST /user/import/portable          Body: {bundle:{...}, name?, user_id?}
 POST /detect/score                  Body: {signals:{...}, expected?:{...}}
 → {code:0, data:{score, grade, ok, checks, failures}}   # 纯指纹检测评分，无需运行浏览器
 
-GET  /chain/list
-→ {code:0, data:{list:[{key,name,chain_id,currency,rpc_url,...}]}}   # 支持的 EVM 链预设（包括 Robinhood Chain）
+GET  /engine/list
+→ {code:0, data:{list:[{key,label,base,stealth,channel,needs_install,supports_extensions,supports_cdp}]}}
 
-POST /chain/wallets/monitor         Body: {addresses:[...], chain?: "robinhood", tx_limit?: 50}
-→ {code:0, data:{chain, chain_id, wallets:[{address, eth_balance, tx_count, sent_count, received_count, first_seen_block, last_seen_block}]}}
-
-POST /chain/token/early-buyers      Body: {token, chain?: "robinhood", limit?: 20, from_block?, to_block?, exclude?:[...]}
-→ {code:0, data:{chain, token, buyers:[{address, block_number, tx_hash, amount}], count}}
+POST /user/import/backup            Body: {source_path, overwrite?, limit?}
+→ {code:0, data:{imported_count, updated_count, skipped_count, error_count, ...}}
 ```
 
 ### `/user/list` 返回的 profile 形状
@@ -733,20 +737,22 @@ python -m pytest tests/test_chain.py tests/test_api_endpoints.py -v
 - [x] **代理轮换与健康容灾**（提供 sticky/round_robin/random 策略的代理池，`src/core/proxy_pool.py`）
 - [x] **Headless 隐身 (Headless stealth)**（支持 `window.chrome`/`chrome.runtime` 接口仿真与 `permissions.query` 接口一致性）
 - [x] **防关联检测评估**（`detect-test` 工具，提供 0-100 综合评分与 A-F 评级报告，`src/core/detect.py`）
-- [x] **API 可选鉴权**（使用 `ANTIQUE_API_TOKEN` Bearer 令牌鉴权 + Cross-Origin/DNS Rebinding 防护）
-- [x] **Windows 终端 UTF-8 编码重构**（CLI 自适应 UTF-8 输出以彻底避免 CP1251/CP437 编码抛出 `UnicodeEncodeError` 异常）
-- [x] **EVM 链钱包监控与早期买家分析**（集成 Robinhood Chain EVM L2, chain id 4663; `src/core/chain.py`，CLI `chain-wallet`/`chain-early-buyers`，REST `/chain/*` 路由，MCP 工具）
-- [x] 280+ 个 pytest 测试通过
+- [x] **可更换浏览器引擎** (Chromium/Chrome/Edge/Firefox/Camoufox/WebKit 注册表, `src/core/engines.py`, `/engine/list`, `create --engine`)
+- [x] **Camoufox 深度隐身引擎** (Gecko 级指纹伪装；若未安装，则回退至捆绑 Firefox)
+- [x] **一键 AdsPower 备份导入** (支持导入整文件夹或单 profile; CLI `import-backup` + `/user/import/backup` + 网页端)
+- [x] **重构设计 Dashboard** (亮/暗色主题，引擎选择，AdsPower 导入入口，提示弹窗)
+- [x] 270+ 个 pytest 测试通过
 
 ### 已知限制
 
-- **Camoufox 需要单独安装。** 请运行 `pip install camoufox` 来启用 Camoufox 引擎。若未安装，则回退到普通 Firefox 启动。
 - **模拟的 CDP multiplexer。** `/json/list` + `/devtools/page/...` 端点并没有暴露真正的 Chrome debug port 供外部自动化使用 —— 请改用 `POST /user/start` 返回的 per-profile websocket。
 - **API 鉴权为可选机制。** 设置 `ANTIQUE_API_TOKEN` 环境变量后方要求提供 Bearer 令牌；如未设置，则默认对 `127.0.0.1` 开放（但仍受跨域 Cross-Origin 策略保护）。单进程，暂不支持多用户角色。
 - **没有 proxy provider 直连集成。** 代理需要由您以代理池方式提供；我们支持对已有的代理池进行自动轮换与故障切换。
 - **Headless 隐深为尽力而为（Best-effort）。** 已伪装 permissions 和 `window.chrome` 指标，但极其底层的渲染时序（paint timing）以及特定的 GPU 硬件指纹目前尚未完全涵盖。
 - **WebRTC 目前仅能选择阻断模式。** 阻断真实 IP 泄漏；重写 ICE 候选以暴露与代理一致的外网 IP 功能目前位于 Roadmap 中。
-- **On-chain 默认使用公共 RPC。** `ChainClient` 默认走 Robinhood Chain 的公共 RPC 与 Blockscout 接口，它们具有频次限制（rate-limited）。在面对需要大批量扫描大范围区块的 `early-buyers` 任务时，应通过自定义 `ChainConfig` 配置您的私有节点（如 Alchemy/QuickNode），并尽量缩小 `--from-block`/`--to-block` 范围。
+- **Camoufox 需要额外安装。** `pip install camoufox && python -m camoufox fetch`。若未安装，`camoufox` 引擎会自动回退至捆绑的 Firefox（标准防关联而非深度）。
+- **Chrome/Edge 引擎需要本地安装了对应的真实浏览器。** 否则建议使用默认的 `chromium`。
+- **Firefox/Camoufox/WebKit 引擎不支持 per-profile CDP 以及加载 .crx 扩展。** 这些能力仅限 Chromium。
 
 ### Roadmap
 

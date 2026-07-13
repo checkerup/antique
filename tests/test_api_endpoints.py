@@ -190,31 +190,74 @@ def test_detect_score_flags_webdriver(client):
 
 
 # ---------------------------------------------------------------------------
-# On-chain (Robinhood Chain) endpoints
+# Browser engines
 # ---------------------------------------------------------------------------
 
 
-def test_chain_list_includes_robinhood(client):
-    r = client.get("/chain/list")
+def test_engine_list(client):
+    r = client.get("/engine/list")
     assert r.status_code == 200, r.text
-    keys = [c["key"] for c in r.json()["data"]["list"]]
-    assert "robinhood" in keys
-    rh = next(c for c in r.json()["data"]["list"] if c["key"] == "robinhood")
-    assert rh["chain_id"] == 4663
+    keys = [e["key"] for e in r.json()["data"]["list"]]
+    for k in ("chromium", "chrome", "firefox", "camoufox", "webkit"):
+        assert k in keys
+    camo = next(e for e in r.json()["data"]["list"] if e["key"] == "camoufox")
+    assert camo["stealth"] == "deep"
+    assert camo["needs_install"] is True
 
 
-def test_chain_wallets_monitor_rejects_bad_address(client):
-    r = client.post("/chain/wallets/monitor", json={"addresses": ["0x123"]})
-    assert r.status_code == 400
+def test_create_with_engine_persists(client):
+    uid = _create(client, "eng", fingerprint_config={"browser_engine": "camoufox"})
+    p = client.get(f"/profile/{uid}").json()["data"]
+    assert p["fingerprint_config"]["browser_engine"] == "camoufox"
 
 
-def test_chain_early_buyers_rejects_bad_token(client):
-    r = client.post("/chain/token/early-buyers", json={"token": "0xnope"})
-    assert r.status_code == 400
+# ---------------------------------------------------------------------------
+# AdsPower backup import (synthetic backup dir)
+# ---------------------------------------------------------------------------
 
 
-def test_chain_unknown_chain_400(client):
-    r = client.post("/chain/wallets/monitor", json={
-        "addresses": ["0x" + "a" * 40], "chain": "dogecoin",
-    })
-    assert r.status_code == 400
+def _make_fake_backup(tmp_path):
+    """Build a minimal AdsPower-shaped backup dir: index + json cookies."""
+    import json
+    root = tmp_path / "ads_backup"
+    root.mkdir()
+    (root / "all_profiles_list.json").write_text(json.dumps([
+        {"user_id": "aaa11111", "name": "Acc One", "group_id": "5",
+         "fbcc_user_tag": ["warm"], "user_proxy_config": {"proxy_soft": "no_proxy"}},
+        {"user_id": "bbb22222", "name": "Acc Two", "group_id": "5",
+         "user_proxy_config": {"proxy_type": "http", "proxy_host": "1.2.3.4", "proxy_port": 8080}},
+    ]), encoding="utf-8")
+    jc = root / "json_cookies"
+    jc.mkdir()
+    (jc / "aaa11111_cookies.json").write_text(json.dumps([
+        {"name": "sid", "value": "x", "domain": ".example.com", "path": "/"}
+    ]), encoding="utf-8")
+    return root
+
+
+def test_adspower_backup_import(client, tmp_path):
+    root = _make_fake_backup(tmp_path)
+    r = client.post("/user/import/backup", json={"source_path": str(root)})
+    assert r.status_code == 200, r.text
+    d = r.json()["data"]
+    assert d["imported_count"] == 2
+    # AdsPower user_id preserved
+    p = client.get("/profile/aaa11111").json()["data"]
+    assert p["name"] == "Acc One"
+    assert p["group_id"] == "5"
+    assert "warm" in p["tags"]
+    assert len(p["cookies"]) == 1
+    # second profile got its proxy
+    p2 = client.get("/profile/bbb22222").json()["data"]
+    assert p2["user_proxy_config"]["proxy_host"] == "1.2.3.4"
+
+
+def test_adspower_backup_import_skips_existing(client, tmp_path):
+    root = _make_fake_backup(tmp_path)
+    client.post("/user/import/backup", json={"source_path": str(root)})
+    r = client.post("/user/import/backup", json={"source_path": str(root)})
+    d = r.json()["data"]
+    assert d["skipped_count"] == 2 and d["imported_count"] == 0
+    r2 = client.post("/user/import/backup", json={"source_path": str(root), "overwrite": True})
+    assert r2.json()["data"]["updated_count"] == 2
+

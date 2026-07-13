@@ -30,6 +30,7 @@ from typing import Any, Dict, List, Optional
 
 from .cookie import Cookie
 from .extension import ExtensionStore
+from .engines import EngineSpec, resolve_engine, resolve_engine_for_profile, engine_keys
 from .fingerprint import Fingerprint, build_init_script, to_playwright_launch_options
 from .profile import Profile, ProfileStore
 from .proxy import ProxyConfig, parse_proxy
@@ -61,11 +62,12 @@ class BrowserHandle:
     context: Any
 
 
-# Browser engine types
+# Browser engine types (kept as module constants for convenience; the source
+# of truth is src/core/engines.py).
 ENGINE_CHROMIUM = "chromium"
 ENGINE_FIREFOX = "firefox"
 ENGINE_CAMOUFOX = "camoufox"
-VALID_ENGINES = {ENGINE_CHROMIUM, ENGINE_FIREFOX, ENGINE_CAMOUFOX}
+VALID_ENGINES = set(engine_keys())
 
 
 def build_debug_port_args(port: int) -> List[str]:
@@ -253,18 +255,16 @@ class BrowserLauncher:
         if ls_copied or idb_copied or webstorage_copied:
             self.store.mark_initial_state_applied(profile.user_id)
 
-    def _get_engine(self, profile: Profile) -> str:
-        """Determine which browser engine to use for a profile."""
-        # Check profile-level setting (stored in fingerprint or proxy config)
-        engine = ""
+    def _resolve_engine_spec(self, profile: Profile) -> EngineSpec:
+        """Resolve the EngineSpec for a profile (profile setting → env → default)."""
+        profile_engine = ""
         if profile.fingerprint:
-            engine = profile.fingerprint.get("browser_engine", "")
-        if not engine:
-            engine = os.environ.get("ANTIDETECT_ENGINE", ENGINE_CHROMIUM)
-        engine = engine.lower()
-        if engine not in VALID_ENGINES:
-            engine = ENGINE_CHROMIUM
-        return engine
+            profile_engine = profile.fingerprint.get("browser_engine", "")
+        return resolve_engine_for_profile(profile_engine)
+
+    def _get_engine(self, profile: Profile) -> str:
+        """Determine which browser engine key to use for a profile."""
+        return self._resolve_engine_spec(profile).key
 
     def _get_extension_paths(self, profile: Profile) -> List[str]:
         """Get extension paths for this profile."""
@@ -281,7 +281,7 @@ class BrowserLauncher:
         proxy_cfg = parse_proxy(profile.proxy or None)
         proxy_pw = proxy_cfg.to_playwright()
         user_dir = self._profile_user_dir(profile.user_id)
-        engine = self._get_engine(profile)
+        spec = self._resolve_engine_spec(profile)
 
         # If the profile was created from a full .adb import, copy
         # LocalStorage + IndexedDB into the user_data_dir before the first
@@ -292,19 +292,14 @@ class BrowserLauncher:
         launch_opts["headless"] = self.headless
         init_js = build_init_script(fp)
 
-        # Add Client Hints args for Chromium-based engines
-        if engine in (ENGINE_CHROMIUM, ENGINE_CAMOUFOX):
+        # Client Hints + real per-profile CDP + extensions are Chromium-only.
+        if spec.is_chromium:
             ch_args = _build_client_hints_args(fp)
             launch_opts.setdefault("args", []).extend(ch_args)
-
-        # Expose a real per-profile CDP endpoint on the chosen debug port so
-        # external automation can attach (Chromium-based engines only).
-        if engine in (ENGINE_CHROMIUM, ENGINE_CAMOUFOX):
             launch_opts.setdefault("args", []).extend(build_debug_port_args(port))
 
-        # Add extensions via --load-extension for Chromium
         ext_paths = self._get_extension_paths(profile)
-        if ext_paths and engine in (ENGINE_CHROMIUM,):
+        if ext_paths and spec.supports_extensions:
             ext_arg = f"--load-extension={','.join(ext_paths)}"
             launch_opts.setdefault("args", []).append(ext_arg)
             # Disable extension security to allow loading unpacked
@@ -312,24 +307,15 @@ class BrowserLauncher:
             launch_opts["args"].append("--disable-extensions-except=" + ",".join(ext_paths))
 
         playwright = await async_playwright().start()
-        channel = os.environ.get("ANTIQUE_BROWSER_CHANNEL")
+        # An explicit channel on the engine (chrome/msedge) wins; otherwise fall
+        # back to the ANTIQUE_BROWSER_CHANNEL override (if any).
+        channel = spec.channel or os.environ.get("ANTIQUE_BROWSER_CHANNEL")
 
-        if engine == ENGINE_FIREFOX:
-            # Firefox via Playwright
-            context = await playwright.firefox.launch_persistent_context(
-                user_data_dir=str(user_dir),
-                headless=self.headless,
-                proxy=proxy_pw,
-                locale=fp.locale,
-                timezone_id=fp.timezone,
-                user_agent=fp.user_agent,
-                viewport={"width": fp.inner_width, "height": fp.inner_height},
-            )
-        elif engine == ENGINE_CAMOUFOX:
-            # Camoufox: try to use the camoufox library, fall back to Firefox
+        if spec.key == "camoufox":
+            # Camoufox: hardened Firefox with engine-level spoofing. Try the
+            # camoufox library; fall back to bundled Firefox if not installed.
             try:
                 from camoufox.asyncio import AsyncNewBrowser
-                # Camoufox has its own fingerprint system
                 camo_config = {
                     "os": "windows" if fp.platform == "Win32" else "macos" if fp.platform == "MacIntel" else "linux",
                     "screen": {"width": fp.screen_width, "height": fp.screen_height},
@@ -338,16 +324,13 @@ class BrowserLauncher:
                 }
                 if proxy_pw:
                     camo_config["proxy"] = proxy_pw
-                browser = await AsyncNewBrowser(
-                    headless=self.headless,
-                    config=camo_config,
-                )
+                browser = await AsyncNewBrowser(headless=self.headless, config=camo_config)
                 context = await browser.new_context(
                     user_agent=fp.user_agent,
                     viewport={"width": fp.inner_width, "height": fp.inner_height},
                 )
             except ImportError:
-                log.warning("camoufox not installed, falling back to Firefox")
+                log.warning("camoufox not installed, falling back to bundled Firefox")
                 context = await playwright.firefox.launch_persistent_context(
                     user_data_dir=str(user_dir),
                     headless=self.headless,
@@ -357,8 +340,28 @@ class BrowserLauncher:
                     user_agent=fp.user_agent,
                     viewport={"width": fp.inner_width, "height": fp.inner_height},
                 )
+        elif spec.base == "firefox":
+            context = await playwright.firefox.launch_persistent_context(
+                user_data_dir=str(user_dir),
+                headless=self.headless,
+                proxy=proxy_pw,
+                locale=fp.locale,
+                timezone_id=fp.timezone,
+                user_agent=fp.user_agent,
+                viewport={"width": fp.inner_width, "height": fp.inner_height},
+            )
+        elif spec.base == "webkit":
+            context = await playwright.webkit.launch_persistent_context(
+                user_data_dir=str(user_dir),
+                headless=self.headless,
+                proxy=proxy_pw,
+                locale=fp.locale,
+                timezone_id=fp.timezone,
+                user_agent=fp.user_agent,
+                viewport={"width": fp.inner_width, "height": fp.inner_height},
+            )
         else:
-            # Chromium (default)
+            # Chromium base (bundled Chromium, or a real chrome/msedge channel).
             context = await playwright.chromium.launch_persistent_context(
                 user_data_dir=str(user_dir),
                 channel=channel,

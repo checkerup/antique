@@ -133,3 +133,46 @@ python -m src.cli detect-test <USER_ID> --url https://<local-creepjs>
 
 `python -m pytest` → всё зелёное. Если красное в `test_detect.py` — смотри веса severity в `src/core/detect.py`
 (`_SEVERITY_WEIGHT`), они задают ожидаемые очки в тестах (крит=40, high=20, medium=10, low=5).
+
+---
+
+## Заход 4 (текущий) — движки / UI / AdsPower / удалён ончейн
+
+### Что изменилось
+| Фича | Код | Тесты |
+|---|---|---|
+| **Реестр движков** (chromium/chrome/edge/firefox/camoufox/webkit) | `src/core/engines.py`, `src/core/browser.py` | `tests/test_engines.py` |
+| **`/engine/list` + `create --engine`** | `src/api/routes.py`, `src/cli.py` | `tests/test_api_endpoints.py`, `tests/test_engines.py` |
+| **Новый UI (тёмная/светлая тема, engine picker, AdsPower import)** | `src/ui/templates/index.html` | ручная проверка (статика) |
+| **AdsPower backup import** (бэкенд был, добавлен API-тест) | `src/core/backup_import.py`, `/user/import/backup` | `tests/test_backup_import.py`, `tests/test_api_endpoints.py` |
+| **Удалён ончейн** | `src/core/chain.py` (обнулён) | `tests/test_chain.py` (пуст) |
+
+### Что проверяют тесты движков (`test_engines.py`, всё оффлайн)
+- Реестр содержит все 6 движков; base/channel/stealth корректны.
+- Капабилити: Chromium-движки → extensions + реальный CDP; firefox/camoufox/webkit → нет.
+- Резолв: алиасы (google-chrome→chrome, safari→webkit), неизвестный→chromium.
+- Приоритет: profile.browser_engine > ANTIDETECT_ENGINE > default.
+- `browser_engine` сохраняется на профиле через fingerprint (round-trip).
+
+### Команды
+```bash
+python -m pytest tests/test_engines.py tests/test_api_endpoints.py -v
+python -m pytest            # полный прогон
+```
+
+### Ручной smoke
+```bash
+python -m src.cli engines                          # таблица движков
+python -m src.cli create "cam" --engine camoufox   # создать на camoufox
+python -m src.cli import-backup "C:\ai_workflow\adspower_profiles_backup"
+# UI: открой http://127.0.0.1:8080/ , переключи тему (☀️/🌙), Import → AdsPower backup folder
+```
+
+> Ончейн удалён: `chain.py`/`test_chain.py` обнулены, chain-эндпоинты/CLI/MCP-тулы вырезаны.
+> Если где-то остался `import ... chain` — это баг, сообщи.
+
+### Камуфокс (опционально, для живого запуска)
+```bash
+pip install camoufox && python -m camoufox fetch
+```
+Без установки camoufox профиль мягко откатывается на бандловый Firefox (лог предупреждает, не падает).

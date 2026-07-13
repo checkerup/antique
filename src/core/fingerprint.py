@@ -286,6 +286,14 @@ class Fingerprint:
     # Noise secret (deterministic seed used for canvas/audio/font entropy)
     noise: str = ""
 
+    # Browser engine key (see src/core/engines.py). Empty = use global default
+    # (ANTIDETECT_ENGINE env or 'chromium'). Persisted so a profile keeps its
+    # engine across launches.
+    browser_engine: str = ""
+
+    # Extension ids assigned to this profile (managed via the extension store).
+    extensions: List[str] = field(default_factory=list)
+
     # Auto-generated id (hash of canonical fields)
     id: str = ""
 

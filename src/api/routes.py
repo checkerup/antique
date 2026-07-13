@@ -50,7 +50,7 @@ from ..core.geo import geo_for_country, geo_from_proxy, apply_geo_to_fingerprint
 from ..core.proxy_pool import ProxyPool
 from ..core.portable import build_bundle, import_profile as portable_import, PortableBundleError
 from ..core.detect import score_report, expected_from_fingerprint
-from ..core.chain import ChainClient, get_chain, supported_chains, is_valid_address, ChainError
+from ..core.engines import list_engines, engine_keys
 
 
 log = logging.getLogger("antique.api")
@@ -863,77 +863,14 @@ def detect_score(body: DetectScore) -> Dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# On-chain wallet monitoring + early buyers (Robinhood Chain / EVM)
+# Browser engines
 # ---------------------------------------------------------------------------
 
 
-class WalletMonitorRequest(BaseModel):
-    addresses: List[str]
-    chain: str = "robinhood"
-    tx_limit: int = 50
-
-
-class EarlyBuyersRequest(BaseModel):
-    token: str
-    chain: str = "robinhood"
-    limit: int = 20
-    from_block: Any = "earliest"
-    to_block: Any = "latest"
-    exclude: Optional[List[str]] = None
-
-
-@router.get("/chain/list")
-def chain_list() -> Dict[str, Any]:
-    """List supported EVM chain presets."""
-    out = []
-    for key in supported_chains():
-        cfg = get_chain(key)
-        out.append({
-            "key": key, "name": cfg.name, "chain_id": cfg.chain_id,
-            "currency": cfg.currency, "is_testnet": cfg.is_testnet,
-            "rpc_url": cfg.rpc_url, "explorer_api": cfg.explorer_api,
-        })
-    return _ads_response(True, list=out, total=len(out))
-
-
-@router.post("/chain/wallets/monitor")
-def chain_wallets_monitor(body: WalletMonitorRequest) -> Dict[str, Any]:
-    """Monitor a batch of EVM wallets: ETH balance + tx-history summary."""
-    try:
-        cfg = get_chain(body.chain)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
-    bad = [a for a in body.addresses if not is_valid_address(a)]
-    if bad:
-        raise HTTPException(status_code=400, detail=f"invalid address(es): {', '.join(bad)}")
-    client = ChainClient(cfg)
-    try:
-        summaries = client.monitor_wallets(body.addresses, tx_limit=body.tx_limit)
-    except ChainError as exc:
-        raise HTTPException(status_code=502, detail=str(exc))
-    return _ads_response(True, chain=cfg.name, chain_id=cfg.chain_id,
-                         wallets=[s.to_dict() for s in summaries])
-
-
-@router.post("/chain/token/early-buyers")
-def chain_early_buyers(body: EarlyBuyersRequest) -> Dict[str, Any]:
-    """Return the earliest distinct buyers of a token via its Transfer events."""
-    try:
-        cfg = get_chain(body.chain)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
-    if not is_valid_address(body.token):
-        raise HTTPException(status_code=400, detail=f"invalid token address: {body.token}")
-    client = ChainClient(cfg)
-    try:
-        buyers = client.early_buyers(
-            body.token, from_block=body.from_block, to_block=body.to_block,
-            exclude=body.exclude, limit=body.limit,
-        )
-    except ChainError as exc:
-        raise HTTPException(status_code=502, detail=str(exc))
-    return _ads_response(True, chain=cfg.name, token=body.token,
-                         buyers=[b.to_dict() for b in buyers], count=len(buyers))
+@router.get("/engine/list")
+def engine_list() -> Dict[str, Any]:
+    """List available browser engines (for the UI engine picker)."""
+    return _ads_response(True, list=[e.to_dict() for e in list_engines()], total=len(engine_keys()))
 
 
 # ---------------------------------------------------------------------------

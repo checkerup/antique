@@ -40,16 +40,17 @@ antique is a Python service that:
 - Imports `.adb` profile bundles exported from AdsPower (cookies + LocalStorage + IndexedDB). The import uses native Chromium reading instead of brittle LevelDB parsing — we copy the source directories into Playwright's `user_data_dir` and let Chromium read them itself.
 - Exposes an AdsPower-compatible REST API on `http://127.0.0.1:<port>/...` so existing scripts that already talk to AdsPower can switch by changing the base URL.
 - Ships a single-page dashboard at `/` (or `/dashboard`) and a FastAPI Swagger at `/docs`.
-- 175+ pytest tests passing.
+- 300+ pytest tests passing.
 - Geo matching (timezone/locale/geolocation aligned to the proxy exit country), proxy rotation/failover, headless stealth, and a stealth self-test harness.
-- On-chain wallet monitoring + early-buyer discovery on Robinhood Chain (EVM L2) via standard JSON-RPC + Blockscout.
+- Swappable browser engines: Chromium, Google Chrome, Microsoft Edge, Firefox, Camoufox (deep engine-level stealth), WebKit.
+- One-click AdsPower backup import (whole backup folder or a single profile), preserving user_id, cookies, proxy, tags.
+- Dashboard with light/dark themes, engine picker, and an AdsPower import flow.
 - Bulk operations: start/stop/delete/export multiple profiles, bulk proxy import/assign.
 - Group management and filtering.
 - Proxy health-check with IP detection and latency measurement.
 - Fingerprint editing from the dashboard UI.
 
 **What it is NOT (yet):**
-- Not Firefox/Camoufox — that's still a stub (`src/core/browser.py` only launches Chromium).
 - Not a headless browser farm for thousands of profiles — designed for tens of profiles per machine.
 - Not a multi-user auth layer — single-process, no auth on the REST API, runs locally.
 - Not a proxy provider — uses proxies you supply.
@@ -201,8 +202,7 @@ src/
 │   │                                 (geo_for_country, geo_from_proxy, apply_geo_to_fingerprint)
 │   ├── proxy_pool.py              ← Proxy pool + rotation/failover (sticky/round_robin/random)
 │   ├── detect.py                  ← Stealth self-test harness (build_collector_script, score_report)
-│   └── chain.py                   ← EVM wallet monitoring + early-buyer discovery
-│                                     (Robinhood Chain preset, ChainClient, parse_early_buyers)
+│   └── engines.py                 ← Browser engine registry (EngineSpec, resolve_engine, list_engines)
 ├── api/
 │   ├── __init__.py
 │   ├── server.py                  ← FastAPI app factory, CORS, mount UI + API routes
@@ -344,8 +344,9 @@ python -m src.cli geo-match USER_ID [--country US|DE|RU|...]     # align tz/loca
 python -m src.cli proxy-rotate USER_ID POOL.txt [--strategy sticky|round_robin|random]
 python -m src.cli detect-test USER_ID [--url URL] [--headless]   # stealth self-test, graded report
 python -m src.cli create ... [--geo-country US|DE|RU|...]        # create already aligned to a country
-python -m src.cli chain-wallet ADDR [ADDR ...] [--chain robinhood|robinhood-testnet] [--tx-limit N]
-python -m src.cli chain-early-buyers TOKEN [--chain robinhood] [--limit N] [--from-block B] [--to-block B] [--exclude ADDR ...]
+python -m src.cli engines                                       # list engines + stealth tier
+python -m src.cli create ... [--engine chromium|chrome|edge|firefox|camoufox|webkit]
+python -m src.cli import-backup PATH [--overwrite] [--limit N]  # import an AdsPower backup folder
 python -m src.cli fingerprint [--seed SEED] [--os windows|macos|linux]
 ```
 
@@ -445,14 +446,11 @@ POST /user/import/portable          Body: {bundle:{...}, name?, user_id?}
 POST /detect/score                  Body: {signals:{...}, expected?:{...}}
 → {code:0, data:{score, grade, ok, checks, failures}}   # pure stealth scoring, no browser
 
-GET  /chain/list
-→ {code:0, data:{list:[{key,name,chain_id,currency,rpc_url,...}]}}   # Robinhood Chain + presets
+GET  /engine/list
+→ {code:0, data:{list:[{key,label,base,stealth,channel,needs_install,supports_extensions,supports_cdp}]}}
 
-POST /chain/wallets/monitor         Body: {addresses:[...], chain?: "robinhood", tx_limit?: 50}
-→ {code:0, data:{chain, chain_id, wallets:[{address, eth_balance, tx_count, sent_count, received_count, first_seen_block, last_seen_block}]}}
-
-POST /chain/token/early-buyers      Body: {token, chain?: "robinhood", limit?: 20, from_block?, to_block?, exclude?:[...]}
-→ {code:0, data:{chain, token, buyers:[{address, block_number, tx_hash, amount}], count}}
+POST /user/import/backup            Body: {source_path, overwrite?, limit?}
+→ {code:0, data:{imported_count, updated_count, skipped_count, error_count, cookie_sources, ...}}
 ```
 
 ### Profile shape returned by `/user/list`
@@ -730,12 +728,12 @@ Test files:
 - `test_console.py` — Windows UTF-8 console fix + ASCII fallback
 - `test_api_endpoints.py` — HTTP-level tests (TestClient): extension wiring regression, geo-match, proxy-pool, portable round-trip, detect scoring
 - `test_auth.py` — API auth + origin guard (DNS-rebinding, Bearer token, tunnel allow-list)
-- `test_chain.py` — Robinhood Chain / EVM: presets, hex/address helpers, early-buyer parsing, wallet summary, ChainClient with fake transports, MCP tool exposure (NEW)
+- `test_engines.py` — Browser engine registry: specs, capabilities, alias/priority resolution, launcher wiring (NEW)
 
 Run only the newest suites:
 
 ```bash
-python -m pytest tests/test_chain.py tests/test_api_endpoints.py -v
+python -m pytest tests/test_engines.py tests/test_api_endpoints.py -v
 ```
 
 ---
@@ -777,18 +775,22 @@ python -m pytest tests/test_chain.py tests/test_api_endpoints.py -v
 - [x] **Stealth self-test harness** (`detect-test`, graded 0-100 report, `src/core/detect.py`)
 - [x] **Optional API auth** (`ANTIQUE_API_TOKEN` Bearer token + cross-origin/DNS-rebinding guard)
 - [x] **Windows UTF-8 console fix** (no more `UnicodeEncodeError` on CP1251/CP437 terminals)
-- [x] **On-chain wallet monitoring + early buyers** (Robinhood Chain EVM L2, chain id 4663; `src/core/chain.py`, `chain-wallet`/`chain-early-buyers` CLI, `/chain/*` REST, MCP tools)
-- [x] 280+ pytest tests passing
+- [x] **Swappable browser engines** (Chromium/Chrome/Edge/Firefox/Camoufox/WebKit registry, `src/core/engines.py`, `/engine/list`, `create --engine`)
+- [x] **Camoufox deep-stealth engine** (Gecko-level fingerprint spoofing; falls back to bundled Firefox if not installed)
+- [x] **One-click AdsPower backup import** (whole backup folder or single profile; dashboard + `import-backup` CLI + `/user/import/backup`)
+- [x] **Redesigned dashboard** (light/dark themes, engine picker, AdsPower import, toasts)
+- [x] 300+ pytest tests passing
 
 ### Known limitations
 
-- **Camoufox requires separate install.** Run `pip install camoufox` to enable the Camoufox engine. Without it, falls back to plain Firefox.
 - **Simulated CDP multiplexer.** The `/json/list` + `/devtools/page/...` endpoints don't expose a real Chrome debug port for external automation — use the per-profile websocket from `POST /user/start` instead.
 - **API auth is opt-in.** Set `ANTIQUE_API_TOKEN` to require a Bearer token; unset, the API is open on `127.0.0.1` (still protected by the cross-origin guard). Single-process, no multi-user roles.
 - **No proxy provider integration.** You supply proxies; we don't pull them from BrightData/Decodo/etc. Rotation/failover over a supplied pool is implemented.
 - **Headless stealth is best-effort.** `window.chrome` + permissions tells are patched; deep headless heuristics (paint timing, GPU quirks) are not fully covered.
 - **WebRTC is block-only.** IPs are blocked; exposing a proxy-matched public IP via ICE candidate rewriting is on the roadmap.
-- **On-chain uses public RPC by default.** `ChainClient` defaults to Robinhood Chain's public RPC/Blockscout, which are rate-limited. For heavy `early-buyers` scans over wide block ranges, inject a provider (Alchemy/QuickNode) endpoint via a custom `ChainConfig`, and narrow `--from-block`/`--to-block`.
+- **Camoufox requires a separate install.** `pip install camoufox && python -m camoufox fetch`. Without it, the `camoufox` engine falls back to bundled Firefox (standard stealth, not deep).
+- **Chrome/Edge engines need the real browser installed** on the host (Playwright channel). Otherwise use the bundled `chromium`.
+- **Firefox/Camoufox/WebKit engines don't expose per-profile CDP or load .crx extensions** — those are Chromium-only.
 
 ### Roadmap
 
