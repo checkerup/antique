@@ -18,7 +18,7 @@ if errorlevel 1 goto :python_bad
 if not exist ".venv\Scripts\activate.bat" goto :setup
 
 call .venv\Scripts\activate.bat
-python -c "import fastapi, playwright, typer" >nul 2>nul
+python -c "import fastapi, playwright, typer, multipart" >nul 2>nul
 if errorlevel 1 goto :repair
 
 goto :start_server
