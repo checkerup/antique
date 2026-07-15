@@ -30,6 +30,16 @@ The goal is parity where it is useful, not blindly cloning every paid feature. M
 - Bulk status updates.
 - New regression tests for all three.
 
+## Implemented in 0.6.0
+
+- Backup dry-run preview: `/user/import/backup/preview`, CLI `preview-backup`, dashboard Tools.
+- Mass-create templates: `/user/template/create`, CLI `template-create`.
+- Encrypted AES-GCM snapshots: `/user/snapshot/export`, `/user/snapshot/import`, CLI snapshot commands.
+- Activity history foundation: `/activity`, CLI `activity`.
+- Local file/JSON proxy providers: `/proxy/providers/kinds`, `/proxy/providers/test`.
+- Group CRUD: `/group/create`, `/group/update`, `/group/delete`.
+- Resource and MCP health status: `/resource/status`, `/mcp/status`.
+
 ## High-value parity backlog
 
 These are the remaining serious gaps against AdsPower/Dolphin/GoLogin-style managers:

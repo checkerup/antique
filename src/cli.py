@@ -406,6 +406,45 @@ def import_backup(
             console.print(f"  [red]-[/red] {err['user_id']}: {err['error']}")
 
 
+@app.command("preview-backup")
+def preview_backup_cmd(path: Path = typer.Argument(..., exists=True, file_okay=False)):
+    """Preview an AdsPower backup without writing profiles."""
+    from .core.operations import preview_backup
+    data = preview_backup(path)
+    console.print_json(json.dumps(data, ensure_ascii=False, default=str))
+
+
+@app.command("template-create")
+def template_create_cmd(template_file: Path = typer.Argument(..., exists=True, dir_okay=False), count: int = typer.Option(1, "--count"), seed: Optional[str] = typer.Option(None, "--seed")):
+    """Create many profiles from a JSON template."""
+    from .core.operations import create_from_template
+    result = create_from_template(_store(), json.loads(template_file.read_text(encoding="utf-8")), count, seed=seed)
+    console.print(f"[green]✓[/green] created {len(result)} profiles")
+
+
+@app.command("snapshot-export")
+def snapshot_export_cmd(path: Path = typer.Argument(...), password: str = typer.Option(..., prompt=True, hide_input=True)):
+    """Write an encrypted profile snapshot."""
+    from .core.operations import encrypted_snapshot
+    encrypted_snapshot(_store(), path, password)
+    console.print(f"[green]✓[/green] encrypted snapshot → {path}")
+
+
+@app.command("snapshot-import")
+def snapshot_import_cmd(path: Path = typer.Argument(..., exists=True), password: str = typer.Option(..., prompt=True, hide_input=True), overwrite: bool = typer.Option(False, "--overwrite")):
+    """Restore an encrypted profile snapshot."""
+    from .core.operations import decrypt_snapshot
+    result = decrypt_snapshot(_store(), path, password, overwrite=overwrite)
+    console.print_json(json.dumps(result))
+
+
+@app.command("activity")
+def activity_cmd(user_id: Optional[str] = typer.Option(None, "--user"), limit: int = typer.Option(100, "--limit")):
+    """Show profile audit history."""
+    from .core.operations import list_activity
+    console.print_json(json.dumps([a.__dict__ for a in list_activity(_store(), user_id, limit)], ensure_ascii=False))
+
+
 @app.command("reimport")
 def reimport(
     user_id: str = typer.Argument(...),

@@ -40,7 +40,7 @@ antique is a Python service that:
 - Imports `.adb` profile bundles exported from AdsPower (cookies + LocalStorage + IndexedDB). The import uses native Chromium reading instead of brittle LevelDB parsing — we copy the source directories into Playwright's `user_data_dir` and let Chromium read them itself.
 - Exposes an AdsPower-compatible REST API on `http://127.0.0.1:<port>/...` so existing scripts that already talk to AdsPower can switch by changing the base URL.
 - Ships a single-page dashboard at `/` (or `/dashboard`) and a FastAPI Swagger at `/docs`.
-- 300+ pytest tests, including imported-profile launch regressions, auth-SOCKS5 relay, and smart fingerprint randomization.
+- 300+ pytest tests plus the 0.6.0 parity-release suites, including imported-profile launch regressions, auth-SOCKS5 relay, and smart fingerprint randomization.
 - Geo matching (timezone/locale/geolocation aligned to the proxy exit country), proxy rotation/failover, headless stealth, and a stealth self-test harness.
 - Swappable browser engines: Chromium, Google Chrome, Microsoft Edge, Firefox, Camoufox (deep engine-level stealth), WebKit.
 - One-click AdsPower backup import (whole backup folder or a single profile), preserving user_id, cookies, proxy, tags.
@@ -758,7 +758,11 @@ python -m pytest tests/test_sync.py tests/test_status_liveview.py tests/test_api
 
 ---
 
-## 15. Known limitations and roadmap
+## 15. 0.6.0 parity release
+
+Added operational parity features: AdsPower backup dry-run preview, profile templates and mass creation, encrypted AES-GCM snapshots, audit activity history, local file/JSON proxy providers, group CRUD, resource/MCP status endpoints, and CLI commands for each workflow. New tests live in `tests/test_operations_release.py` and the full manual/agent procedure is in `docs/AGENT-TESTING.md`.
+
+## 16. Known limitations and roadmap
 
 ### Done (in this build)
 
@@ -843,7 +847,7 @@ python -m pytest tests/test_sync.py tests/test_status_liveview.py tests/test_api
 
 ---
 
-## 16. Environment variables
+## 17. Environment variables
 
 | Variable | Default | Purpose |
 |---|---|---|
@@ -859,6 +863,6 @@ python -m pytest tests/test_sync.py tests/test_status_liveview.py tests/test_api
 
 ---
 
-## 17. License
+## 18. License
 
 MIT — see `LICENSE`.

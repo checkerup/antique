@@ -114,13 +114,14 @@ docker compose up          # dashboard on http://127.0.0.1:8080/
 Profiles + DB persist in the `antique-data` volume. Runs headless in the
 container. Set `ANTIQUE_API_TOKEN` in `docker-compose.yml` if you expose the port.
 
-## 9. New in 0.5.0
+## 9. New in 0.6.0
 
+- AdsPower backup preview, mass-create templates, encrypted snapshots, activity history, provider adapters, group CRUD, resource/MCP status and Tools panel.
 - Full profile-list sorting in UI, CLI and REST, with asc/desc and persistent UI selection.
 - Clone profile, bulk status updates, and improved profile operations in Manage.
 - Competitor parity matrix and remaining product backlog: `docs/COMPETITOR-FEATURE-MATRIX.md`.
 
-### Also included from 0.4.0
+### Also included from 0.5.0 and 0.4.0
 
 - Fixed AdsPower authenticated-SOCKS5 profile launch via a loopback RFC 1929 bridge.
 - Added bulk proxy assignment and smart fingerprint randomization to the dashboard.

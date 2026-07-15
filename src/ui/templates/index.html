@@ -128,6 +128,7 @@ td.name-cell { font-weight:600; }
   <div class="header-actions">
     <button class="icon-btn" id="theme-toggle" title="Toggle theme">☀️</button>
     <button class="btn" onclick="window.open('/docs','_blank')">API</button>
+    <button class="btn" onclick="openTools()">Tools</button>
     <button class="btn" onclick="openImport()">Import</button>
     <button class="btn primary" onclick="openCreate()">+ New profile</button>
   </div>
@@ -190,6 +191,12 @@ td.name-cell { font-weight:600; }
     <div class="field"><label>Password</label><input id="c-ppass" type="password"></div>
   </div></div>
   <div class="row"><button class="btn ghost" onclick="close_('createModal')">Cancel</button><button class="btn primary" onclick="submitCreate()">Create profile</button></div>
+</div></div>
+<div class="modal" id="toolsModal"><div class="panel">
+  <h2>Operations</h2><p class="desc">Useful controls for backup safety and diagnostics.</p>
+  <div class="row" style="justify-content:flex-start;flex-wrap:wrap"><button class="btn" onclick="previewBackup()">Preview AdsPower backup</button><button class="btn" onclick="loadActivity()">Recent activity</button><button class="btn" onclick="loadResources()">Resource status</button><button class="btn" onclick="window.open('/docs','_blank')">Open Swagger</button></div>
+  <pre id="tools-output" class="cdp-box" style="white-space:pre-wrap;max-height:360px;overflow:auto">Choose an operation.</pre>
+  <div class="row"><button class="btn primary" onclick="close_('toolsModal')">Close</button></div>
 </div></div>
 <div class="modal" id="importModal"><div class="panel">
   <h2>Import profiles</h2>
@@ -377,6 +384,10 @@ function open_(id){document.getElementById(id).classList.add("open");}
 function close_(id){document.getElementById(id).classList.remove("open");}
 function openCreate(){open_("createModal");}
 function toggleProxy(){document.getElementById("c-proxy-fields").style.display=document.getElementById("c-ptype").value==="direct"?"none":"block";}
+function openTools(){open_('toolsModal');}
+async function previewBackup(){try{const path=document.getElementById('b-path').value||'C:\\ai_workflow\\adspower_profiles_backup';const r=await api('/user/import/backup/preview',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({source_path:path})});document.getElementById('tools-output').textContent=JSON.stringify(r.data,null,2);}catch(e){document.getElementById('tools-output').textContent=e.message;}}
+async function loadActivity(){try{const r=await api('/activity?limit=100');document.getElementById('tools-output').textContent=JSON.stringify(r.data.events,null,2);}catch(e){document.getElementById('tools-output').textContent=e.message;}}
+async function loadResources(){try{const r=await api('/resource/status');document.getElementById('tools-output').textContent=JSON.stringify(r.data,null,2);}catch(e){document.getElementById('tools-output').textContent=e.message;}}
 function openImport(){importTab("backup");open_("importModal");}
 function importTab(t){document.querySelectorAll("#importModal .tab").forEach(el=>el.classList.toggle("active",el.dataset.tab===t));document.getElementById("tab-backup").style.display=t==="backup"?"block":"none";document.getElementById("tab-file").style.display=t==="file"?"block":"none";}
 async function submitCreate(){

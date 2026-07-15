@@ -38,3 +38,4 @@ httpx>=0.27
 
 # Utility
 python-dotenv>=1.0
+cryptography>=42.0

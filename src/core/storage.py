@@ -87,6 +87,16 @@ class GroupRecord(SQLModel, table=True):
     sort_order: int = Field(default=0)
 
 
+class ActivityEventRecord(SQLModel, table=True):
+    __tablename__ = "activity_events"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: str = Field(index=True)
+    action: str = Field(index=True)
+    detail: str = Field(default="{}")
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+
+
 # ---------------------------------------------------------------------------
 # Engine / session factory
 # ---------------------------------------------------------------------------

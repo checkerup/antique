@@ -1,4 +1,4 @@
-# Инструкция локальному агенту: проверка antique 0.5.0
+# Инструкция локальному агенту: проверка antique 0.6.0
 
 Проект: `C:\ai_workflow\antidetect-local`. Не менять рабочую БД для тестов: pytest использует временные каталоги.
 
@@ -22,7 +22,7 @@ python -m camoufox fetch
 
 ```powershell
 python -m pytest -q
-python -m pytest tests\test_import_launch_and_randomize.py tests\test_sort_clone_features.py tests\test_ui_release_040.py -v
+python -m pytest tests\test_import_launch_and_randomize.py tests\test_sort_clone_features.py tests\test_operations_release.py tests\test_ui_release_040.py -v
 python -m pytest tests\test_backup_import.py tests\test_profile_import.py tests\test_api_endpoints.py -v
 ```
 
@@ -42,6 +42,8 @@ python -m pytest tests\test_backup_import.py tests\test_profile_import.py tests\
 `tests/test_ui_release_040.py` фиксирует наличие theme, AdsPower import, bulk proxy, smart randomization, flow, Manage, extensions, release docs и установку движков в `start.bat`.
 
 `tests/test_sort_clone_features.py` проверяет сортировку Store/API по полям, clone и bulk status.
+
+`tests/test_operations_release.py` проверяет templates, activity audit, provider adapters, groups, resource/MCP status endpoints.
 
 Смежные обязательные suite:
 
@@ -106,7 +108,21 @@ python -m src.cli bulk-status <USER_ID_1> <USER_ID_2> warming
 
 UI: в Sort выбери любое поле и нажми его повторно для asc/desc. Проверить reload, фильтры и сортировку после авто-refresh.
 
-## 9. Финальный отчёт агента
+## 9. Parity release smoke
+
+```powershell
+python -m src.cli preview-backup C:\ai_workflow\adspower_profiles_backup
+python -m src.cli template-create template.json --count 3 --seed demo
+python -m src.cli activity
+python -m src.cli snapshot-export data\backup.enc --password
+python -m src.cli snapshot-import data\backup.enc --password
+```
+
+Swagger smoke: `/user/import/backup/preview`, `/user/template/create`, `/user/snapshot/export`, `/user/snapshot/import`, `/activity`, `/resource/status`, `/mcp/status`, `/proxy/providers/kinds`, `/proxy/providers/test`, `/group/create`, `/group/update`, `/group/delete`.
+
+Критерий: preview не создаёт профили; template создаёт ровно N; неверный пароль snapshot не меняет БД; activity содержит события; provider file/json не отправляет секреты в логи.
+
+## 10. Финальный отчёт агента
 
 Отчёт должен содержать:
 

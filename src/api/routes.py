@@ -1,4 +1,4 @@
-﻿"""AdsPower-compatible API routes.
+"""AdsPower-compatible API routes.
 
 Endpoints mirror AdsPower's local API (port 50325) so existing scripts
 that talk to AdsPower can switch by changing the base URL.
@@ -51,6 +51,8 @@ from ..core.proxy_pool import ProxyPool
 from ..core.portable import build_bundle, import_profile as portable_import, PortableBundleError
 from ..core.detect import score_report, expected_from_fingerprint
 from ..core.engines import list_engines, engine_keys
+from ..core.operations import list_activity, record_activity, preview_backup, create_from_template, encrypted_snapshot, decrypt_snapshot
+from ..core.providers import ProviderConfig, ProxyProvider, list_provider_kinds
 
 
 log = logging.getLogger("antique.api")
@@ -136,6 +138,31 @@ class BackupImportRequest(BaseModel):
     limit: Optional[int] = Field(default=None, ge=1)
 
 
+class TemplateCreateRequest(BaseModel):
+    template: Dict[str, Any]
+    count: int = Field(default=1, ge=1, le=1000)
+    seed: Optional[str] = None
+
+
+class SnapshotRequest(BaseModel):
+    path: str
+    password: str
+    overwrite: bool = False
+
+
+class ProviderRequest(BaseModel):
+    name: str
+    kind: str = "file"
+    source: str
+    enabled: bool = True
+
+
+class GroupRequest(BaseModel):
+    group_id: str
+    name: str
+    sort_order: int = 0
+
+
 class BulkAction(BaseModel):
     user_ids: List[str]
 
@@ -213,7 +240,7 @@ def _fingerprint_with_patch(raw: Optional[Dict[str, Any]], base: Optional[Dict[s
 
 @router.get("/health")
 def health() -> Dict[str, Any]:
-    return {"status": "ok", "service": "antique", "version": "0.5.0"}
+    return {"status": "ok", "service": "antique", "version": "0.6.0"}
 
 
 # ---------------------------------------------------------------------------
@@ -323,6 +350,50 @@ def user_clone(body: UserClone) -> Dict[str, Any]:
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc))
     return _ads_response(True, user_id=clone.user_id, name=clone.name, source_user_id=body.user_id)
+
+
+@router.post("/user/template/create")
+def user_template_create(body: TemplateCreateRequest) -> Dict[str, Any]:
+    assert _store is not None
+    try:
+        profiles = create_from_template(_store, body.template, body.count, seed=body.seed)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return _ads_response(True, created_count=len(profiles), user_ids=[p.user_id for p in profiles])
+
+
+@router.post("/user/snapshot/export")
+def snapshot_export(body: SnapshotRequest) -> Dict[str, Any]:
+    assert _store is not None
+    try:
+        out = encrypted_snapshot(_store, Path(body.path), body.password)
+    except (ValueError, RuntimeError, OSError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return _ads_response(True, path=str(out))
+
+
+@router.post("/user/snapshot/import")
+def snapshot_import(body: SnapshotRequest) -> Dict[str, Any]:
+    assert _store is not None
+    try:
+        result = decrypt_snapshot(_store, Path(body.path), body.password, overwrite=body.overwrite)
+    except (ValueError, RuntimeError, OSError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return _ads_response(True, **result)
+
+
+@router.get("/proxy/providers/kinds")
+def proxy_provider_kinds() -> Dict[str, Any]:
+    return _ads_response(True, kinds=list_provider_kinds())
+
+
+@router.post("/proxy/providers/test")
+def proxy_provider_test(body: ProviderRequest) -> Dict[str, Any]:
+    try:
+        values = ProxyProvider(ProviderConfig(body.name, body.kind, body.source, body.enabled)).fetch()
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return _ads_response(True, provider=body.name, count=len(values), proxies=values)
 
 
 @router.post("/user/delete")
@@ -473,6 +544,14 @@ async def user_import(
         "cookie_count": len(cookies),
         "full_profile_import": False,
     })
+
+
+@router.post("/user/import/backup/preview")
+def user_import_backup_preview(body: BackupImportRequest) -> Dict[str, Any]:
+    try:
+        return _ads_response(True, **preview_backup(Path(body.source_path)))
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
 
 @router.post("/user/import/backup")
@@ -839,16 +918,98 @@ def user_get_extensions(user_id: str) -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
+@router.get("/activity")
+def activity_list(user_id: Optional[str] = Query(None), limit: int = Query(100, ge=1, le=1000)) -> Dict[str, Any]:
+    assert _store is not None
+    events = list_activity(_store, user_id=user_id, limit=limit)
+    return _ads_response(True, events=[{"user_id": e.user_id, "action": e.action, "detail": e.detail, "created_at": e.created_at} for e in events])
+
+
+@router.get("/resource/status")
+def resource_status() -> Dict[str, Any]:
+    assert _launcher is not None
+    import os
+    return _ads_response(True, running=len(_launcher.list_running()), process_count=len(_launcher.list_running()), pid=os.getpid())
+
+
+@router.get("/mcp/status")
+def mcp_status() -> Dict[str, Any]:
+    return _ads_response(True, transport="stdio", status="available", tools="browser profile automation")
+
+
+@router.post("/group/create")
+def group_create(body: GroupRequest) -> Dict[str, Any]:
+    assert _store is not None
+    from ..core.storage import GroupRecord
+    from sqlmodel import Session
+    with Session(_store.engine) as s:
+        if s.get(GroupRecord, body.group_id):
+            raise HTTPException(status_code=409, detail="group already exists")
+        s.add(GroupRecord(group_id=body.group_id, name=body.name, sort_order=body.sort_order)); s.commit()
+    return _ads_response(True, group_id=body.group_id, name=body.name)
+
+
+@router.post("/group/update")
+def group_update(body: GroupRequest) -> Dict[str, Any]:
+    assert _store is not None
+    from ..core.storage import GroupRecord
+    from sqlmodel import Session
+    with Session(_store.engine) as s:
+        row = s.get(GroupRecord, body.group_id)
+        if not row: raise HTTPException(status_code=404, detail="group not found")
+        row.name, row.sort_order = body.name, body.sort_order; s.add(row); s.commit()
+    return _ads_response(True, group_id=body.group_id, name=body.name)
+
+
+@router.post("/group/delete")
+def group_delete(group_id: str = Body(..., embed=True)) -> Dict[str, Any]:
+    assert _store is not None
+    from ..core.storage import GroupRecord
+    from sqlmodel import Session
+    with Session(_store.engine) as s:
+        row = s.get(GroupRecord, group_id)
+        if not row: raise HTTPException(status_code=404, detail="group not found")
+        s.delete(row); s.commit()
+    return _ads_response(True, group_id=group_id, deleted=True)
+
+
 @router.get("/group/list")
 def group_list() -> Dict[str, Any]:
-    """Return all unique group_ids with profile counts."""
+    """Return all unique groups with profile counts."""
     assert _store is not None
+    from ..core.storage import GroupRecord
+    from sqlmodel import Session, select
+    
     profiles = _store.list()
-    groups: Dict[str, int] = {}
+    counts: Dict[str, int] = {}
     for p in profiles:
         gid = p.group_id or "0"
-        groups[gid] = groups.get(gid, 0) + 1
-    group_list = [{"group_id": gid, "count": cnt} for gid, cnt in sorted(groups.items())]
+        counts[gid] = counts.get(gid, 0) + 1
+        
+    with Session(_store.engine) as s:
+        groups = s.exec(select(GroupRecord)).all()
+        
+    group_list = []
+    has_default = False
+    for g in groups:
+        if g.group_id == "0":
+            has_default = True
+        group_list.append({
+            "group_id": g.group_id,
+            "name": g.name,
+            "sort_order": g.sort_order,
+            "count": counts.get(g.group_id, 0)
+        })
+        
+    if not has_default:
+        group_list.append({
+            "group_id": "0",
+            "name": "Default",
+            "sort_order": 0,
+            "count": counts.get("0", 0)
+        })
+        
+    group_list.sort(key=lambda x: (x["sort_order"], x["name"]))
     return _ads_response(True, list=group_list, total=len(group_list))
 
 
@@ -1155,7 +1316,7 @@ def info() -> Dict[str, Any]:
     running = _launcher.list_running()
     return {
         "service": "antique",
-        "version": "0.4.0",
+        "version": "0.6.0",
         "profile_count": len(profiles),
         "running_count": len(running),
         "running": [h.user_id for h in running],

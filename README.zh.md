@@ -199,7 +199,9 @@ src/
 │   ├── engines.py                 ← 浏览器引擎注册表 (EngineSpec, resolve_engine, list_engines)
 │   ├── sync.py                    ← 多 profile 同步自动化处理器 (run_sync_flow, FlowTask)
 │   ├── fingerprint_ops.py         ← 智能批量指纹随机化，支持字段组共享/锁定
-│   └── socks_bridge.py            ← 本地 SOCKS5 代理授权桥接器（解决 Chromium 不支持带账号密码的 SOCKS5 问题）
+│   ├── socks_bridge.py            ← 本地 SOCKS5 代理授权桥接器（解决 Chromium 不支持带账号密码的 SOCKS5 问题）
+│   ├── operations.py              ← 模板批量创建、AES-GCM 加密快照、备份预览与操作审计
+│   └── providers.py               ← 本地代理源提取器（支持 File/JSON 文件源）
 ├── api/
 │   ├── __init__.py
 │   ├── server.py                  ← FastAPI app factory、CORS、挂载 UI 与 API 路由
@@ -340,10 +342,15 @@ python -m src.cli run-flow USER_ID FLOW.json [--stop-on-error] [--headless]
 python -m src.cli engines                                        # 列出支持的浏览器引擎及其防关联等级
 python -m src.cli create ... [--engine chromium|chrome|edge|firefox|camoufox|webkit] # 创建指定引擎的 profile
 python -m src.cli import-backup PATH [--overwrite] [--limit N]   # 导入 AdsPower 备份目录
-python -m src.cli set-status USER_ID STATUS                     # 修改账号状态：new|warming|active|limited|banned|retired
-python -m src.cli sync FLOW.json -u USER_ID -u USER_ID [...]    # 跨多个 profile 同步运行流程
-python -m src.cli create ... [--status active]                  # 创建 profile 时指定状态
+python -m src.cli clone USER_ID [--name NAME] [--user-id NEW_ID] # 克隆 profile (复制指纹、代理、Cookie 及标签)
+python -m src.cli bulk-status USER_ID [USER_ID ...] STATUS      # 批量修改账号状态
+python -m src.cli list ... [--sort name|launches|...] [--order asc|desc] # 支持 13 种字段排序和升降序选择
 python -m src.cli fingerprint [--seed SEED] [--os windows|macos|linux]
+python -m src.cli preview-backup PATH                                # 预览 AdsPower 备份目录而不实际导入
+python -m src.cli template-create TEMPLATE.json [--count N] [--seed S] # 使用 JSON 模板批量创建 profile
+python -m src.cli snapshot-export PATH                               # 导出 AES-GCM 加密的 profile 备份快照
+python -m src.cli snapshot-import PATH [--overwrite]                 # 从加密快照中恢复 profile 备份
+python -m src.cli activity [--user USER_ID] [--limit N]              # 查看操作审计历史日志
 ```
 
 ### 退出码
@@ -447,6 +454,38 @@ GET  /engine/list
 
 POST /user/import/backup            Body: {source_path, overwrite?, limit?}
 → {code:0, data:{imported_count, updated_count, skipped_count, error_count, ...}}
+
+POST /user/import/backup/preview    Body: {source_path}
+→ {code:0, data:{profiles:[...], total_count, groups:[...], tags:[...]}} # 预览 AdsPower 备份
+
+POST /user/template/create          Body: {template, count, seed?}
+→ {code:0, data:{created_count, user_ids:[...]}}  # 模板批量创建
+
+POST /user/snapshot/export          Body: {path, password, overwrite?}
+→ {code:0, data:{path}}                           # 导出加密快照 (AES-GCM)
+
+POST /user/snapshot/import          Body: {path, password, overwrite?}
+→ {code:0, data:{imported_count, updated_count, skipped_count}} # 导入加密快照
+
+GET  /activity?user_id=...&limit=...  → 获取操作审计日志列表
+
+GET  /resource/status                → 获取系统资源占用状态 (PID、活动进程数)
+
+GET  /mcp/status                     → 获取 MCP 服务端运行状态及支持的工具列表
+
+GET  /proxy/providers/kinds          → 获取支持的本地代理源类型列表 (file, json)
+
+POST /proxy/providers/test          Body: {name, kind, source, enabled?}
+→ {code:0, data:{provider, count, proxies:[...]}} # 测试加载本地代理源数据
+
+POST /group/create                  Body: {group_id, name, sort_order?}
+→ {code:0, data:{group_id, name}}                 # 创建分组
+
+POST /group/update                  Body: {group_id, name, sort_order?}
+→ {code:0, data:{group_id, name}}                 # 更新分组
+
+POST /group/delete                  Body: {group_id} (embed=True)
+→ {code:0, data:{group_id, deleted:true}}         # 删除分组
 
 POST /user/clone                    Body: {user_id, name?, user_id_override?}
 → {code:0, data:{user_id, name, source_user_id}}
@@ -702,10 +741,10 @@ python -m pytest tests/test_cookie.py -v
 python -m pytest -k adb             # only .adb-related tests
 ```
 
-**300+ 个测试**（目前共 306 个）：
+**300+ 个测试**（目前共 310 个）：
 
 - `test_storage.py` —— SQLite engine、tables
-- `test_profile.py` —— ProfileStore CRUD、完整 profile 字段、session 簿记
+- `test_profile.py` —— ProfileStore CRUD、完整 profile 字段、session 记录
 - `test_fingerprint.py` —— Fingerprint 生成 + init script 注入
 - `test_proxy.py` —— ProxyConfig 校验 + Playwright 格式互转
 - `test_cookie.py` —— Cookie 解析（Netscape/JSON/.adb）、LocalStorage/IndexedDB 抽取
@@ -725,16 +764,21 @@ python -m pytest -k adb             # only .adb-related tests
 - `test_import_launch_and_randomize.py` —— 导入后启动回归、本地带密 SOCKS5 代理桥接、批量指纹智能随机化 (0.4.0 新增)
 - `test_ui_release_040.py` —— 对发布版 0.4.0 UI 核心元素的静态与行为集成测试 (0.4.0 新增)
 - `test_sort_clone_features.py` —— profile 排序选择、复制克隆及批量账号状态更新测试 (0.5.0 新增)
+- `test_operations_release.py` —— 模板批量创建、AES-GCM 加密快照、操作审计日志、本地代理提取及分组 CRUD 测试 (0.6.0 新增)
 
 仅运行最新的测试套件：
 
 ```bash
-python -m pytest tests/test_sort_clone_features.py tests/test_import_launch_and_randomize.py tests/test_ui_release_040.py -v
+python -m pytest tests/test_operations_release.py tests/test_sort_clone_features.py tests/test_import_launch_and_randomize.py tests/test_ui_release_040.py -v
 ```
 
 ---
 
-## 15. 已知限制与 roadmap
+## 15. 0.6.0 版本功能发布
+
+新增了与 AdsPower 的功能对齐：AdsPower 备份数据无导入预览 (dry-run)、配置模板与批量创建、AES-GCM 加密快照备份导出/导入、操作历史审计日志、本地文件/JSON代理源轮换提取、自定义分组的 CRUD 增删改查、系统资源占用和 MCP 监控端点，以及网页端 Dashboard 的 Tools 工具箱控制面板。新测试套件位于 `tests/test_operations_release.py`。
+
+## 16. 已知限制与 roadmap
 
 ### 已完成（本次构建）
 
@@ -775,6 +819,13 @@ python -m pytest tests/test_sort_clone_features.py tests/test_import_launch_and_
 - [x] **批量状态修改** (支持在 Dashboard 界面、API 和 CLI 批量更新账号状态)
 - [x] **智能批量随机化指纹** (可锁定部分字段或跨 profile 共享相同的指纹特征字段)
 - [x] **带密 SOCKS5 代理桥** (利用 loopback 管道透明代理解决原生 Chromium 对 socks 账号密码的校验缺陷)
+- [x] **AdsPower 备份预览 (dry-run)** (支持在网页/API/CLI预览AdsPower备份数据而不实际写入库)
+- [x] **模板批量创建** (支持使用 JSON 模板进行 profile 批量创建与指纹随机生成)
+- [x] **AES-GCM 加密快照** (支持导出和导入经过密码保护的 profile 压缩备份快照)
+- [x] **操作历史审计** (后台自动记录操作日志，支持 API 及 CLI 查询历史记录)
+- [x] **本地代理源提取** (支持文件/JSON形式的本地代理源轮换提取)
+- [x] **分组 CRUD 管理** (支持在后台与 API 进行自定义分组的创建、修改和删除)
+- [x] **资源状态与 MCP 监控** (支持查询 PID、活动浏览器进程数以及 MCP tools 映射)
 - [x] 300+ 个 pytest 测试通过
 
 ### 已知限制
@@ -798,13 +849,13 @@ python -m pytest tests/test_sort_clone_features.py tests/test_import_launch_and_
 
 ---
 
-## 16. 环境变量
+## 17. 环境变量
 
 | 变量 | 默认值 | 用途 |
 |---|---|---|
 | `ANTIQUE_DATA_DIR` | `./data` | `antique.db` + profile user data dir 的根目录 |
 | `ANTIQUE_DB` | `<data_dir>/antique.db` | SQLite 路径覆盖 |
-| `ANTIQUE_BROWSER_CHANNEL` | （未设置，使用打包的 Chromium） | Playwright browser channel：`chrome`、`msedge`、`chromium-beta` |
+| `ANTIQUE_BROWSER_CHANNEL` | （未设置，使用打包 of Chromium） | Playwright browser channel：`chrome`、`msedge`、`chromium-beta` |
 | `ANTIQUE_API_TOKEN` | （未设置，公开） | 如果设置，所有 REST API 将校验 `Authorization: Bearer <token>` 请求头 |
 | `ANTIQUE_ALLOWED_ORIGINS` | （未设置） | 允许进行远程/隧道访问的额外的信任 Origin 字符串子串的逗号分隔列表（如 `ngrok-free.app`）。Localhost 始终受信任。如果通过外部隧道（如 ngrok）打开 dashboard 必须配置此项，否则 Origin-guard 将返回 403 错误。 |
 | `ANTIDETECT_ENGINE` | `chromium` | 默认浏览器引擎：`chromium`、`firefox`、`camoufox` |
@@ -814,6 +865,6 @@ python -m pytest tests/test_sort_clone_features.py tests/test_import_launch_and_
 
 ---
 
-## 17. License
+## 18. License
 
 MIT —— 参见 `LICENSE`。
