@@ -10,6 +10,20 @@ readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
 authors = [{ name = "antique contributors" }]
+dependencies = [
+  "fastapi>=0.110",
+  "uvicorn[standard]>=0.27",
+  "pydantic>=2.6",
+  "playwright>=1.42",
+  "sqlmodel>=0.0.16",
+  "httpx>=0.27",
+  "aiohttp>=3.9",
+  "fake-useragent>=1.5",
+  "pyyaml>=6.0",
+  "typer>=0.12",
+  "rich>=13.7",
+  "python-dotenv>=1.0"
+]
 
 [project.scripts]
 antique = "src.cli:main"
