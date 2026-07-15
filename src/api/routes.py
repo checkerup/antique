@@ -104,6 +104,17 @@ class UserDelete(BaseModel):
     user_id: str
 
 
+class UserClone(BaseModel):
+    user_id: str
+    name: Optional[str] = None
+    user_id_override: Optional[str] = None
+
+
+class BulkStatusUpdate(BaseModel):
+    user_ids: List[str]
+    account_status: str
+
+
 class UserStart(BaseModel):
     user_id: str
     debug_port: Optional[int] = None
@@ -143,6 +154,14 @@ class BulkProxyImport(BaseModel):
     user_ids: Optional[List[str]] = None  # if provided, assign 1:1; else create pool
 
 
+class BulkFingerprintRandomize(BaseModel):
+    user_ids: List[str]
+    os_family: str = "windows"
+    shared_fields: List[str] = Field(default_factory=list)
+    preserve_fields: List[str] = Field(default_factory=lambda: ["engine", "extensions"])
+    seed: Optional[str] = None
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -173,6 +192,20 @@ def _ads_response(success: bool, **data: Any) -> Dict[str, Any]:
     return {"code": 0 if success else 1, "msg": "success" if success else "error", "data": data}
 
 
+def _fingerprint_with_patch(raw: Optional[Dict[str, Any]], base: Optional[Dict[str, Any]] = None) -> Fingerprint:
+    """Merge a partial UI/API patch onto a full coherent fingerprint.
+
+    Previously ``{"browser_engine": "chromium"}`` constructed a Fingerprint
+    with empty UA/noise/fonts. Editing one field also reset every omitted field
+    to dataclass defaults. Both behaviours could break profile launch.
+    """
+    from dataclasses import fields as dc_fields
+    valid = {f.name for f in dc_fields(Fingerprint)}
+    merged = generate_fingerprint().canonical() if base is None else dict(base)
+    merged.update({k: v for k, v in (raw or {}).items() if k in valid})
+    return Fingerprint(**{k: v for k, v in merged.items() if k in valid})
+
+
 # ---------------------------------------------------------------------------
 # Health
 # ---------------------------------------------------------------------------
@@ -180,7 +213,7 @@ def _ads_response(success: bool, **data: Any) -> Dict[str, Any]:
 
 @router.get("/health")
 def health() -> Dict[str, Any]:
-    return {"status": "ok", "service": "antique", "version": "0.3.0"}
+    return {"status": "ok", "service": "antique", "version": "0.5.0"}
 
 
 # ---------------------------------------------------------------------------
@@ -191,14 +224,7 @@ def health() -> Dict[str, Any]:
 @router.post("/user/create")
 def user_create(body: UserCreate) -> Dict[str, Any]:
     assert _store is not None
-    fp: Optional[Fingerprint] = None
-    if body.fingerprint_config:
-        from dataclasses import fields as dc_fields
-        valid_keys = {f.name for f in dc_fields(Fingerprint)}
-        cleaned = {k: v for k, v in body.fingerprint_config.items() if k in valid_keys}
-        fp = Fingerprint(**cleaned)
-    else:
-        fp = generate_fingerprint()
+    fp = _fingerprint_with_patch(body.fingerprint_config)
     p = _store.create(
         name=body.name,
         group_id=body.group_id,
@@ -220,12 +246,10 @@ def user_create(body: UserCreate) -> Dict[str, Any]:
 @router.post("/user/update")
 def user_update(body: UserUpdate) -> Dict[str, Any]:
     assert _store is not None
-    fp = None
-    if body.fingerprint_config:
-        from dataclasses import fields as dc_fields
-        valid_keys = {f.name for f in dc_fields(Fingerprint)}
-        cleaned = {k: v for k, v in body.fingerprint_config.items() if k in valid_keys}
-        fp = Fingerprint(**cleaned)
+    existing = _store.get(body.user_id)
+    if existing is None:
+        raise HTTPException(status_code=404, detail="user_id not found")
+    fp = _fingerprint_with_patch(body.fingerprint_config, existing.fingerprint) if body.fingerprint_config is not None else None
     try:
         p = _store.update(
             body.user_id,
@@ -255,9 +279,11 @@ def user_list(
     search: Optional[str] = Query(None),
     tag: Optional[str] = Query(None),
     account_status: Optional[str] = Query(None),
+    sort_by: str = Query("name", pattern="^(name|id|user_id|group|status|tags|launches|cookies|created|updated|last_launched|proxy|engine|live)$"),
+    sort_order: str = Query("asc", pattern="^(asc|desc)$"),
 ) -> Dict[str, Any]:
     assert _store is not None
-    profiles = _store.list(group_id=group_id, tag=tag, search=search, account_status=account_status)
+    profiles = _store.list(group_id=group_id, tag=tag, search=search, account_status=account_status, sort_by=sort_by, sort_order=sort_order)
     total = len(profiles)
     start = (page - 1) * page_size
     end = start + page_size
@@ -268,7 +294,35 @@ def user_list(
         total=total,
         page=page,
         page_size=page_size,
+        sort_by=sort_by,
+        sort_order=sort_order,
     )
+
+
+@router.post("/user/clone")
+def user_clone(body: UserClone) -> Dict[str, Any]:
+    """Clone metadata, fingerprint, proxy, cookies and tags into a new profile."""
+    assert _store is not None
+    source = _store.get(body.user_id)
+    if source is None:
+        raise HTTPException(status_code=404, detail="user_id not found")
+    from .routes import _fingerprint_with_patch
+    fp = _fingerprint_with_patch(source.fingerprint)
+    try:
+        clone = _store.create(
+            name=body.name or f"{source.name} copy",
+            group_id=source.group_id,
+            proxy=dict(source.proxy),
+            fingerprint=fp,
+            cookies=list(source.cookies),
+            tags=list(source.tags),
+            remark=source.remark,
+            account_status="new",
+            user_id=body.user_id_override,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    return _ads_response(True, user_id=clone.user_id, name=clone.name, source_user_id=body.user_id)
 
 
 @router.post("/user/delete")
@@ -289,7 +343,15 @@ async def user_start(body: UserStart) -> Dict[str, Any]:
     p = _store.get(body.user_id)
     if p is None:
         raise HTTPException(status_code=404, detail="user_id not found")
-    handle = await _launcher.start(p, debug_port=body.debug_port)
+    try:
+        handle = await _launcher.start(p, debug_port=body.debug_port)
+    except Exception as exc:
+        log.exception("profile launch failed: %s", p.user_id)
+        message = str(exc).strip() or exc.__class__.__name__
+        raise HTTPException(
+            status_code=422,
+            detail=f"Could not start profile {p.user_id}: {message}",
+        )
     return _ads_response(True, **{
         "user_id": p.user_id,
         "debug_port": handle.debug_port,
@@ -586,6 +648,19 @@ async def user_proxy_check(user_id: str) -> Dict[str, Any]:
     return _ads_response(True, user_id=user_id, **result)
 
 
+@router.post("/user/bulk/status")
+def user_bulk_status(body: BulkStatusUpdate) -> Dict[str, Any]:
+    assert _store is not None
+    results = []
+    for uid in body.user_ids:
+        try:
+            _store.update(uid, account_status=body.account_status)
+            results.append({"user_id": uid, "ok": True})
+        except KeyError:
+            results.append({"user_id": uid, "ok": False, "error": "not found"})
+    return _ads_response(True, results=results, updated_count=sum(1 for r in results if r["ok"]))
+
+
 @router.post("/user/bulk/proxy/assign")
 def user_bulk_proxy_assign(body: BulkProxyAssign) -> Dict[str, Any]:
     assert _store is not None
@@ -597,6 +672,41 @@ def user_bulk_proxy_assign(body: BulkProxyAssign) -> Dict[str, Any]:
         except KeyError:
             results.append({"user_id": uid, "ok": False, "error": "not found"})
     return _ads_response(True, results=results)
+
+
+@router.post("/user/bulk/fingerprint/randomize")
+def user_bulk_fingerprint_randomize(body: BulkFingerprintRandomize) -> Dict[str, Any]:
+    """Randomize selected profiles while optionally sharing or preserving groups."""
+    assert _store is not None
+    from ..core.fingerprint_ops import randomize_batch
+    existing: Dict[str, Dict[str, Any]] = {}
+    missing: List[str] = []
+    for uid in body.user_ids:
+        profile = _store.get(uid)
+        if profile is None:
+            missing.append(uid)
+        else:
+            existing[uid] = profile.fingerprint or {}
+    try:
+        generated = randomize_batch(
+            existing,
+            os_family=body.os_family,
+            shared_fields=body.shared_fields,
+            preserve_fields=body.preserve_fields,
+            seed=body.seed,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    for uid, fp in generated.items():
+        _store.update(uid, fingerprint=fp)
+    return _ads_response(
+        True,
+        updated_count=len(generated),
+        user_ids=list(generated),
+        missing=missing,
+        shared_fields=body.shared_fields,
+        preserved_fields=body.preserve_fields,
+    )
 
 
 @router.post("/user/bulk/proxy/import")
@@ -1045,7 +1155,7 @@ def info() -> Dict[str, Any]:
     running = _launcher.list_running()
     return {
         "service": "antique",
-        "version": "0.3.0",
+        "version": "0.4.0",
         "profile_count": len(profiles),
         "running_count": len(running),
         "running": [h.user_id for h in running],

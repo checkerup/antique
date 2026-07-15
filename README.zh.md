@@ -198,6 +198,8 @@ src/
 │   ├── detect.py                  ← 指纹防关联自检机制（build_collector_script, score_report）
 │   ├── engines.py                 ← 浏览器引擎注册表 (EngineSpec, resolve_engine, list_engines)
 │   ├── sync.py                    ← 多 profile 同步自动化处理器 (run_sync_flow, FlowTask)
+│   ├── fingerprint_ops.py         ← 智能批量指纹随机化，支持字段组共享/锁定
+│   └── socks_bridge.py            ← 本地 SOCKS5 代理授权桥接器（解决 Chromium 不支持带账号密码的 SOCKS5 问题）
 ├── api/
 │   ├── __init__.py
 │   ├── server.py                  ← FastAPI app factory、CORS、挂载 UI 与 API 路由
@@ -446,6 +448,16 @@ GET  /engine/list
 POST /user/import/backup            Body: {source_path, overwrite?, limit?}
 → {code:0, data:{imported_count, updated_count, skipped_count, error_count, ...}}
 
+POST /user/clone                    Body: {user_id, name?, user_id_override?}
+→ {code:0, data:{user_id, name, source_user_id}}
+
+POST /user/bulk/status              Body: {user_ids:[...], account_status}
+→ {code:0, data:{results:[{user_id, ok, error?}], updated_count}}
+
+POST /user/bulk/fingerprint/randomize
+Body: {user_ids:[...], os_family?, shared_fields?:["screen","gpu",...], preserve_fields?:["engine",...], seed?}
+→ {code:0, data:{updated_count, user_ids:[...]}}
+
 GET  /status/list                   → 预设账号状态列表
 POST /user/{user_id}/status         Body: {account_status}
 POST /user/{user_id}/screenshot     → {code:0, data:{base64_png}}   # Live View 截图 (需处于运行状态)
@@ -690,7 +702,7 @@ python -m pytest tests/test_cookie.py -v
 python -m pytest -k adb             # only .adb-related tests
 ```
 
-**340+ 个测试**（目前共 292 个）：
+**300+ 个测试**（目前共 306 个）：
 
 - `test_storage.py` —— SQLite engine、tables
 - `test_profile.py` —— ProfileStore CRUD、完整 profile 字段、session 簿记
@@ -708,13 +720,16 @@ python -m pytest -k adb             # only .adb-related tests
 - `test_api_endpoints.py` —— HTTP 级别 API 测试 (TestClient)：扩展组件回归、地理匹配、代理池、便携式导入导出、检测评分
 - `test_auth.py` —— API 鉴权 + 来源保护 (DNS-rebinding、Bearer 令牌、隧道允许列表)
 - `test_engines.py` —— 浏览器引擎注册表：规格、能力、别名解析、优先决议、启动器对接
-- `test_sync.py` —— 跨 profile 同步自动化流程测试 (并发控制、异常隔离) (新增)
-- `test_status_liveview.py` —— 账号状态、Live View 截图、CDP 连接检测与截图异常路径测试 (新增)
+- `test_sync.py` —— 跨 profile 同步自动化流程测试 (并发控制、异常隔离)
+- `test_status_liveview.py` —— 账号状态、Live View 截图、CDP 连接检测与截图异常路径测试
+- `test_import_launch_and_randomize.py` —— 导入后启动回归、本地带密 SOCKS5 代理桥接、批量指纹智能随机化 (0.4.0 新增)
+- `test_ui_release_040.py` —— 对发布版 0.4.0 UI 核心元素的静态与行为集成测试 (0.4.0 新增)
+- `test_sort_clone_features.py` —— profile 排序选择、复制克隆及批量账号状态更新测试 (0.5.0 新增)
 
 仅运行最新的测试套件：
 
 ```bash
-python -m pytest tests/test_sync.py tests/test_status_liveview.py tests/test_api_endpoints.py -v
+python -m pytest tests/test_sort_clone_features.py tests/test_import_launch_and_randomize.py tests/test_ui_release_040.py -v
 ```
 
 ---
@@ -750,8 +765,17 @@ python -m pytest tests/test_sync.py tests/test_status_liveview.py tests/test_api
 - [x] **可更换浏览器引擎** (Chromium/Chrome/Edge/Firefox/Camoufox/WebKit 注册表, `src/core/engines.py`, `/engine/list`, `create --engine`)
 - [x] **Camoufox 深度隐身引擎** (Gecko 级指纹伪装；若未安装，则回退至捆绑 Firefox)
 - [x] **一键 AdsPower 备份导入** (支持导入整文件夹或单 profile; CLI `import-backup` + `/user/import/backup` + 网页端)
-- [x] **重构设计 Dashboard** (亮/暗色主题，引擎选择，AdsPower 导入入口，提示弹窗)
-- [x] 270+ 个 pytest 测试通过
+- [x] **账号状态标识** (`new`/`warming`/`active`/`limited`/`banned`/`retired`) 及过滤机制
+- [x] **Live View** (在 Dashboard 直观预览正在运行的 profile 实时截图)
+- [x] **真实的 CDP 服务** (为每个 Chromium profile 提供独占的 CDP 调试端口)
+- [x] **跨 profile 同步控制** (并发同步执行相同步骤, `src/core/sync.py`)
+- [x] **Docker 容器部署支持**
+- [x] **多字段排序机制** (Dashboard、REST API 与 CLI 支持 13 种属性排序及升降序)
+- [x] **Profile 克隆复制** (支持一键完整复制指纹、代理、Cookie 与标签)
+- [x] **批量状态修改** (支持在 Dashboard 界面、API 和 CLI 批量更新账号状态)
+- [x] **智能批量随机化指纹** (可锁定部分字段或跨 profile 共享相同的指纹特征字段)
+- [x] **带密 SOCKS5 代理桥** (利用 loopback 管道透明代理解决原生 Chromium 对 socks 账号密码的校验缺陷)
+- [x] 300+ 个 pytest 测试通过
 
 ### 已知限制
 
@@ -766,10 +790,10 @@ python -m pytest tests/test_sync.py tests/test_status_liveview.py tests/test_api
 
 ### Roadmap
 
-- [ ] **每个 profile 的真实 CDP** — 为每个 profile 分配一个唯一的 `--remote-debugging-port`（目前仍在模拟中）。
+- [x] **每个 profile 的真实 CDP** — 为每个 profile 分配一个唯一的 `--remote-debugging-port`。
 - [ ] **WebRTC 代理外网 IP 重写** — 在 ICE 候选里暴露代理的公网 IP 而非直接阻断。
 - [ ] **MCP 服务的 UI 集成** — 支持从 dashboard 启停 MCP 服务。
-- [ ] **扩展 Web Store 浏览器** — 支持从 UI 搜索和安装扩展。
+- [ ] **扩展 Web Store 浏览器** — 支持从 UI 搜索 and 安装扩展。
 - [ ] **FingerprintJS 验证集成** — 引入 fingerprintjs/fingerprintjs 检测套件以进行防关联效果检验。
 
 ---

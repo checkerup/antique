@@ -13,29 +13,29 @@
   --speed: .16s;
 }
 html[data-theme="dark"] {
-  --bg:#0b0e14; --bg-2:#11151d; --panel:#151a23; --panel-2:#1b2029;
-  --border:#262c38; --border-2:#333b4a; --text:#e6edf3; --muted:#8b95a5; --faint:#5b6472;
-  --accent:#6ea8fe; --accent-strong:#4d8dfd; --green:#46c56a; --red:#f26d6d; --yellow:#e0b341; --purple:#b98cff;
-  --chip:rgba(110,168,254,.14);
+  --bg:oklch(14% .012 48); --bg-2:oklch(18% .014 48); --panel:oklch(20% .014 48); --panel-2:oklch(24% .015 48);
+  --border:oklch(30% .014 48); --border-2:oklch(38% .016 48); --text:oklch(94% .008 48); --muted:oklch(70% .018 48); --faint:oklch(54% .016 48);
+  --accent:oklch(72% .18 35); --accent-strong:oklch(66% .2 35); --green:oklch(74% .15 148); --red:oklch(68% .2 25); --yellow:oklch(80% .14 88); --purple:oklch(72% .13 300);
+  --chip:oklch(27% .055 35);
 }
 html[data-theme="light"] {
-  --bg:#f5f7fb; --bg-2:#eef1f6; --panel:#fff; --panel-2:#f7f9fc;
-  --border:#e2e7ef; --border-2:#d3dae5; --text:#16202e; --muted:#5d6b7e; --faint:#93a0b2;
-  --accent:#2f6fed; --accent-strong:#205ad6; --green:#1f9d4d; --red:#d64545; --yellow:#b7851b; --purple:#7a4ddb;
-  --chip:rgba(47,111,237,.10); --shadow:0 1px 2px rgba(20,32,46,.06), 0 8px 24px rgba(20,32,46,.08);
+  --bg:oklch(97% .008 48); --bg-2:oklch(94% .009 48); --panel:oklch(99% .004 48); --panel-2:oklch(96% .008 48);
+  --border:oklch(88% .012 48); --border-2:oklch(79% .018 48); --text:oklch(25% .025 48); --muted:oklch(48% .025 48); --faint:oklch(65% .02 48);
+  --accent:oklch(60% .2 35); --accent-strong:oklch(53% .21 35); --green:oklch(55% .15 148); --red:oklch(56% .2 25); --yellow:oklch(58% .13 88); --purple:oklch(55% .14 300);
+  --chip:oklch(94% .035 35); --shadow:0 1px 2px oklch(25% .02 48 / .06), 0 12px 32px oklch(25% .02 48 / .08);
 }
 * { box-sizing:border-box; }
-body { margin:0; font-family:var(--font); background:var(--bg); color:var(--text); font-size:14px; line-height:1.5; -webkit-font-smoothing:antialiased; transition:background var(--speed), color var(--speed); }
+body { margin:0; font-family:var(--font); background:var(--bg); color:var(--text); font-size:15px; line-height:1.6; -webkit-font-smoothing:antialiased; font-optical-sizing:auto; transition:background var(--speed), color var(--speed); }
 a { color:var(--accent); text-decoration:none; }
 header { position:sticky; top:0; z-index:40; display:flex; align-items:center; justify-content:space-between; padding:14px 22px; background:var(--panel); border-bottom:1px solid var(--border); }
 .brand { display:flex; align-items:center; gap:12px; }
-.logo { width:34px; height:34px; border-radius:9px; background:linear-gradient(135deg,var(--accent),var(--purple)); display:grid; place-items:center; color:#fff; font-weight:800; font-size:17px; }
+.logo { width:36px; height:36px; border-radius:11px; background:var(--accent); display:grid; place-items:center; color:oklch(16% .02 48); font-weight:900; font-size:18px; transform:rotate(-3deg); box-shadow:0 7px 24px oklch(60% .18 35 / .22); }
 .brand h1 { margin:0; font-size:16px; font-weight:700; }
 .brand .sub { color:var(--muted); font-size:12px; }
 .header-actions { display:flex; align-items:center; gap:8px; }
 .btn { display:inline-flex; align-items:center; gap:6px; padding:8px 14px; border:1px solid var(--border-2); border-radius:var(--radius-sm); background:var(--panel-2); color:var(--text); cursor:pointer; font-size:13px; font-weight:500; transition:all var(--speed); white-space:nowrap; }
 .btn:hover { border-color:var(--accent); background:var(--bg-2); }
-.btn.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+.btn.primary { background:var(--accent); border-color:var(--accent); color:oklch(99% .004 48); }
 .btn.primary:hover { background:var(--accent-strong); }
 .btn.danger { background:transparent; color:var(--red); }
 .btn.danger:hover { background:rgba(242,109,109,.12); border-color:var(--red); }
@@ -46,11 +46,12 @@ header { position:sticky; top:0; z-index:40; display:flex; align-items:center; j
 .icon-btn { width:38px; height:38px; padding:0; display:grid; place-items:center; border-radius:var(--radius-sm); border:1px solid var(--border-2); background:var(--panel-2); color:var(--text); cursor:pointer; font-size:16px; transition:all var(--speed); }
 .icon-btn:hover { border-color:var(--accent); }
 main { padding:22px; max-width:1500px; margin:0 auto; }
-.stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; margin-bottom:20px; }
-.stat { background:var(--panel); border:1px solid var(--border); border-radius:var(--radius); padding:14px 16px; }
-.stat .n { font-size:24px; font-weight:700; letter-spacing:-.5px; }
+.stats { display:flex; gap:28px; align-items:baseline; margin:4px 0 24px; padding:0 2px 18px; border-bottom:1px solid var(--border); }
+.stat { display:flex; align-items:baseline; gap:8px; }
+.stat .n { font-size:20px; font-weight:780; letter-spacing:-.04em; font-variant-numeric:tabular-nums; }
 .stat .n.green { color:var(--green); }
-.stat .l { color:var(--muted); font-size:12px; margin-top:2px; }
+.stat .l { color:var(--muted); font-size:12px; }
+@media(max-width:720px){.stats{display:grid;grid-template-columns:1fr 1fr;gap:10px}.stat{justify-content:space-between}.table-wrap{overflow-x:auto}header{padding:12px}.brand .sub{display:none}main{padding:14px}}
 .toolbar { display:flex; gap:8px; margin-bottom:14px; align-items:center; flex-wrap:wrap; }
 .toolbar input[type=search], .toolbar select { padding:9px 12px; background:var(--panel); border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--text); font-size:13px; font-family:inherit; }
 .toolbar input[type=search] { flex:1; min-width:220px; }
@@ -113,9 +114,9 @@ td.name-cell { font-weight:600; }
 .tab { flex:1; text-align:center; padding:8px; cursor:pointer; color:var(--muted); border-radius:6px; font-size:13px; font-weight:500; transition:all var(--speed); }
 .tab.active { color:var(--text); background:var(--panel); box-shadow:var(--shadow); }
 .engine-opt { font-size:11px; color:var(--faint); margin-top:4px; min-height:15px; }
-.toast { position:fixed; bottom:22px; left:50%; transform:translateX(-50%); background:var(--panel); border:1px solid var(--border-2); border-left:3px solid var(--accent); padding:12px 18px; border-radius:var(--radius-sm); box-shadow:var(--shadow); z-index:200; opacity:0; transition:opacity .2s, transform .2s; pointer-events:none; }
+.toast { position:fixed; bottom:22px; left:50%; transform:translateX(-50%); background:var(--panel); border:1px solid var(--accent); padding:12px 18px; border-radius:var(--radius-sm); box-shadow:var(--shadow); z-index:200; opacity:0; transition:opacity .2s, transform .2s; pointer-events:none; }
 .toast.show { opacity:1; transform:translateX(-50%) translateY(-4px); }
-.toast.err { border-left-color:var(--red); } .toast.ok { border-left-color:var(--green); }
+.toast.err { border-color:var(--red); } .toast.ok { border-color:var(--green); }
 </style>
 </head>
 <body>
@@ -143,12 +144,17 @@ td.name-cell { font-weight:600; }
     <select id="group-filter" onchange="render()"><option value="">All groups</option></select>
     <select id="engine-filter" onchange="render()"><option value="">All engines</option></select>
     <select id="status-filter" onchange="render()"><option value="">All statuses</option></select>
+    <select id="sort-select" onchange="changeSort(this.value)"><option value="name">Sort: Name</option><option value="id">Sort: ID</option><option value="live">Sort: Live</option><option value="engine">Sort: Engine</option><option value="status">Sort: Account status</option><option value="group">Sort: Group</option><option value="tags">Sort: Tags</option><option value="proxy">Sort: Proxy</option><option value="cookies">Sort: Cookies</option><option value="launches">Sort: Launches</option><option value="created">Sort: Created</option><option value="updated">Sort: Updated</option><option value="last_launched">Sort: Last launched</option></select>
     <button class="btn" onclick="refresh()">↻ Refresh</button>
   </div>
   <div class="bulk-bar" id="bulk-bar">
     <span><span class="count" id="bulk-count">0</span> selected</span>
     <button class="btn sm primary" onclick="bulk('start')">Start</button>
     <button class="btn sm" onclick="bulk('stop')">Stop</button>
+    <button class="btn sm" onclick="openBulkProxy()">Assign proxies</button>
+    <button class="btn sm" onclick="openRandomize()">Randomize fingerprint</button>
+    <button class="btn sm" onclick="openFlow()">Run flow</button>
+    <button class="btn sm" onclick="bulkStatus()">Set status</button>
     <button class="btn sm" onclick="bulkExport()">Export cookies</button>
     <button class="btn sm" onclick="bulkProxyCheck()">Check proxies</button>
     <button class="btn sm danger" onclick="bulk('delete')">Delete</button>
@@ -234,6 +240,47 @@ td.name-cell { font-weight:600; }
   <div id="fp-net" style="display:none"><div class="field"><label><input type="checkbox" class="checkbox" id="fp-webrtc"> Block WebRTC IP leak</label></div></div>
   <div class="row"><button class="btn ghost" onclick="close_('fpModal')">Cancel</button><button class="btn primary" onclick="saveFp()">Save</button></div>
 </div></div>
+<div class="modal" id="bulkProxyModal"><div class="panel">
+  <h2>Assign proxies</h2>
+  <p class="desc">Paste one proxy per line. Proxies are assigned in order and cycle when there are fewer proxies than profiles.</p>
+  <div class="field"><label>Proxy list</label><textarea id="bulk-proxy-list" placeholder="socks5://user:pass@host:port\nhttp://host:port"></textarea><div class="hint">Supports URL, host:port and host:port:user:pass formats.</div></div>
+  <div class="row"><button class="btn ghost" onclick="close_('bulkProxyModal')">Cancel</button><button class="btn primary" onclick="submitBulkProxy()">Assign to selected</button></div>
+</div></div>
+<div class="modal" id="randomizeModal"><div class="panel">
+  <h2>Smart fingerprint randomization</h2>
+  <p class="desc">Each selected profile gets a coherent fingerprint. Choose what should stay identical across the batch and what must be preserved per profile.</p>
+  <div class="field-row"><div class="field"><label>Operating system</label><select id="rnd-os"><option value="windows">Windows</option><option value="macos">macOS</option><option value="linux">Linux</option></select></div><div class="field"><label>Optional deterministic seed</label><input id="rnd-seed" placeholder="campaign-01"></div></div>
+  <div class="field"><label>Keep identical across selected profiles</label>
+    <label><input type="checkbox" class="checkbox rnd-shared" value="screen"> Screen resolution</label>
+    <label><input type="checkbox" class="checkbox rnd-shared" value="locale"> Locale and languages</label>
+    <label><input type="checkbox" class="checkbox rnd-shared" value="timezone"> Timezone and geolocation</label>
+    <label><input type="checkbox" class="checkbox rnd-shared" value="hardware"> CPU and memory</label>
+    <label><input type="checkbox" class="checkbox rnd-shared" value="gpu"> GPU/WebGL/WebGPU</label>
+  </div>
+  <div class="field"><label>Preserve current profile values</label>
+    <label><input type="checkbox" class="checkbox rnd-preserve" value="engine" checked> Browser engine</label>
+    <label><input type="checkbox" class="checkbox rnd-preserve" value="extensions" checked> Extensions</label>
+    <label><input type="checkbox" class="checkbox rnd-preserve" value="timezone"> Existing geo/timezone</label>
+  </div>
+  <div class="row"><button class="btn ghost" onclick="close_('randomizeModal')">Cancel</button><button class="btn primary" onclick="submitRandomize()">Randomize selected</button></div>
+</div></div>
+<div class="modal" id="flowModal"><div class="panel">
+  <h2>Run flow on selected profiles</h2>
+  <p class="desc">Selected profiles must be running. One failure is isolated unless stop-on-error is enabled.</p>
+  <div class="field"><label>Flow JSON</label><textarea id="flow-json" style="min-height:180px">[{"action":"goto","url":"https://example.com"},{"action":"wait","ms":1200}]</textarea></div>
+  <div class="field-row"><div class="field"><label>Concurrency (0 = all)</label><input id="flow-concurrency" type="number" min="0" value="0"></div><div class="field"><label><input type="checkbox" class="checkbox" id="flow-stop"> Stop on first error</label></div></div>
+  <div class="row"><button class="btn ghost" onclick="close_('flowModal')">Cancel</button><button class="btn primary" onclick="submitFlow()">Run flow</button></div>
+</div></div>
+<div class="modal" id="manageModal"><div class="panel">
+  <h2>Manage profile <span id="m-id" class="kbd"></span></h2>
+  <p class="desc">Metadata, geo, extensions and portable operations in one place.</p>
+  <div class="field-row"><div class="field"><label>Name</label><input id="m-name"></div><div class="field"><label>Group</label><input id="m-group"></div></div>
+  <div class="field"><label>Tags</label><input id="m-tags" placeholder="social, warm"></div>
+  <div class="field"><label>Remark</label><textarea id="m-remark"></textarea></div>
+  <div class="field-row"><div class="field"><label>Account status</label><select id="m-status"></select></div><div class="field"><label>Align geo after save</label><select id="m-geo"><option value="">Keep current</option></select></div></div>
+  <div class="field"><label>Extensions</label><div id="m-extensions" class="desc">Loading…</div></div>
+  <div class="row" style="justify-content:space-between"><div><button class="btn" onclick="cloneProfile()">Clone profile</button> <button class="btn" onclick="exportPortable()">Export .antq</button> <button class="btn" onclick="reimportState()">Reapply AdsPower state</button></div><div><button class="btn ghost" onclick="close_('manageModal')">Cancel</button> <button class="btn primary" onclick="saveManage()">Save</button></div></div>
+</div></div>
 <div class="modal" id="liveModal"><div class="panel">
   <h2>Live View <span id="live-name" style="color:var(--muted);font-weight:400"></span></h2>
   <p class="desc">Live screenshot of the running profile (auto-refreshes). Real CDP endpoint below for external automation.</p>
@@ -248,7 +295,8 @@ td.name-cell { font-weight:600; }
 <script>
 const API="";
 let profiles=[],running=new Set(),groups=[],engines=[],statuses=[],selected=new Set(),fpUid=null;
-let liveUid=null,liveTimer=null,liveCdpWs="";
+let sortBy=localStorage.getItem('antique-sort-by')||'name',sortOrder=localStorage.getItem('antique-sort-order')||'asc';
+let liveUid=null,liveTimer=null,liveCdpWs="",manageUid=null,extensionCatalog=[];
 function initTheme(){setTheme(localStorage.getItem("antique-theme")||"dark");}
 function setTheme(t){document.documentElement.setAttribute("data-theme",t);localStorage.setItem("antique-theme",t);document.getElementById("theme-toggle").textContent=t==="dark"?"☀️":"🌙";}
 document.getElementById("theme-toggle").onclick=()=>setTheme(document.documentElement.getAttribute("data-theme")==="dark"?"light":"dark");
@@ -268,7 +316,7 @@ function statusSelect(uid,cur){return `<select class="status-sel" onchange="setS
 async function setStatus(uid,st){try{await api(`/user/${uid}/status`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({account_status:st})});const p=profiles.find(x=>x.user_id===uid);if(p)p.account_status=st;toast("Status → "+st,"ok");render();}catch(e){toast(e.message,"err");}}
 async function refresh(){try{
   const [list,info,grp]=await Promise.all([api("/user/list?page_size=1000"),api("/info"),api("/group/list")]);
-  profiles=list.data.list||[];running=new Set((await api("/user/active")).data.list.map(h=>h.user_id));groups=grp.data.list||[];
+  profiles=list.data.list||[];running=new Set((await api("/user/active")).data.list.map(h=>h.user_id));groups=grp.data.list||[];document.getElementById('sort-select').value=sortBy;
   document.getElementById("stat-total").textContent=info.profile_count;document.getElementById("stat-running").textContent=info.running_count;
   document.getElementById("stat-groups").textContent=groups.length;document.getElementById("stat-version").textContent="v"+info.version;
   const gf=document.getElementById("group-filter"),cur=gf.value;
@@ -279,7 +327,9 @@ function engineBadge(k){const e=engines.find(x=>x.key===k);if(!e)return `<span c
 function render(){
   const q=document.getElementById("search").value.toLowerCase(),gf=document.getElementById("group-filter").value,ef=document.getElementById("engine-filter").value;
   const sf=document.getElementById("status-filter").value;
+  const keyOf=p=>({name:(p.name||'').toLowerCase(),id:(p.user_id||'').toLowerCase(),live:running.has(p.user_id)?0:1,engine:((p.fingerprint_config||{}).browser_engine||'chromium').toLowerCase(),status:(p.account_status||'new').toLowerCase(),group:(p.group_id||'').toLowerCase(),tags:(p.tags||[]).join(',').toLowerCase(),proxy:((p.user_proxy_config||{}).proxy_host||'').toLowerCase(),cookies:(p.cookies||[]).length,launches:p.launch_count||0,created:p.created_at||'',updated:p.updated_at||'',last_launched:p.last_launched_at||''}[sortBy]);
   const rows=profiles.filter(p=>{if(q&&!p.name.toLowerCase().includes(q)&&!p.user_id.includes(q))return false;if(gf&&p.group_id!==gf)return false;const eng=(p.fingerprint_config||{}).browser_engine||"chromium";if(ef&&eng!==ef)return false;if(sf&&(p.account_status||"new")!==sf)return false;return true;});
+  rows.sort((a,b)=>{const av=keyOf(a),bv=keyOf(b);if(av===bv)return 0;const cmp=av>bv?1:-1;return sortOrder==='desc'?-cmp:cmp;});
   const tb=document.getElementById("tbody");
   if(!rows.length){tb.innerHTML=`<tr><td colspan="10" class="empty"><div class="big">No profiles</div>Create one with “+ New profile” or import an AdsPower backup.</td></tr>`;updateBulk();return;}
   tb.innerHTML=rows.map(p=>{const on=running.has(p.user_id),sel=selected.has(p.user_id);const eng=(p.fingerprint_config||{}).browser_engine||"chromium";
@@ -297,6 +347,7 @@ function render(){
       <td style="text-align:right;white-space:nowrap">
         ${on?`<button class="btn sm danger" onclick="act('stop','${p.user_id}')">Stop</button> <button class="btn sm ghost" onclick="openLive('${p.user_id}')" title="Live view">👁</button>`:`<button class="btn sm primary" onclick="act('start','${p.user_id}')">Start</button>`}
         <button class="btn sm ghost" onclick="openFp('${p.user_id}')">FP</button>
+        <button class="btn sm ghost" onclick="openManage('${p.user_id}')">Manage</button>
         <button class="btn sm ghost" onclick="checkProxy('${p.user_id}')" title="Check proxy">⚡</button>
         <button class="btn sm ghost danger" onclick="del('${p.user_id}','${esc(p.name)}')">✕</button>
       </td></tr>`;}).join("");
@@ -305,6 +356,7 @@ function render(){
 function esc(s){return String(s==null?"":s).replace(/[<>&"']/g,c=>({"<":"&lt;",">":"&gt;","&":"&amp;",'"':"&quot;","'":"&#39;"}[c]));}
 function toggleSel(id,cb){cb.checked?selected.add(id):selected.delete(id);render();}
 function toggleAll(cb){const q=document.getElementById("search").value.toLowerCase(),gf=document.getElementById("group-filter").value;profiles.forEach(p=>{if(q&&!p.name.toLowerCase().includes(q)&&!p.user_id.includes(q))return;if(gf&&p.group_id!==gf)return;cb.checked?selected.add(p.user_id):selected.delete(p.user_id);});render();}
+function changeSort(value){if(sortBy===value)sortOrder=sortOrder==='asc'?'desc':'asc';else{sortBy=value;sortOrder='asc';}localStorage.setItem('antique-sort-by',sortBy);localStorage.setItem('antique-sort-order',sortOrder);render();}
 function clearSel(){selected.clear();render();}
 function updateBulk(){const b=document.getElementById("bulk-bar");document.getElementById("bulk-count").textContent=selected.size;b.classList.toggle("visible",selected.size>0);}
 async function act(v,id){try{await api("/user/"+v,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({user_id:id})});toast(v==="start"?"Started":"Stopped","ok");await refresh();}catch(e){toast(e.message,"err");}}
@@ -312,6 +364,13 @@ async function del(id,name){if(!confirm(`Delete profile "${name}"?`))return;try{
 async function checkProxy(id){const el=document.getElementById("px-"+id);if(el)el.innerHTML='<span class="proxy-status checking"> …</span>';try{const r=await api(`/user/${id}/proxy/check`,{method:"POST"});const d=r.data;if(el)el.innerHTML=d.status==="ok"?`<span class="proxy-status ok">${esc(d.ip)} ${d.latency_ms}ms</span>`:d.status==="skip"?'<span class="proxy-status">direct</span>':`<span class="proxy-status error">${esc(d.error||"fail")}</span>`;}catch(e){if(el)el.innerHTML=`<span class="proxy-status error">${esc(e.message)}</span>`;}}
 async function bulk(v){if(!selected.size)return;if(v==="delete"&&!confirm(`Delete ${selected.size} profile(s)?`))return;try{await api("/user/bulk/"+v,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({user_ids:[...selected]})});if(v==="delete")selected.clear();toast("Done","ok");await refresh();}catch(e){toast(e.message,"err");}}
 async function bulkProxyCheck(){for(const id of selected)await checkProxy(id);}
+function openBulkProxy(){if(!selected.size)return;open_('bulkProxyModal');}
+async function submitBulkProxy(){const proxy_list=document.getElementById('bulk-proxy-list').value.trim();if(!proxy_list){toast('Paste at least one proxy','err');return;}try{const r=await api('/user/bulk/proxy/import',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({proxy_list,user_ids:[...selected]})});close_('bulkProxyModal');toast(`Assigned ${r.data.assigned_count} proxies`,'ok');await refresh();}catch(e){toast(e.message,'err');}}
+function openRandomize(){if(!selected.size)return;open_('randomizeModal');}
+function openFlow(){if(!selected.size)return;open_('flowModal');}
+async function bulkStatus(){if(!selected.size)return;const status=prompt('Status: new, warming, active, limited, banned or retired','active');if(!status)return;try{const r=await api('/user/bulk/status',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user_ids:[...selected],account_status:status})});toast(`Updated ${r.data.updated_count} profiles`,'ok');await refresh();}catch(e){toast(e.message,'err');}}
+async function submitFlow(){let flow;try{flow=JSON.parse(document.getElementById('flow-json').value);}catch(e){toast('Flow JSON is invalid','err');return;}try{const r=await api('/sync/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user_ids:[...selected],flow,stop_on_error:document.getElementById('flow-stop').checked,max_concurrency:parseInt(document.getElementById('flow-concurrency').value)||0})});close_('flowModal');toast(`${r.data.succeeded}/${r.data.total} profiles completed`,r.data.succeeded===r.data.total?'ok':'err');}catch(e){toast(e.message,'err');}}
+async function submitRandomize(){const shared_fields=[...document.querySelectorAll('.rnd-shared:checked')].map(x=>x.value),preserve_fields=[...document.querySelectorAll('.rnd-preserve:checked')].map(x=>x.value);try{const r=await api('/user/bulk/fingerprint/randomize',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user_ids:[...selected],os_family:document.getElementById('rnd-os').value,seed:document.getElementById('rnd-seed').value||null,shared_fields,preserve_fields})});close_('randomizeModal');toast(`Randomized ${r.data.updated_count} profiles`,'ok');await refresh();}catch(e){toast(e.message,'err');}}
 async function bulkExport(){if(!selected.size)return;try{const r=await api("/user/bulk/export",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({user_ids:[...selected]})});const txt=(r.data.profiles||[]).map(p=>`// ${p.name} (${p.user_id})\n${p.cookies_json}`).join("\n\n");dl(txt,`cookies-${Date.now()}.json`);}catch(e){toast(e.message,"err");}}
 function dl(t,n){const b=new Blob([t],{type:"text/plain"});const a=document.createElement("a");a.href=URL.createObjectURL(b);a.download=n;a.click();}
 function open_(id){document.getElementById(id).classList.add("open");}
@@ -339,6 +398,11 @@ function openFp(uid){fpUid=uid;const p=profiles.find(x=>x.user_id===uid);if(!p)r
   document.getElementById("fp-webrtc").checked=fp.block_webrtc_ip!==false;fpTab("basic");open_("fpModal");}
 function fpTab(t){document.querySelectorAll("#fpModal .tab").forEach(el=>el.classList.toggle("active",el.dataset.fptab===t));["basic","screen","hw","net"].forEach(x=>document.getElementById("fp-"+x).style.display=x===t?"block":"none");}
 async function saveFp(){if(!fpUid)return;const fp={browser_engine:document.getElementById("fp-engine").value,user_agent:document.getElementById("fp-ua").value,platform:document.getElementById("fp-platform").value,locale:document.getElementById("fp-locale").value,timezone:document.getElementById("fp-tz").value,languages:document.getElementById("fp-langs").value.split(",").map(s=>s.trim()).filter(Boolean),screen_width:parseInt(document.getElementById("fp-sw").value)||1920,screen_height:parseInt(document.getElementById("fp-sh").value)||1080,pixel_ratio:parseFloat(document.getElementById("fp-dpr").value)||1,hardware_concurrency:parseInt(document.getElementById("fp-cores").value)||8,device_memory:parseFloat(document.getElementById("fp-mem").value)||8,webgl_vendor:document.getElementById("fp-glv").value,webgl_renderer:document.getElementById("fp-glr").value,block_webrtc_ip:document.getElementById("fp-webrtc").checked};try{await api("/user/update",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({user_id:fpUid,fingerprint_config:fp})});close_("fpModal");toast("Fingerprint saved","ok");await refresh();}catch(e){toast(e.message,"err");}}
+async function openManage(uid){manageUid=uid;const p=profiles.find(x=>x.user_id===uid);if(!p)return;document.getElementById('m-id').textContent=uid;document.getElementById('m-name').value=p.name||'';document.getElementById('m-group').value=p.group_id||'0';document.getElementById('m-tags').value=(p.tags||[]).join(', ');document.getElementById('m-remark').value=p.remark||'';document.getElementById('m-status').innerHTML=statuses.map(s=>`<option value="${s}" ${s===(p.account_status||'new')?'selected':''}>${s}</option>`).join('');document.getElementById('m-geo').innerHTML='<option value="">Keep current</option>'+document.getElementById('c-geo').innerHTML.replace('<option value="">— none —</option>','');open_('manageModal');try{const r=await api('/extension/list');extensionCatalog=r.data.list||[];const assigned=(p.fingerprint_config||{}).extensions||[];document.getElementById('m-extensions').innerHTML=extensionCatalog.length?extensionCatalog.map(e=>`<label style="display:block"><input class="checkbox m-ext" type="checkbox" value="${esc(e.id)}" ${assigned.includes(e.id)?'checked':''}> ${esc(e.name||e.id)}</label>`).join(''):'No extensions installed. Install via API /extension/install.';}catch(e){document.getElementById('m-extensions').textContent=e.message;}}
+async function saveManage(){if(!manageUid)return;try{await api('/user/update',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user_id:manageUid,name:document.getElementById('m-name').value.trim(),group_id:document.getElementById('m-group').value.trim()||'0',tags:document.getElementById('m-tags').value.split(',').map(s=>s.trim()).filter(Boolean),remark:document.getElementById('m-remark').value,account_status:document.getElementById('m-status').value})});const extension_ids=[...document.querySelectorAll('.m-ext:checked')].map(x=>x.value);await api(`/user/${manageUid}/extensions`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(extension_ids)});const geo=document.getElementById('m-geo').value;if(geo)await api(`/user/${manageUid}/geo/match`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({country:geo})});close_('manageModal');toast('Profile saved','ok');await refresh();}catch(e){toast(e.message,'err');}}
+async function cloneProfile(){if(!manageUid)return;const name=prompt('Clone name',`${document.getElementById('m-name').value} copy`);if(name===null)return;try{const r=await api('/user/clone',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user_id:manageUid,name})});toast(`Cloned as ${r.data.user_id}`,'ok');await refresh();}catch(e){toast(e.message,'err');}}
+async function exportPortable(){if(!manageUid)return;try{const r=await api(`/user/${manageUid}/export/portable`,{method:'POST'});dl(JSON.stringify(r.data.bundle,null,2),`${manageUid}.antq`);}catch(e){toast(e.message,'err');}}
+async function reimportState(){if(!manageUid)return;try{await api(`/user/${manageUid}/reimport`,{method:'POST'});toast('Source state will be reapplied on next start','ok');}catch(e){toast(e.message,'err');}}
 function openLive(uid){liveUid=uid;const p=profiles.find(x=>x.user_id===uid);document.getElementById("live-name").textContent=p?("· "+p.name):"";document.getElementById("live-img").removeAttribute("src");document.getElementById("live-cdp").textContent="CDP: …";liveCdpWs="";open_("liveModal");refreshLive();loadCdp();liveTimer=setInterval(refreshLive,2000);}
 function closeLive(){liveUid=null;if(liveTimer){clearInterval(liveTimer);liveTimer=null;}close_("liveModal");}
 async function refreshLive(){if(!liveUid)return;try{const r=await api(`/user/${liveUid}/screenshot`,{method:"POST"});document.getElementById("live-img").src="data:image/png;base64,"+r.data.base64_png;}catch(e){document.getElementById("live-cdp").textContent="screenshot: "+e.message;}}

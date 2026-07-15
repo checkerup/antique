@@ -40,13 +40,13 @@ antique is a Python service that:
 - Imports `.adb` profile bundles exported from AdsPower (cookies + LocalStorage + IndexedDB). The import uses native Chromium reading instead of brittle LevelDB parsing — we copy the source directories into Playwright's `user_data_dir` and let Chromium read them itself.
 - Exposes an AdsPower-compatible REST API on `http://127.0.0.1:<port>/...` so existing scripts that already talk to AdsPower can switch by changing the base URL.
 - Ships a single-page dashboard at `/` (or `/dashboard`) and a FastAPI Swagger at `/docs`.
-- 300+ pytest tests passing.
+- 300+ pytest tests, including imported-profile launch regressions, auth-SOCKS5 relay, and smart fingerprint randomization.
 - Geo matching (timezone/locale/geolocation aligned to the proxy exit country), proxy rotation/failover, headless stealth, and a stealth self-test harness.
 - Swappable browser engines: Chromium, Google Chrome, Microsoft Edge, Firefox, Camoufox (deep engine-level stealth), WebKit.
 - One-click AdsPower backup import (whole backup folder or a single profile), preserving user_id, cookies, proxy, tags.
 - Dashboard with light/dark themes, engine picker, an AdsPower import flow, per-profile Live View, and account-status labels.
 - Live View (live screenshot of a running profile), real per-profile CDP endpoint, synchronized multi-profile automation (one flow across many profiles), and a Docker one-command run.
-- Bulk operations: start/stop/delete/export multiple profiles, bulk proxy import/assign.
+- Bulk operations: start/stop/delete/export, proxy assignment from pasted lists, and smart fingerprint randomization with shared/preserved field groups.
 - Group management and filtering.
 - Proxy health-check with IP detection and latency measurement.
 - Fingerprint editing from the dashboard UI.
@@ -68,7 +68,7 @@ antique is a Python service that:
 
 - Python 3.10+
 - Windows / macOS / Linux
-- Playwright (`pip install playwright && playwright install chromium`)
+- Playwright (`pip install playwright && playwright install chromium firefox webkit`)
 
 ### Install
 
@@ -187,6 +187,8 @@ src/
 │   ├── profile.py                 ← Profile dataclass (public) + ProfileStore (CRUD)
 │   ├── fingerprint.py             ← Fingerprint dataclass + generate_fingerprint() + JS init
 │   │                                 script template + Playwright launch options
+│   ├── fingerprint_ops.py         ← smart bulk randomization, shared/preserved field groups
+│   ├── socks_bridge.py            ← loopback SOCKS5 auth relay for AdsPower/Chromium compatibility
 │   ├── proxy.py                   ← ProxyConfig + parse_proxy() + AdsPower↔Playwright
 │   │                                 shape conversion
 │   ├── cookie.py                  ← Cookie dataclass, Netscape/JSON/.adb parsers,
@@ -376,7 +378,7 @@ All responses use the AdsPower shape: `{"code": 0, "msg": "success", "data": {..
 
 ```http
 GET /health
-→ {"status": "ok", "service": "antique", "version": "0.1.0"}
+→ {"status": "ok", "service": "antique", "version": "0.4.0"}
 ```
 
 ### Profiles
@@ -455,6 +457,10 @@ GET  /engine/list
 
 POST /user/import/backup            Body: {source_path, overwrite?, limit?}
 → {code:0, data:{imported_count, updated_count, skipped_count, error_count, cookie_sources, ...}}
+
+POST /user/bulk/fingerprint/randomize
+Body: {user_ids, os_family, shared_fields:["screen","gpu",...], preserve_fields:["engine","extensions",...], seed?}
+→ coherent per-profile random fingerprints with selected groups kept identical or preserved
 
 GET  /status/list                   → preset account statuses
 POST /user/{user_id}/status         Body: {account_status}
@@ -741,7 +747,8 @@ Test files:
 - `test_auth.py` — API auth + origin guard (DNS-rebinding, Bearer token, tunnel allow-list)
 - `test_engines.py` — Browser engine registry: specs, capabilities, alias/priority resolution, launcher wiring
 - `test_sync.py` — Synchronized multi-profile automation (concurrency, isolation, per-profile errors) (NEW)
-- `test_status_liveview.py` — Account statuses, Live View screenshot (fake handle), real-CDP + screenshot guard paths, sync API (NEW)
+- `test_status_liveview.py` — Account statuses, Live View screenshot (fake handle), real-CDP + screenshot guard paths, sync API
+- `test_import_launch_and_randomize.py` — partial-fingerprint regression, authenticated SOCKS5 bridge, smart bulk randomization (NEW in 0.4.0)
 
 Run only the newest suites:
 
@@ -770,7 +777,9 @@ python -m pytest tests/test_sync.py tests/test_status_liveview.py tests/test_api
 - [x] **Proxy health-check** per profile (`POST /user/{id}/proxy/check`, `POST /proxy/check`)
 - [x] **Bulk proxy import** (paste proxy list, auto-assign to profiles, `POST /user/bulk/proxy/import`)
 - [x] **Fingerprint editing from UI** (tabbed modal: UA, screen, hardware, network, WebGL)
-- [x] **Bulk proxy assignment** (`POST /user/bulk/proxy/assign`)
+- [x] **Bulk proxy assignment** (`POST /user/bulk/proxy/assign`) with a first-class dashboard workflow
+- [x] **Authenticated SOCKS5 bridge** for AdsPower imports (fixes Chromium launch HTTP 500)
+- [x] **Smart fingerprint randomization** with shared/preserved field groups and deterministic seeds
 - [x] Proxy list parser (supports `type://host:port`, `type://user:pass@host:port`, `host:port:user:pass`)
 - [x] **Extension manager** (install from unpacked dir, .crx, Chrome Web Store; per-profile assignment)
 - [x] **MCP server** (JSON-RPC 2.0 over stdio, 12 tools: list/open/close/navigate/screenshot/execute_script/cookies/proxy_check)
@@ -797,7 +806,16 @@ python -m pytest tests/test_sync.py tests/test_status_liveview.py tests/test_api
 - [x] **Real per-profile CDP** (`/user/{id}/cdp` reads Chromium's own `/json/version` on the debug port)
 - [x] **Synchronized multi-profile automation** (`src/core/sync.py`, `/sync/run`, `sync` CLI)
 - [x] **Docker** (`Dockerfile` + `docker-compose.yml`, `docker compose up`)
-- [x] 340+ pytest tests passing
+- [x] Automated suite includes 0.4.0 regressions; run `python -m pytest` for the current exact count
+
+### Release 0.4.0
+
+- AdsPower profiles using authenticated SOCKS5 now launch through a loopback RFC 1929 bridge instead of failing with HTTP 500.
+- Partial fingerprint create/update is merge-safe and cannot silently blank UA/noise/fonts.
+- Dashboard adds bulk proxy assignment and a smart fingerprint randomization wizard.
+- AdsPower `ip_country` aligns timezone/locale/geolocation during import.
+- `start.bat` installs all bundled Playwright engines and prepares Camoufox best-effort.
+- Manual plan: `docs/MANUAL-TEST-PLAN.md`; agent plan: `docs/AGENT-TESTING.md`; report: `docs/RELEASE-0.4.0-REPORT.md`.
 
 ### Known limitations
 

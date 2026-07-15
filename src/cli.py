@@ -104,10 +104,12 @@ def list_cmd(
     search: Optional[str] = typer.Option(None, "--search", "-s"),
     group: Optional[str] = typer.Option(None, "--group", "-g"),
     tag: Optional[str] = typer.Option(None, "--tag", "-t"),
+    sort_by: str = typer.Option("name", "--sort", help="name|id|group|status|tags|launches|cookies|created|updated|last_launched|proxy|engine|live"),
+    sort_order: str = typer.Option("asc", "--order", help="asc|desc"),
 ):
-    """List profiles."""
+    """List profiles with filters and sorting."""
     store = _store()
-    profiles = store.list(group_id=group, tag=tag, search=search)
+    profiles = store.list(group_id=group, tag=tag, search=search, sort_by=sort_by, sort_order=sort_order)
     if not profiles:
         console.print("[yellow]No profiles yet.[/yellow] Use `antidetect create` to make one.")
         raise typer.Exit(0)
@@ -133,6 +135,47 @@ def list_cmd(
             str(p.launch_count),
         )
     console.print(t)
+
+
+@app.command("clone")
+def clone_cmd(
+    user_id: str = typer.Argument(...),
+    name: Optional[str] = typer.Option(None, "--name", "-n"),
+    user_id_override: Optional[str] = typer.Option(None, "--user-id"),
+):
+    """Clone a profile's metadata, cookies, proxy and fingerprint."""
+    store = _store()
+    source = store.get(user_id)
+    if source is None:
+        console.print(f"[red]user_id {user_id} not found[/red]")
+        raise typer.Exit(1)
+    from dataclasses import fields
+    from .core.fingerprint import Fingerprint
+    valid = {f.name for f in fields(Fingerprint)}
+    fp = Fingerprint(**{k: v for k, v in source.fingerprint.items() if k in valid})
+    try:
+        clone = store.create(name=name or f"{source.name} copy", group_id=source.group_id, proxy=dict(source.proxy), fingerprint=fp, cookies=list(source.cookies), tags=list(source.tags), remark=source.remark, user_id=user_id_override)
+    except ValueError as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(1)
+    console.print(f"[green]✓[/green] cloned {source.name} → [cyan]{clone.user_id}[/cyan]")
+
+
+@app.command("bulk-status")
+def bulk_status_cmd(
+    user_ids: list[str] = typer.Argument(...),
+    status: str = typer.Argument(...),
+):
+    """Set one account status for several profiles."""
+    store = _store()
+    updated = 0
+    for uid in user_ids:
+        try:
+            store.update(uid, account_status=status)
+            updated += 1
+        except KeyError:
+            console.print(f"[yellow]skip {uid}: not found[/yellow]")
+    console.print(f"[green]✓[/green] updated {updated}/{len(user_ids)} profiles → {status}")
 
 
 @app.command()

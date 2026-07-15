@@ -69,10 +69,14 @@ def _normalize_proxy(raw: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     proxy_type = str(data.get("proxy_type") or data.get("type") or "direct").lower()
     if proxy_soft == "no_proxy" or proxy_type in {"", "no_proxy", "direct"}:
         return {"proxy_type": "direct"}
+    try:
+        port = int(data.get("proxy_port") or data.get("port") or 0)
+    except (TypeError, ValueError):
+        port = 0
     out: Dict[str, Any] = {
-        "proxy_type": proxy_type,
+        "proxy_type": proxy_type if proxy_type in {"http", "https", "socks5"} else "direct",
         "proxy_host": str(data.get("proxy_host") or data.get("host") or ""),
-        "proxy_port": int(data.get("proxy_port") or data.get("port") or 0),
+        "proxy_port": port,
     }
     if data.get("proxy_user"):
         out["proxy_user"] = str(data["proxy_user"])
@@ -128,8 +132,15 @@ def prepare_backup_profile_payload(root: Path, meta: Dict[str, Any]) -> Dict[str
     cookie_source = "none"
     cookies: List[Dict[str, Any]] = []
     if cookie_json.exists():
-        cookies = [c.to_playwright() for c in import_cookies_json(cookie_json.read_text(encoding="utf-8"))]
-        cookie_source = "json"
+        try:
+            cookies = [c.to_playwright() for c in import_cookies_json(cookie_json.read_text(encoding="utf-8-sig"))]
+            cookie_source = "json"
+        except (OSError, UnicodeError, json.JSONDecodeError, ValueError):
+            # A broken exported JSON must not discard an otherwise usable
+            # Chromium profile. Fall back to the profile Cookies DB.
+            if profile_dir.exists():
+                cookies = [c.to_playwright() for c in import_adspower_profile(profile_dir)]
+                cookie_source = "profile_dir"
     elif profile_dir.exists():
         cookies = [c.to_playwright() for c in import_adspower_profile(profile_dir)]
         cookie_source = "profile_dir"
@@ -147,6 +158,7 @@ def prepare_backup_profile_payload(root: Path, meta: Dict[str, Any]) -> Dict[str
         "import_source_path": import_source_path,
         "cookie_source": cookie_source,
         "has_full_state": bool(import_source_path),
+        "ip_country": str(meta.get("ip_country") or "").upper(),
     }
 
 
@@ -185,11 +197,21 @@ def import_adspower_backup_root(
                 skipped.append(payload["user_id"])
                 continue
             if existing:
+                fp = None
+                if payload["ip_country"]:
+                    try:
+                        from .fingerprint_ops import fingerprint_from_dict
+                        from .geo import apply_geo_to_fingerprint, geo_for_country
+                        fp = fingerprint_from_dict(existing.fingerprint)
+                        apply_geo_to_fingerprint(fp, geo_for_country(payload["ip_country"]))
+                    except ValueError:
+                        fp = None
                 store.update(
                     payload["user_id"],
                     name=payload["name"],
                     group_id=payload["group_id"],
                     proxy=payload["proxy"],
+                    fingerprint=fp,
                     cookies=payload["cookies"],
                     tags=payload["tags"],
                     remark=payload["remark"],
@@ -199,10 +221,20 @@ def import_adspower_backup_root(
                 updated.append(payload["user_id"])
                 continue
 
+            fp = None
+            if payload["ip_country"]:
+                try:
+                    from .fingerprint import generate_fingerprint
+                    from .geo import apply_geo_to_fingerprint, geo_for_country
+                    fp = generate_fingerprint()
+                    apply_geo_to_fingerprint(fp, geo_for_country(payload["ip_country"]))
+                except ValueError:
+                    fp = None
             store.create(
                 name=payload["name"],
                 group_id=payload["group_id"],
                 proxy=payload["proxy"],
+                fingerprint=fp,
                 cookies=payload["cookies"],
                 tags=payload["tags"],
                 remark=payload["remark"],

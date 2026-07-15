@@ -28,7 +28,7 @@ Then open:
 python -m venv .venv
 . .venv/bin/activate        # Windows: .venv\Scripts\activate
 pip install -e .
-python -m playwright install chromium
+python -m playwright install chromium firefox webkit
 python -m src.cli serve --ui-port 8080
 ```
 
@@ -39,17 +39,20 @@ python -m src.cli serve --ui-port 8080
    generated automatically.
 2. **Start** — launches a real browser window with that profile's fingerprint
    + proxy. **Stop** closes it.
-3. **FP** — edit the fingerprint (engine, UA, screen, hardware, WebGL, WebRTC).
-4. **⚡** — live-check the profile's proxy (IP + latency).
-5. Top-right **☀️/🌙** — toggle light / dark theme (remembered).
+3. **FP** — edit the fingerprint (engine, UA, screen, hardware, WebGL, WebRTC) without resetting omitted fields.
+4. Select profiles → **Assign proxies** for cyclic bulk assignment from a pasted list.
+5. Select profiles → **Randomize fingerprint** to choose OS, shared fields (for example one resolution), preserved fields, and an optional deterministic seed.
+6. **⚡** — live-check the profile's proxy (IP + latency).
+7. Top-right **☀️/🌙** — toggle light / dark theme (remembered).
 
 ## 4. Import your AdsPower profiles
 
 **Import → AdsPower backup folder.** Point it at your backup directory (the one
 with `all_profiles_list.json`, e.g. `C:\ai_workflow\adspower_profiles_backup`).
 Profiles, cookies, proxies, tags and local state are imported and the original
-AdsPower `user_id` is preserved. Tick *Overwrite* to refresh already-imported
-profiles.
+AdsPower `user_id` is preserved. AdsPower `ip_country` aligns geo settings.
+Authenticated SOCKS5 profiles use an automatic local bridge, so Chromium can
+start them without the old HTTP 500. Tick *Overwrite* to refresh existing profiles.
 
 **Import → Single file / .adb** for a one-off `.adb`/`.zip` bundle, a Netscape
 `cookies.txt`, or a Playwright/Chrome cookie JSON.
@@ -111,7 +114,21 @@ docker compose up          # dashboard on http://127.0.0.1:8080/
 Profiles + DB persist in the `antique-data` volume. Runs headless in the
 container. Set `ANTIQUE_API_TOKEN` in `docker-compose.yml` if you expose the port.
 
-## 9. New in 0.3.0
+## 9. New in 0.5.0
+
+- Full profile-list sorting in UI, CLI and REST, with asc/desc and persistent UI selection.
+- Clone profile, bulk status updates, and improved profile operations in Manage.
+- Competitor parity matrix and remaining product backlog: `docs/COMPETITOR-FEATURE-MATRIX.md`.
+
+### Also included from 0.4.0
+
+- Fixed AdsPower authenticated-SOCKS5 profile launch via a loopback RFC 1929 bridge.
+- Added bulk proxy assignment and smart fingerprint randomization to the dashboard.
+- Partial fingerprint create/update now merges safely instead of blanking hidden fields.
+- `start.bat` prepares Chromium, Firefox, WebKit and Camoufox best-effort.
+- Full manual test plan: `docs/MANUAL-TEST-PLAN.md`.
+
+### Also included from 0.3.0
 
 - **Live View** — on a running profile click the eye icon to watch a live
   screenshot; the modal also shows the real CDP websocket for automation.
@@ -121,5 +138,15 @@ container. Set `ANTIQUE_API_TOKEN` in `docker-compose.yml` if you expose the por
   `python -m src.cli sync flow.json -u <id1> -u <id2>` or `POST /sync/run`.
 - **Real per-profile CDP** — `GET /user/{id}/cdp` returns the attachable
   DevTools websocket for a running Chromium profile.
+
+## 10. Sort, clone and bulk status
+
+```bash
+python -m src.cli list --sort name --order desc
+python -m src.cli clone <USER_ID> --name "Copy"
+python -m src.cli bulk-status <USER_ID_1> <USER_ID_2> warming
+```
+
+In the dashboard use **Sort**. Pick a field and select it again to flip ascending/descending. The choice survives reload.
 
 That's it. Create a profile, hit **Start**, and you're running.

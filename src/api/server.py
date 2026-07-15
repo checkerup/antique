@@ -122,7 +122,7 @@ def create_app(
     # it those endpoints hit `assert _ext_store is not None` and 500.
     wire_routes(store, launcher, cdp, launcher.ext_store)
 
-    app = FastAPI(title="antique", version="0.3.0")
+    app = FastAPI(title="antique", version="0.5.0")
 
     app.add_middleware(
         CORSMiddleware,

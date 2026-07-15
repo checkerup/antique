@@ -1,210 +1,119 @@
-# Инструкция для локального агента: проверка фич автотестами
+# Инструкция локальному агенту: проверка antique 0.5.0
 
-> Проект: `C:\ai_workflow\antidetect-local`. Python 3.10+, pytest с `asyncio_mode = "auto"` (уже в `pyproject.toml`).
+Проект: `C:\ai_workflow\antidetect-local`. Не менять рабочую БД для тестов: pytest использует временные каталоги.
 
-Файл покрывает **два захода фич**. Всё тестируется оффлайн, живой браузер для юнит-тестов НЕ нужен.
+## 1. Подготовка
 
-## Заход 1 (ранее)
-| Фича | Код | Тесты |
-|---|---|---|
-| WebGPU-спуфинг | `src/core/fingerprint.py` | `tests/test_webgpu_fonts.py` |
-| Спуфинг шрифтов | `src/core/fingerprint.py` | `tests/test_webgpu_fonts.py` |
-| Cookie Robot / флоу-раннер | `src/core/automation.py` | `tests/test_automation.py` |
-| Портативный `.antq` | `src/core/portable.py` | `tests/test_portable.py` |
-
-## Заход 2
-| Фича | Код | Тесты |
-|---|---|---|
-| Гео-привязка (tz/locale/geo по IP) | `src/core/geo.py` | `tests/test_geo.py` |
-| Ротация прокси + failover | `src/core/proxy_pool.py` | `tests/test_proxy_pool.py` |
-| Geolocation + headless-стелс | `src/core/fingerprint.py` | `tests/test_webgpu_fonts.py`, `tests/test_fingerprint.py` |
-| Детект-харнесс | `src/core/detect.py` | `tests/test_detect.py` |
-| Фикс UTF-8 консоли | `src/consoleutil.py`, `src/cli.py` | `tests/test_console.py` |
-| API-авторизация + origin-guard | `src/api/server.py` | `tests/test_auth.py` |
-| Новые REST-эндпоинты + регресс ext_store | `src/api/routes.py`, `src/api/server.py` | `tests/test_api_endpoints.py` |
-
-## Заход 3 (текущий) — Robinhood Chain
-| Фича | Код | Тесты |
-|---|---|---|
-| **Мониторинг кошельков EVM** (NEW) | `src/core/chain.py` | `tests/test_chain.py` |
-| **Поиск ранних покупателей токена** (NEW) | `src/core/chain.py` | `tests/test_chain.py` |
-| REST + MCP для chain | `src/api/routes.py`, `src/mcp/server.py` | `tests/test_api_endpoints.py`, `tests/test_chain.py` |
-
-### Что проверяют chain-тесты (всё оффлайн, транспорт замокан)
-- Пресеты Robinhood (chain id 4663 / testnet 46630), `get_chain`, `supported_chains`.
-- Хелперы: `hex_to_int`, `wei_to_eth`, `normalize_address`, `is_valid_address`, `topic_to_address`.
-- `parse_early_buyers`: порядок по (блок, log index), дедуп, исключение zero/токен/exclude, лимит, фильтр non-Transfer.
-- `summarize_wallet_activity`: flat RPC и Blockscout-shape, sent/received, first/last block.
-- `ChainClient` с фейк-транспортами: block_number, chain_id, баланс, monitor_wallet (выживает при падении explorer), early_buyers (сборка getLogs-фильтра), hex-конверсия блоков.
-- MCP: тулы `chain_monitor_wallets` и `chain_early_buyers` отдаются в `tools/list`.
-
-### Команды прогона
-```bash
-python -m pytest tests/test_chain.py -v
-python -m pytest tests/test_chain.py tests/test_api_endpoints.py -v
-```
-
-### Живой smoke (требует сети, публичный RPC rate-limited)
-```bash
-python -m src.cli chain-wallet 0x<addr> --chain robinhood
-python -m src.cli chain-early-buyers 0x<token> --chain robinhood --limit 20 --from-block 0 --to-block latest
-```
-
----
-
-## 0. Подготовка
-
-```bash
+```powershell
 cd C:\ai_workflow\antidetect-local
-python -m venv .venv
-.venv\Scripts\activate
-pip install -e .
-pip install -r requirements.txt
-playwright install chromium   # только для живого браузера; юнит-тестам не нужен
+.\.venv\Scripts\Activate.ps1
+python -m pip install -e .
+python -m pip install -r requirements.txt
 ```
 
-> Важное по фиксу консоли: `PYTHONIOENCODING=utf-8` больше НЕ требуется — CLI сам форсит UTF-8 на старте
-> (`src/cli.py: force_utf8_stdio()`). Если терминал всё равно не умеет UTF-8, `consoleutil.to_safe()`
-> подменяет ✓/→ на ASCII (`[OK]`, `->`), так что `UnicodeEncodeError` больше не возникает.
+Для живых smoke-тестов:
 
----
-
-## 1. Полный прогон
-
-```bash
-python -m pytest
+```powershell
+python -m playwright install chromium firefox webkit
+python -m camoufox fetch
 ```
 
-Ожидаемо: все тесты зелёные (было 175 → стало больше за счёт `test_detect.py` и `test_console.py`).
+## 2. Обязательный автоматический прогон
 
----
-
-## 2. Только новые сьюты этого захода
-
-```bash
-python -m pytest tests/test_detect.py tests/test_console.py -v
+```powershell
+python -m pytest -q
+python -m pytest tests\test_import_launch_and_randomize.py tests\test_sort_clone_features.py tests\test_ui_release_040.py -v
+python -m pytest tests\test_backup_import.py tests\test_profile_import.py tests\test_api_endpoints.py -v
 ```
 
-Смежные (если нужно перепроверить гео/ротацию):
+Критерий: все тесты зелёные, warnings допустимы только от сторонних библиотек. Зафиксировать число passed, время и полный текст любого failure.
 
-```bash
-python -m pytest tests/test_geo.py tests/test_proxy_pool.py -v
+## 3. Что обязательно покрывает новый suite
+
+`tests/test_import_launch_and_randomize.py`:
+
+- частичный `fingerprint_config` при создании не оставляет пустые UA/noise/fonts;
+- частичное редактирование отпечатка не сбрасывает скрытые поля;
+- умная bulk-рандомизация создаёт разные профили, но умеет держать одинаковое разрешение;
+- движок профиля сохраняется при рандомизации;
+- REST `/user/bulk/fingerprint/randomize` сохраняет результат;
+- локальный SOCKS5 bridge принимает Chromium без auth, авторизуется на upstream по RFC 1929 и передаёт трафик.
+
+`tests/test_ui_release_040.py` фиксирует наличие theme, AdsPower import, bulk proxy, smart randomization, flow, Manage, extensions, release docs и установку движков в `start.bat`.
+
+`tests/test_sort_clone_features.py` проверяет сортировку Store/API по полям, clone и bulk status.
+
+Смежные обязательные suite:
+
+- `test_backup_import.py`: метаданные, proxy, cookies, исходный AdsPower user_id;
+- `test_profile_import.py`: Local Storage, IndexedDB, WebStorage;
+- `test_bulk_and_proxy.py`: массовое назначение и разбор форматов proxy;
+- `test_fingerprint.py` + `test_webgpu_fonts.py`: когерентность и JS-инъекция;
+- `test_engines.py`: выбор движка;
+- `test_status_liveview.py` + `test_sync.py`: Live View, CDP, статусы, синхронизация;
+- `test_auth.py`: token/origin guard.
+
+## 4. Живой регресс запуска AdsPower-профиля
+
+1. Запустить `start.bat` и открыть `http://127.0.0.1:8080/`.
+2. Import → AdsPower backup folder → `C:\ai_workflow\adspower_profiles_backup`.
+3. Выбрать профиль с `socks5` и заполненными `proxy_user/proxy_password`.
+4. Нажать Start.
+5. Ожидание: HTTP 200, окно браузера открыто, строка стала Live. Старый результат HTTP 500 недопустим.
+6. Нажать Proxy check. Зафиксировать внешний IP и latency.
+7. Проверить авторизацию на целевом сайте и сохранность localStorage/IndexedDB.
+8. Stop → повторный Start. Сессия должна сохраниться, а импорт не должен затирать накопленные данные.
+
+Если Start не прошёл, сохранить ответ Network → `/user/start`, traceback сервера и `user_id`. Теперь API должен вернуть 422 с реальной причиной, а не безликий 500.
+
+## 5. Живой smoke массовых операций
+
+1. Выбрать 3 профиля.
+2. Assign proxies → вставить 2 прокси разных поддерживаемых форматов. Проверить циклическое назначение 1, 2, 1.
+3. Randomize fingerprint → Windows, Shared: Screen, Preserve: Engine + Extensions.
+4. Сверить через FP/API: разрешение одинаковое; UA/noise/GPU у профилей различаются; движки не поменялись.
+5. Повторить с seed. Два одинаковых прогона на одинаковом наборе должны дать одинаковый результат.
+6. Проверить bulk Start/Stop, proxy check, export, delete на тестовых профилях.
+
+## 6. UI smoke
+
+Проверить при ширине 1440px и 390px:
+
+- светлая и тёмная темы, сохранение темы после reload;
+- таблица, поиск, фильтры group/engine/status;
+- empty/error/loading состояния;
+- create/import/fingerprint/bulk-proxy/randomize/live-view модалки;
+- клавиатурный focus, отсутствие горизонтального переполнения страницы;
+- читаемость OKLCH-палитры и контраст кнопок;
+- ошибки показываются toast и не ломают последующие действия.
+
+## 7. Проверка движков
+
+```powershell
+python -m src.cli engines
 ```
 
----
+Создать и запустить тестовый профиль на `chromium`, `firefox`, `webkit`, `camoufox`. Chrome/Edge проверять только если каналы установлены в ОС. Для каждого зафиксировать: запуск, proxy, cookies, Live View, Stop/Start. CDP ожидается только у Chromium-base.
 
-## 3. Что проверяют новые тесты
+## 8. Сортировка, clone и bulk status
 
-**Детект-харнесс (`test_detect.py`)**
-- Чистый профиль → 100/100, оценка A, без утечек.
-- `webdriver=true` → критическая ошибка (минус 40, оценка C, `ok()=False`).
-- Отсутствие `window.chrome`, permission mismatch, рассогласование platform/UA → флаги.
-- Cross-check с ожидаемым fingerprint (WebGL vendor / timezone не совпали → fail).
-- `build_collector_script()` — валидный JS (webdriver, WebGL, timezone).
-
-**Фикс консоли (`test_console.py`)**
-- `supports_unicode`: utf-8 → True, cp1251/None/неизвестный codec → False.
-- `to_safe`: на utf-8 без изменений; на cp1251 меняет ✓→[OK], →→->, результат кодируется без краша.
-- `ensure_utf8`: переконфигурирует поток; не падает на потоках без `reconfigure`.
-- `cli.force_utf8_stdio` импортируется и идемпотентен.
-
----
-
-## 4. Ручной smoke
-
-```bash
-# Фикс консоли: в PowerShell с русской локалью без PYTHONIOENCODING — не должно быть UnicodeEncodeError
-python -m src.cli create "Smoke" --fingerprint-seed s1
-
-# Гео-привязка
-python -m src.cli create "DE profile" --geo-country DE
-python -m src.cli geo-match <USER_ID> --country US
-
-# Ротация прокси (POOL.txt — по прокси на строку)
-python -m src.cli proxy-rotate <USER_ID> pool.txt --strategy round_robin
-
-# Живой детект-тест (требует Chromium)
-python -m src.cli detect-test <USER_ID> --url https://<local-creepjs>
+```powershell
+python -m pytest tests\test_sort_clone_features.py -v
+python -m src.cli list --sort name --order desc
+python -m src.cli clone <USER_ID> --name "Copy"
+python -m src.cli bulk-status <USER_ID_1> <USER_ID_2> warming
 ```
 
----
+UI: в Sort выбери любое поле и нажми его повторно для asc/desc. Проверить reload, фильтры и сортировку после авто-refresh.
 
-## 5. Критерий готовности
+## 9. Финальный отчёт агента
 
-`python -m pytest` → всё зелёное. Если красное в `test_detect.py` — смотри веса severity в `src/core/detect.py`
-(`_SEVERITY_WEIGHT`), они задают ожидаемые очки в тестах (крит=40, high=20, medium=10, low=5).
+Отчёт должен содержать:
 
----
-
-## Заход 4 (текущий) — движки / UI / AdsPower / удалён ончейн
-
-### Что изменилось
-| Фича | Код | Тесты |
-|---|---|---|
-| **Реестр движков** (chromium/chrome/edge/firefox/camoufox/webkit) | `src/core/engines.py`, `src/core/browser.py` | `tests/test_engines.py` |
-| **`/engine/list` + `create --engine`** | `src/api/routes.py`, `src/cli.py` | `tests/test_api_endpoints.py`, `tests/test_engines.py` |
-| **Новый UI (тёмная/светлая тема, engine picker, AdsPower import)** | `src/ui/templates/index.html` | ручная проверка (статика) |
-| **AdsPower backup import** (бэкенд был, добавлен API-тест) | `src/core/backup_import.py`, `/user/import/backup` | `tests/test_backup_import.py`, `tests/test_api_endpoints.py` |
-| **Удалён ончейн** | `src/core/chain.py` (обнулён) | `tests/test_chain.py` (пуст) |
-
-### Что проверяют тесты движков (`test_engines.py`, всё оффлайн)
-- Реестр содержит все 6 движков; base/channel/stealth корректны.
-- Капабилити: Chromium-движки → extensions + реальный CDP; firefox/camoufox/webkit → нет.
-- Резолв: алиасы (google-chrome→chrome, safari→webkit), неизвестный→chromium.
-- Приоритет: profile.browser_engine > ANTIDETECT_ENGINE > default.
-- `browser_engine` сохраняется на профиле через fingerprint (round-trip).
-
-### Команды
-```bash
-python -m pytest tests/test_engines.py tests/test_api_endpoints.py -v
-python -m pytest            # полный прогон
-```
-
-### Ручной smoke
-```bash
-python -m src.cli engines                          # таблица движков
-python -m src.cli create "cam" --engine camoufox   # создать на camoufox
-python -m src.cli import-backup "C:\ai_workflow\adspower_profiles_backup"
-# UI: открой http://127.0.0.1:8080/ , переключи тему (☀️/🌙), Import → AdsPower backup folder
-```
-
-> Ончейн удалён: `chain.py`/`test_chain.py` обнулены, chain-эндпоинты/CLI/MCP-тулы вырезаны.
-> Если где-то остался `import ... chain` — это баг, сообщи.
-
-### Камуфокс (опционально, для живого запуска)
-```bash
-pip install camoufox && python -m camoufox fetch
-```
-Без установки camoufox профиль мягко откатывается на бандловый Firefox (лог предупреждает, не падает).
-
----
-
-## Заход 5 (текущий) — Live View / реальный CDP / синхрон / статусы / Docker
-
-| Фича | Код | Тесты |
-|---|---|---|
-| **Статусы аккаунтов** (new/warming/active/limited/banned/retired) | `storage.py`, `profile.py`, `routes.py` | `tests/test_status_liveview.py` |
-| **Live View** (скриншот запущенного профиля) | `browser.py: screenshot()`, `/user/{id}/screenshot` | `tests/test_status_liveview.py` |
-| **Реальный CDP на профиль** | `browser.py: real_cdp_info()`, `/user/{id}/cdp` | `tests/test_status_liveview.py` |
-| **Синхронизация** (один флоу на N профилей) | `src/core/sync.py`, `/sync/run`, CLI `sync` | `tests/test_sync.py` |
-| **Docker** | `Dockerfile`, `docker-compose.yml`, `.dockerignore` | ручная проверка (`docker compose up`) |
-
-### Что проверяют тесты (всё оффлайн, без живого браузера)
-- **test_sync.py**: все успешно; недоступная страница изолируется (остальные продолжают), ошибка флоу по-профильно, лимит конкурентности, порядок сохраняется.
-- **test_status_liveview.py**: дефолт/смена/фильтр статуса (store + API), screenshot через фейк-handle, CDP/screenshot дают 409 когда профиль не запущен, sync API → 400 на пустой флоу.
-- **Миграция БД**: `init_db` добавляет колонку `account_status` в старые `antique.db` автоматически (если у тебя уже есть data/antique.db — не удаляй, просто запусти).
-
-### Команды
-```bash
-python -m pytest tests/test_sync.py tests/test_status_liveview.py -v
-python -m pytest            # полный прогон (~340+)
-```
-
-### Живой smoke (нужен браузер)
-```bash
-python -m src.cli set-status <UID> active
-# Live View + CDP: запусти профиль в UI → Stop-ряд появится 👁 → открой, увидишь скрин + CDP ws
-# Синхрон: python -m src.cli sync flow.json -u <UID1> -u <UID2>
-# Docker: docker compose up  →  http://127.0.0.1:8080/
-```
-Пример flow.json: `[{"action":"goto","url":"https://example.com"},{"action":"wait","ms":1500}]`
+- версии Python, Playwright и ОС;
+- число passed/failed/skipped;
+- результат живого запуска импортированного auth-SOCKS5 профиля;
+- результат bulk proxy и smart randomization;
+- smoke по четырём движкам;
+- найденные дефекты с точными шагами, логом и user_id;
+- подтверждение, что `README.md`, `QUICKSTART.md` и эта инструкция соответствуют поведению.

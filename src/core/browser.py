@@ -34,6 +34,7 @@ from .engines import EngineSpec, resolve_engine, resolve_engine_for_profile, eng
 from .fingerprint import Fingerprint, build_init_script, to_playwright_launch_options
 from .profile import Profile, ProfileStore
 from .proxy import ProxyConfig, parse_proxy
+from .socks_bridge import Socks5AuthBridge
 
 
 log = logging.getLogger("antique.browser")
@@ -60,6 +61,8 @@ class BrowserHandle:
     ws_endpoint: str
     pid: Optional[int]
     context: Any
+    playwright: Any = None
+    proxy_bridge: Optional[Socks5AuthBridge] = None
 
 
 # Browser engine types (kept as module constants for convenience; the source
@@ -68,6 +71,26 @@ ENGINE_CHROMIUM = "chromium"
 ENGINE_FIREFOX = "firefox"
 ENGINE_CAMOUFOX = "camoufox"
 VALID_ENGINES = set(engine_keys())
+
+
+async def _wait_for_cdp_ws(port: int, attempts: int = 30) -> str:
+    """Poll Chromium's /json/version and return its real browser websocket."""
+    import urllib.request
+
+    def _read() -> str:
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/json/version", timeout=0.35) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+            return str(payload.get("webSocketDebuggerUrl") or "")
+
+    for _ in range(attempts):
+        try:
+            ws = await asyncio.to_thread(_read)
+            if ws:
+                return ws
+        except Exception:
+            pass
+        await asyncio.sleep(0.1)
+    return ""
 
 
 def build_debug_port_args(port: int) -> List[str]:
@@ -178,6 +201,13 @@ class BrowserLauncher:
             await handle.context.close()
         except Exception:
             pass
+        if handle.proxy_bridge is not None:
+            await handle.proxy_bridge.close()
+        if handle.playwright is not None:
+            try:
+                await handle.playwright.stop()
+            except Exception:
+                pass
         self.store.stop_session(user_id)
         return True
 
@@ -322,7 +352,17 @@ class BrowserLauncher:
         from playwright.async_api import async_playwright
         fp = self._resolve_fingerprint(profile)
         proxy_cfg = parse_proxy(profile.proxy or None)
-        proxy_pw = proxy_cfg.to_playwright()
+        proxy_bridge: Optional[Socks5AuthBridge] = None
+        # Chromium cannot authenticate directly to SOCKS5. AdsPower backups
+        # commonly contain authenticated SOCKS5 proxies, so expose a private
+        # no-auth loopback endpoint and authenticate upstream in Python.
+        if proxy_cfg.type == "socks5" and (proxy_cfg.username or proxy_cfg.password):
+            proxy_bridge = await Socks5AuthBridge(
+                proxy_cfg.host, proxy_cfg.port, proxy_cfg.username, proxy_cfg.password
+            ).start()
+            proxy_pw = {"server": proxy_bridge.server_url}
+        else:
+            proxy_pw = proxy_cfg.to_playwright()
         user_dir = self._profile_user_dir(profile.user_id)
         spec = self._resolve_engine_spec(profile)
 
@@ -354,26 +394,37 @@ class BrowserLauncher:
         # back to the ANTIQUE_BROWSER_CHANNEL override (if any).
         channel = spec.channel or os.environ.get("ANTIQUE_BROWSER_CHANNEL")
 
-        if spec.key == "camoufox":
-            # Camoufox: hardened Firefox with engine-level spoofing. Try the
-            # camoufox library; fall back to bundled Firefox if not installed.
-            try:
-                from camoufox.asyncio import AsyncNewBrowser
-                camo_config = {
-                    "os": "windows" if fp.platform == "Win32" else "macos" if fp.platform == "MacIntel" else "linux",
-                    "screen": {"width": fp.screen_width, "height": fp.screen_height},
-                    "locale": fp.locale,
-                    "timezone": fp.timezone,
-                }
-                if proxy_pw:
-                    camo_config["proxy"] = proxy_pw
-                browser = await AsyncNewBrowser(headless=self.headless, config=camo_config)
-                context = await browser.new_context(
-                    user_agent=fp.user_agent,
-                    viewport={"width": fp.inner_width, "height": fp.inner_height},
-                )
-            except ImportError:
-                log.warning("camoufox not installed, falling back to bundled Firefox")
+        try:
+            if spec.key == "camoufox":
+                # Camoufox: hardened Firefox with engine-level spoofing. Try the
+                # camoufox library; fall back to bundled Firefox if not installed.
+                try:
+                    from camoufox.asyncio import AsyncNewBrowser
+                    camo_config = {
+                        "os": "windows" if fp.platform == "Win32" else "macos" if fp.platform == "MacIntel" else "linux",
+                        "screen": {"width": fp.screen_width, "height": fp.screen_height},
+                        "locale": fp.locale,
+                        "timezone": fp.timezone,
+                    }
+                    if proxy_pw:
+                        camo_config["proxy"] = proxy_pw
+                    browser = await AsyncNewBrowser(headless=self.headless, config=camo_config)
+                    context = await browser.new_context(
+                        user_agent=fp.user_agent,
+                        viewport={"width": fp.inner_width, "height": fp.inner_height},
+                    )
+                except ImportError:
+                    log.warning("camoufox not installed, falling back to bundled Firefox")
+                    context = await playwright.firefox.launch_persistent_context(
+                        user_data_dir=str(user_dir),
+                        headless=self.headless,
+                        proxy=proxy_pw,
+                        locale=fp.locale,
+                        timezone_id=fp.timezone,
+                        user_agent=fp.user_agent,
+                        viewport={"width": fp.inner_width, "height": fp.inner_height},
+                    )
+            elif spec.base == "firefox":
                 context = await playwright.firefox.launch_persistent_context(
                     user_data_dir=str(user_dir),
                     headless=self.headless,
@@ -383,33 +434,28 @@ class BrowserLauncher:
                     user_agent=fp.user_agent,
                     viewport={"width": fp.inner_width, "height": fp.inner_height},
                 )
-        elif spec.base == "firefox":
-            context = await playwright.firefox.launch_persistent_context(
-                user_data_dir=str(user_dir),
-                headless=self.headless,
-                proxy=proxy_pw,
-                locale=fp.locale,
-                timezone_id=fp.timezone,
-                user_agent=fp.user_agent,
-                viewport={"width": fp.inner_width, "height": fp.inner_height},
-            )
-        elif spec.base == "webkit":
-            context = await playwright.webkit.launch_persistent_context(
-                user_data_dir=str(user_dir),
-                headless=self.headless,
-                proxy=proxy_pw,
-                locale=fp.locale,
-                timezone_id=fp.timezone,
-                user_agent=fp.user_agent,
-                viewport={"width": fp.inner_width, "height": fp.inner_height},
-            )
-        else:
-            # Chromium base (bundled Chromium, or a real chrome/msedge channel).
-            context = await playwright.chromium.launch_persistent_context(
-                user_data_dir=str(user_dir),
-                channel=channel,
-                **launch_opts,
-            )
+            elif spec.base == "webkit":
+                context = await playwright.webkit.launch_persistent_context(
+                    user_data_dir=str(user_dir),
+                    headless=self.headless,
+                    proxy=proxy_pw,
+                    locale=fp.locale,
+                    timezone_id=fp.timezone,
+                    user_agent=fp.user_agent,
+                    viewport={"width": fp.inner_width, "height": fp.inner_height},
+                )
+            else:
+                # Chromium base (bundled Chromium, or a real chrome/msedge channel).
+                context = await playwright.chromium.launch_persistent_context(
+                    user_data_dir=str(user_dir),
+                    channel=channel,
+                    **launch_opts,
+                )
+        except Exception:
+            await playwright.stop()
+            if proxy_bridge is not None:
+                await proxy_bridge.close()
+            raise
 
         await context.add_init_script(init_js)
         if profile.cookies:
@@ -431,7 +477,7 @@ class BrowserLauncher:
             except Exception:
                 pass
         session_id = f"{profile.user_id}-{int(time.time())}"
-        ws_endpoint = f"ws://127.0.0.1:{port}/devtools/browser"
+        ws_endpoint = await _wait_for_cdp_ws(port) if spec.supports_cdp else ""
         pid: Optional[int] = None
         try:
             browser_proc = context.browser._impl_obj._process if context.browser else None
@@ -453,4 +499,6 @@ class BrowserLauncher:
             ws_endpoint=ws_endpoint,
             pid=pid,
             context=context,
+            playwright=playwright,
+            proxy_bridge=proxy_bridge,
         )

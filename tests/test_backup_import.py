@@ -170,6 +170,30 @@ def test_import_adspower_backup_root_creates_profiles(tmp_path: Path):
     assert beta.proxy["proxy_type"] == "direct"
 
 
+def test_prepare_payload_falls_back_when_json_cookies_are_broken(tmp_path: Path):
+    root = tmp_path / "backup"
+    root.mkdir()
+    _make_backup_profile(root, "abc12345")
+    (root / "json_cookies").mkdir()
+    (root / "json_cookies" / "abc12345_cookies.json").write_text("{broken", encoding="utf-8")
+    payload = prepare_backup_profile_payload(root, {
+        "user_id": "abc12345",
+        "user_proxy_config": {"proxy_soft": "no_proxy"},
+    })
+    assert payload["cookie_source"] == "profile_dir"
+    assert payload["cookies"][0]["value"] == "cookie-db"
+
+
+def test_prepare_payload_invalid_proxy_port_becomes_direct(tmp_path: Path):
+    root = tmp_path / "backup"
+    root.mkdir()
+    payload = prepare_backup_profile_payload(root, {
+        "user_id": "abc12345",
+        "user_proxy_config": {"proxy_type": "socks5", "proxy_host": "x", "proxy_port": "bad"},
+    })
+    assert payload["proxy"]["proxy_type"] == "direct"
+
+
 def test_import_adspower_backup_root_skips_existing_without_overwrite(tmp_path: Path):
     root = tmp_path / "backup"
     root.mkdir()

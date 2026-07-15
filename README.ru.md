@@ -200,7 +200,9 @@ src/
 │   ├── proxy_pool.py              ← Пул прокси + ротация/failover (sticky/round_robin/random)
 │   ├── detect.py                  ← Селф-тест маскировки / детект-харнесс (build_collector_script, score_report)
 │   ├── engines.py                 ← Реестр браузерных движков (EngineSpec, resolve_engine, list_engines)
-│   └── sync.py                    ← Синхронная автоматизация на несколько профилей (run_sync_flow, FlowTask)
+│   ├── sync.py                    ← Синхронная автоматизация на несколько профилей (run_sync_flow, FlowTask)
+│   ├── fingerprint_ops.py         ← умная массовая рандомизация, общие/сохраняемые группы полей
+│   └── socks_bridge.py            ← петлевой SOCKS5-мост авторизации для совместимости с AdsPower/Chromium
 ├── api/
 │   ├── __init__.py
 │   ├── server.py                  ← FastAPI app factory, CORS, mount UI + API routes
@@ -346,6 +348,9 @@ python -m src.cli import-backup PATH [--overwrite] [--limit N]   # импорт 
 python -m src.cli set-status USER_ID STATUS                     # изменение статуса: new|warming|active|limited|banned|retired
 python -m src.cli sync FLOW.json -u USER_ID -u USER_ID [...]    # один флоу автоматизации сразу на несколько профилей
 python -m src.cli create ... [--status active]                  # создание с указанием статуса
+python -m src.cli clone USER_ID [--name NAME] [--user-id NEW_ID] # клонирование профиля
+python -m src.cli bulk-status USER_ID [USER_ID ...] STATUS      # массовое изменение статусов аккаунтов
+python -m src.cli list ... [--sort name|launches|...] [--order asc|desc] # вывод списка с сортировкой
 python -m src.cli fingerprint [--seed SEED] [--os windows|macos|linux]
 ```
 
@@ -450,6 +455,16 @@ GET  /engine/list
 
 POST /user/import/backup            Body: {source_path, overwrite?, limit?}
 → {code:0, data:{imported_count, updated_count, skipped_count, error_count, cookie_sources, ...}}
+
+POST /user/clone                    Body: {user_id, name?, user_id_override?}
+→ {code:0, data:{user_id, name, source_user_id}}
+
+POST /user/bulk/status              Body: {user_ids:[...], account_status}
+→ {code:0, data:{results:[{user_id, ok, error?}], updated_count}}
+
+POST /user/bulk/fingerprint/randomize
+Body: {user_ids:[...], os_family?, shared_fields?:["screen","gpu",...], preserve_fields?:["engine",...], seed?}
+→ {code:0, data:{updated_count, user_ids:[...]}}
 
 GET  /status/list                   → список предустановленных статусов аккаунтов
 POST /user/{user_id}/status         Body: {account_status}
@@ -694,7 +709,7 @@ python -m pytest tests/test_cookie.py -v
 python -m pytest -k adb             # only .adb-related tests
 ```
 
-**340+ тестов** (на самом деле сейчас 292):
+**300+ тестов** (на самом деле сейчас 306):
 
 - `test_storage.py` — SQLite engine, tables
 - `test_profile.py` — ProfileStore CRUD, full-profile fields, session bookkeeping
@@ -712,13 +727,16 @@ python -m pytest -k adb             # only .adb-related tests
 - `test_api_endpoints.py` — HTTP-тесты API (TestClient): регрессии расширений, гео-матчинг, прокси-пул, экспорт, скоринг скрытности
 - `test_auth.py` — авторизация по API + Origin-guard (DNS-rebinding, Bearer-токен, разрешенные хосты)
 - `test_engines.py` — реестр браузерных движков: спецификации, капабилити, алиасы, выбор приоритетов, запуск лаунчеров
-- `test_sync.py` — синхронная автоматизация на несколько профилей (конкурентность, изоляция ошибок) (НОВОЕ)
-- `test_status_liveview.py` — статусы аккаунтов, скриншоты Live View, проверки эндпоинтов CDP и скриншотов (НОВОЕ)
+- `test_sync.py` — синхронная автоматизация на несколько профилей (конкурентность, изоляция ошибок)
+- `test_status_liveview.py` — статусы аккаунтов, скриншоты Live View, проверки эндпоинтов CDP и скриншотов
+- `test_import_launch_and_randomize.py` — регрессия импортированных профилей, петлевой SOCKS5 мост, умная bulk-рандомизация (НОВОЕ в 0.4.0)
+- `test_ui_release_040.py` — проверка элементов интерфейса релиза 0.4.0 (НОВОЕ в 0.4.0)
+- `test_sort_clone_features.py` — сортировка профилей, клонирование и групповое обновление статусов (НОВОЕ в 0.5.0)
 
 Запустить только новые наборы тестов:
 
 ```bash
-python -m pytest tests/test_sync.py tests/test_status_liveview.py tests/test_api_endpoints.py -v
+python -m pytest tests/test_sort_clone_features.py tests/test_import_launch_and_randomize.py tests/test_ui_release_040.py -v
 ```
 
 ---
@@ -762,7 +780,12 @@ python -m pytest tests/test_sync.py tests/test_status_liveview.py tests/test_api
 - [x] **Реальный CDP на профиль** (уникальный порт для каждого Chromium-профиля, доступен через `/user/{id}/cdp`)
 - [x] **Синхронизация нескольких профилей** (одновременный запуск одного флоу шагов на группе профилей, `src/core/sync.py`, CLI `sync`, `/sync/run`)
 - [x] **Docker контейнеризация** (добавлен `Dockerfile`, `docker-compose.yml`, `docker compose up`)
-- [x] 340+ тестов pytest пройдены
+- [x] **Сортировка профилей в UI, API и CLI** (по 13 параметрам, с запоминанием направления asc/desc)
+- [x] **Клонирование профилей** (копирование метаданных, отпечатков, прокси, кук и тегов через UI Manage/Clone, API `/user/clone` или CLI `clone`)
+- [x] **Массовое изменение статусов аккаунтов** (через UI, API `/user/bulk/status` или CLI `bulk-status`)
+- [x] **Умная рандомизация отпечатков** (с сохранением выбранных групп полей в UI/API)
+- [x] **Петлевой авторизационный SOCKS5-мост** (для обхода ограничений авторизации прокси в Chromium)
+- [x] 300+ тестов pytest пройдены
 
 ### Известные ограничения
 

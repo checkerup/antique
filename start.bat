@@ -20,6 +20,7 @@ if not exist ".venv\Scripts\activate.bat" goto :setup
 call .venv\Scripts\activate.bat
 python -c "import fastapi, playwright, typer, multipart" >nul 2>nul
 if errorlevel 1 goto :repair
+if not exist ".venv\.antique-browsers-v2" goto :install_browsers
 
 goto :start_server
 
@@ -41,9 +42,15 @@ echo [setup] Installing antique...
 pip install -e .
 if errorlevel 1 goto :install_fail
 
-echo [setup] Downloading Chromium engine (one-time)...
-python -m playwright install chromium
+:install_browsers
+echo [setup] Downloading Chromium, Firefox and WebKit engines (one-time)...
+python -m playwright install chromium firefox webkit
 if errorlevel 1 goto :playwright_fail
+
+echo [setup] Preparing Camoufox deep-stealth engine (best effort)...
+python -m camoufox fetch >nul 2>nul
+if errorlevel 1 echo [warn] Camoufox download skipped. Chromium/Firefox/WebKit are ready.
+type nul > ".venv\.antique-browsers-v2"
 
 goto :start_server
 
@@ -84,7 +91,7 @@ echo [ERROR] Failed to install dependencies.
 goto :pause_and_exit
 
 :playwright_fail
-echo [ERROR] Failed to download Chromium engine.
+echo [ERROR] Failed to download Playwright browser engines.
 goto :pause_and_exit
 
 :server_fail

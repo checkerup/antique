@@ -173,6 +173,8 @@ class ProfileStore:
         tag: Optional[str] = None,
         search: Optional[str] = None,
         account_status: Optional[str] = None,
+        sort_by: str = "name",
+        sort_order: str = "asc",
     ) -> List[Profile]:
         with Session(self.engine) as s:
             stmt = select(ProfileRecord)
@@ -195,6 +197,24 @@ class ProfileStore:
                 if search and search.lower() not in p.name.lower():
                     continue
                 out.append(p)
+            sort_keys = {
+                "name": lambda p: p.name.casefold(),
+                "id": lambda p: p.user_id.casefold(),
+                "user_id": lambda p: p.user_id.casefold(),
+                "group": lambda p: p.group_id.casefold(),
+                "status": lambda p: p.account_status.casefold(),
+                "tags": lambda p: ",".join(p.tags).casefold(),
+                "launches": lambda p: p.launch_count,
+                "cookies": lambda p: len(p.cookies),
+                "created": lambda p: p.created_at,
+                "updated": lambda p: p.updated_at,
+                "last_launched": lambda p: p.last_launched_at or datetime.min,
+                "proxy": lambda p: str(p.proxy.get("proxy_host", "")).casefold(),
+                "engine": lambda p: str(p.fingerprint.get("browser_engine", "chromium")).casefold(),
+                "live": lambda p: 0 if p.running_debug_port else 1,
+            }
+            key = sort_keys.get(sort_by, sort_keys["name"])
+            out.sort(key=key, reverse=sort_order.lower() == "desc")
             return out
 
     # ---- updates ----
