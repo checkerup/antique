@@ -36,6 +36,9 @@ class ProfileRecord(SQLModel, table=True):
     # Tags / labels / notes
     tags: str = Field(default="[]")  # JSON list of strings
     remark: str = Field(default="")  # free-form note
+    # Account lifecycle status for multi-account operators. Free-form, but the
+    # UI offers presets: new | warming | active | limited | banned | retired.
+    account_status: str = Field(default="new", index=True)
 
     # Full-profile import (.adb bundle). When set, the launcher copies
     # LocalStorage/leveldb + IndexedDB from this path into Playwright's
@@ -110,10 +113,41 @@ def make_engine(db_path: Optional[Path] = None, echo: bool = False):
 
 
 def init_db(engine=None) -> None:
-    """Create tables if they don't exist. Idempotent."""
+    """Create tables if they don't exist, then run tiny in-place migrations.
+
+    Idempotent. SQLite doesn't auto-add new columns to an existing table when
+    the model gains a field, so we add missing columns manually (cheap, safe).
+    """
     if engine is None:
         engine = make_engine()
     SQLModel.metadata.create_all(engine)
+    _migrate_add_columns(engine)
+
+
+# Columns added after the initial schema shipped. name -> SQL column definition.
+_MIGRATIONS = {
+    "profiles": {
+        "account_status": "TEXT NOT NULL DEFAULT 'new'",
+    },
+}
+
+
+def _migrate_add_columns(engine) -> None:
+    """Add any columns present in the model but missing from an existing table."""
+    from sqlalchemy import text
+    with engine.connect() as conn:
+        for table, cols in _MIGRATIONS.items():
+            try:
+                existing = {row[1] for row in conn.execute(text(f"PRAGMA table_info({table})"))}
+            except Exception:
+                continue
+            for col, ddl in cols.items():
+                if col not in existing:
+                    try:
+                        conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {ddl}"))
+                        conn.commit()
+                    except Exception:
+                        pass
 
 
 def get_session(engine=None) -> Session:

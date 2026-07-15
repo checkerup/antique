@@ -36,6 +36,8 @@ class Profile:
     cookies: List[Dict[str, Any]] = field(default_factory=list)
     tags: List[str] = field(default_factory=list)
     remark: str = ""
+    # Account lifecycle status (multi-account ops): new|warming|active|limited|banned|retired
+    account_status: str = "new"
 
     # Full-profile import (.adb bundle path + apply-on-first-launch flag)
     import_source_path: str = ""
@@ -79,6 +81,7 @@ def _record_to_profile(r: ProfileRecord, running: Optional[SessionRecord] = None
         cookies=json.loads(r.cookies) if r.cookies else [],
         tags=json.loads(r.tags) if r.tags else [],
         remark=r.remark,
+        account_status=getattr(r, "account_status", "new") or "new",
         import_source_path=r.import_source_path or "",
         initial_state_applied=bool(r.initial_state_applied),
         created_at=r.created_at,
@@ -117,6 +120,7 @@ class ProfileStore:
         cookies: Optional[List[Dict[str, Any]]] = None,
         tags: Optional[List[str]] = None,
         remark: str = "",
+        account_status: str = "new",
         user_id: Optional[str] = None,
     ) -> Profile:
         """Create and persist a new profile.
@@ -140,6 +144,7 @@ class ProfileStore:
                 cookies=json.dumps(cookies or []),
                 tags=json.dumps(tags or []),
                 remark=remark,
+                account_status=account_status or "new",
             )
             s.add(record)
             s.commit()
@@ -167,6 +172,7 @@ class ProfileStore:
         group_id: Optional[str] = None,
         tag: Optional[str] = None,
         search: Optional[str] = None,
+        account_status: Optional[str] = None,
     ) -> List[Profile]:
         with Session(self.engine) as s:
             stmt = select(ProfileRecord)
@@ -183,6 +189,8 @@ class ProfileStore:
                 ).first()
                 p = _record_to_profile(r, running)
                 if tag and tag not in p.tags:
+                    continue
+                if account_status and p.account_status != account_status:
                     continue
                 if search and search.lower() not in p.name.lower():
                     continue
@@ -202,6 +210,7 @@ class ProfileStore:
         cookies: Optional[List[Dict[str, Any]]] = None,
         tags: Optional[List[str]] = None,
         remark: Optional[str] = None,
+        account_status: Optional[str] = None,
     ) -> Profile:
         with Session(self.engine) as s:
             r = s.get(ProfileRecord, user_id)
@@ -221,6 +230,8 @@ class ProfileStore:
                 r.tags = json.dumps(tags)
             if remark is not None:
                 r.remark = remark
+            if account_status is not None:
+                r.account_status = account_status
             r.touch()
             s.add(r)
             s.commit()

@@ -176,3 +176,35 @@ python -m src.cli import-backup "C:\ai_workflow\adspower_profiles_backup"
 pip install camoufox && python -m camoufox fetch
 ```
 Без установки camoufox профиль мягко откатывается на бандловый Firefox (лог предупреждает, не падает).
+
+---
+
+## Заход 5 (текущий) — Live View / реальный CDP / синхрон / статусы / Docker
+
+| Фича | Код | Тесты |
+|---|---|---|
+| **Статусы аккаунтов** (new/warming/active/limited/banned/retired) | `storage.py`, `profile.py`, `routes.py` | `tests/test_status_liveview.py` |
+| **Live View** (скриншот запущенного профиля) | `browser.py: screenshot()`, `/user/{id}/screenshot` | `tests/test_status_liveview.py` |
+| **Реальный CDP на профиль** | `browser.py: real_cdp_info()`, `/user/{id}/cdp` | `tests/test_status_liveview.py` |
+| **Синхронизация** (один флоу на N профилей) | `src/core/sync.py`, `/sync/run`, CLI `sync` | `tests/test_sync.py` |
+| **Docker** | `Dockerfile`, `docker-compose.yml`, `.dockerignore` | ручная проверка (`docker compose up`) |
+
+### Что проверяют тесты (всё оффлайн, без живого браузера)
+- **test_sync.py**: все успешно; недоступная страница изолируется (остальные продолжают), ошибка флоу по-профильно, лимит конкурентности, порядок сохраняется.
+- **test_status_liveview.py**: дефолт/смена/фильтр статуса (store + API), screenshot через фейк-handle, CDP/screenshot дают 409 когда профиль не запущен, sync API → 400 на пустой флоу.
+- **Миграция БД**: `init_db` добавляет колонку `account_status` в старые `antique.db` автоматически (если у тебя уже есть data/antique.db — не удаляй, просто запусти).
+
+### Команды
+```bash
+python -m pytest tests/test_sync.py tests/test_status_liveview.py -v
+python -m pytest            # полный прогон (~340+)
+```
+
+### Живой smoke (нужен браузер)
+```bash
+python -m src.cli set-status <UID> active
+# Live View + CDP: запусти профиль в UI → Stop-ряд появится 👁 → открой, увидишь скрин + CDP ws
+# Синхрон: python -m src.cli sync flow.json -u <UID1> -u <UID2>
+# Docker: docker compose up  →  http://127.0.0.1:8080/
+```
+Пример flow.json: `[{"action":"goto","url":"https://example.com"},{"action":"wait","ms":1500}]`

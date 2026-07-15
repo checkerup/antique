@@ -150,6 +150,7 @@ def create(
     fingerprint_seed: Optional[str] = typer.Option(None, "--fingerprint-seed"),
     geo_country: Optional[str] = typer.Option(None, "--geo-country", help="ISO country (US, DE, RU…) to align timezone/locale/geolocation"),
     engine: Optional[str] = typer.Option(None, "--engine", help="Browser engine: chromium|chrome|edge|firefox|camoufox|webkit"),
+    status: str = typer.Option("new", "--status", help="Account status: new|warming|active|limited|banned|retired"),
 ):
     """Create a new profile with a generated fingerprint."""
     from .core.fingerprint import generate_fingerprint
@@ -182,6 +183,7 @@ def create(
         fingerprint=fp,
         tags=tag_list,
         remark=remark,
+        account_status=status,
         user_id=user_id,
     )
     console.print(f"[green]✓[/green] created profile [bold]{p.name}[/bold] with id [cyan]{p.user_id}[/cyan]")
@@ -649,6 +651,69 @@ def detect_test(
                 console.print("  [green]✓[/green] no leaks detected")
         finally:
             await launcher.stop(user_id)
+    asyncio.run(_go())
+
+
+@app.command("set-status")
+def set_status(
+    user_id: str = typer.Argument(...),
+    status: str = typer.Argument(..., help="new|warming|active|limited|banned|retired (free-form)"),
+):
+    """Set a profile's account status."""
+    store = _store()
+    p = store.get(user_id)
+    if p is None:
+        console.print(f"[red]user_id {user_id} not found[/red]")
+        raise typer.Exit(1)
+    store.update(user_id, account_status=status)
+    console.print(f"[green]✓[/green] {p.name}: status → [cyan]{status}[/cyan]")
+
+
+@app.command("sync")
+def sync_cmd(
+    flow_file: Path = typer.Argument(..., exists=True, dir_okay=False, help="JSON automation flow"),
+    user_id: list[str] = typer.Option(..., "--user", "-u", help="Profile to include (repeatable)"),
+    stop_on_error: bool = typer.Option(False, "--stop-on-error"),
+    max_concurrency: int = typer.Option(0, "--max-concurrency", help="0 = unlimited"),
+    headless: bool = typer.Option(False, "--headless"),
+):
+    """Run one automation flow across several profiles at once (sync group)."""
+    import asyncio
+    from .core.automation import parse_flow, FlowValidationError
+    from .core.sync import run_sync
+    from .core.browser import BrowserLauncher
+    store = _store()
+    try:
+        steps = parse_flow(json.loads(flow_file.read_text(encoding="utf-8")))
+    except (FlowValidationError, json.JSONDecodeError) as exc:
+        console.print(f"[red]Invalid flow: {exc}[/red]")
+        raise typer.Exit(1)
+    launcher = BrowserLauncher(store, headless=headless)
+
+    async def _go():
+        started = []
+        for uid in user_id:
+            p = store.get(uid)
+            if p is None:
+                console.print(f"[yellow]skip {uid}: not found[/yellow]")
+                continue
+            await launcher.start(p)
+            started.append(uid)
+
+        async def _page_for(uid):
+            h = launcher.get_handle(uid)
+            if h is None:
+                raise RuntimeError("not running")
+            return await launcher._active_page(h)
+
+        report = await run_sync(started, steps, _page_for,
+                                stop_on_error=stop_on_error, max_concurrency=max_concurrency)
+        for r in report.results:
+            mark = "[green]✓[/green]" if r.ok else "[red]✗[/red]"
+            console.print(f"  {mark} {r.user_id}: {r.completed}/{r.total}" + (f"  [red]{r.error}[/red]" if r.error else ""))
+        console.print(f"[bold]{report.succeeded}/{len(report.results)}[/bold] profiles ok")
+        for uid in started:
+            await launcher.stop(uid)
     asyncio.run(_go())
 
 

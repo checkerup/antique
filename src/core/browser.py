@@ -189,6 +189,49 @@ class BrowserLauncher:
                 n += 1
         return n
 
+    async def _active_page(self, handle: "BrowserHandle"):
+        """Return the profile's current page, opening one if none exist."""
+        pages = handle.context.pages
+        return pages[0] if pages else await handle.context.new_page()
+
+    async def screenshot(self, user_id: str, *, full_page: bool = False) -> Optional[bytes]:
+        """Live View: PNG screenshot of a running profile's active page.
+
+        Returns raw PNG bytes, or ``None`` if the profile isn't running.
+        """
+        handle = self._live.get(user_id)
+        if handle is None:
+            return None
+        page = await self._active_page(handle)
+        return await page.screenshot(full_page=full_page)
+
+    def real_cdp_info(self, user_id: str, *, timeout: float = 3.0) -> Optional[Dict[str, Any]]:
+        """Return the REAL Chrome DevTools endpoint for a running Chromium
+        profile by reading ``http://127.0.0.1:<debug_port>/json/version``.
+
+        Chromium serves this itself because we pass ``--remote-debugging-port``
+        at launch. Returns ``None`` for non-running or non-Chromium profiles,
+        or if the port isn't answering yet.
+        """
+        handle = self._live.get(user_id)
+        if handle is None or not handle.debug_port:
+            return None
+        import json as _json
+        import urllib.request
+        url = f"http://127.0.0.1:{handle.debug_port}/json/version"
+        try:
+            with urllib.request.urlopen(url, timeout=timeout) as resp:
+                data = _json.loads(resp.read().decode("utf-8"))
+        except Exception:
+            return None
+        return {
+            "user_id": user_id,
+            "debug_port": handle.debug_port,
+            "webSocketDebuggerUrl": data.get("webSocketDebuggerUrl"),
+            "Browser": data.get("Browser"),
+            "json_version_url": url,
+        }
+
     def _resolve_fingerprint(self, profile: Profile) -> Fingerprint:
         from dataclasses import fields
         if profile.fingerprint:

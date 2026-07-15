@@ -44,7 +44,8 @@ antique is a Python service that:
 - Geo matching (timezone/locale/geolocation aligned to the proxy exit country), proxy rotation/failover, headless stealth, and a stealth self-test harness.
 - Swappable browser engines: Chromium, Google Chrome, Microsoft Edge, Firefox, Camoufox (deep engine-level stealth), WebKit.
 - One-click AdsPower backup import (whole backup folder or a single profile), preserving user_id, cookies, proxy, tags.
-- Dashboard with light/dark themes, engine picker, and an AdsPower import flow.
+- Dashboard with light/dark themes, engine picker, an AdsPower import flow, per-profile Live View, and account-status labels.
+- Live View (live screenshot of a running profile), real per-profile CDP endpoint, synchronized multi-profile automation (one flow across many profiles), and a Docker one-command run.
 - Bulk operations: start/stop/delete/export multiple profiles, bulk proxy import/assign.
 - Group management and filtering.
 - Proxy health-check with IP detection and latency measurement.
@@ -347,6 +348,9 @@ python -m src.cli create ... [--geo-country US|DE|RU|...]        # create alread
 python -m src.cli engines                                       # list engines + stealth tier
 python -m src.cli create ... [--engine chromium|chrome|edge|firefox|camoufox|webkit]
 python -m src.cli import-backup PATH [--overwrite] [--limit N]  # import an AdsPower backup folder
+python -m src.cli set-status USER_ID STATUS                     # new|warming|active|limited|banned|retired
+python -m src.cli sync FLOW.json -u USER_ID -u USER_ID [...]    # one flow across many profiles
+python -m src.cli create ... [--status active]
 python -m src.cli fingerprint [--seed SEED] [--os windows|macos|linux]
 ```
 
@@ -451,6 +455,13 @@ GET  /engine/list
 
 POST /user/import/backup            Body: {source_path, overwrite?, limit?}
 → {code:0, data:{imported_count, updated_count, skipped_count, error_count, cookie_sources, ...}}
+
+GET  /status/list                   → preset account statuses
+POST /user/{user_id}/status         Body: {account_status}
+POST /user/{user_id}/screenshot     → {code:0, data:{base64_png}}   # Live View (profile must be running)
+GET  /user/{user_id}/cdp            → {code:0, data:{webSocketDebuggerUrl, debug_port, ...}}  # real CDP
+POST /sync/run                      Body: {user_ids:[...], flow:[...], stop_on_error?, max_concurrency?}
+→ {code:0, data:{ok, succeeded, total, results:[{user_id, ok, completed, total, error}]}}
 ```
 
 ### Profile shape returned by `/user/list`
@@ -728,12 +739,14 @@ Test files:
 - `test_console.py` — Windows UTF-8 console fix + ASCII fallback
 - `test_api_endpoints.py` — HTTP-level tests (TestClient): extension wiring regression, geo-match, proxy-pool, portable round-trip, detect scoring
 - `test_auth.py` — API auth + origin guard (DNS-rebinding, Bearer token, tunnel allow-list)
-- `test_engines.py` — Browser engine registry: specs, capabilities, alias/priority resolution, launcher wiring (NEW)
+- `test_engines.py` — Browser engine registry: specs, capabilities, alias/priority resolution, launcher wiring
+- `test_sync.py` — Synchronized multi-profile automation (concurrency, isolation, per-profile errors) (NEW)
+- `test_status_liveview.py` — Account statuses, Live View screenshot (fake handle), real-CDP + screenshot guard paths, sync API (NEW)
 
 Run only the newest suites:
 
 ```bash
-python -m pytest tests/test_engines.py tests/test_api_endpoints.py -v
+python -m pytest tests/test_sync.py tests/test_status_liveview.py tests/test_api_endpoints.py -v
 ```
 
 ---
@@ -779,11 +792,16 @@ python -m pytest tests/test_engines.py tests/test_api_endpoints.py -v
 - [x] **Camoufox deep-stealth engine** (Gecko-level fingerprint spoofing; falls back to bundled Firefox if not installed)
 - [x] **One-click AdsPower backup import** (whole backup folder or single profile; dashboard + `import-backup` CLI + `/user/import/backup`)
 - [x] **Redesigned dashboard** (light/dark themes, engine picker, AdsPower import, toasts)
-- [x] 300+ pytest tests passing
+- [x] **Account statuses** (new/warming/active/limited/banned/retired) with filter (`/status/list`, `/user/{id}/status`, `set-status` CLI)
+- [x] **Live View** (live screenshot of a running profile; `/user/{id}/screenshot` + dashboard modal)
+- [x] **Real per-profile CDP** (`/user/{id}/cdp` reads Chromium's own `/json/version` on the debug port)
+- [x] **Synchronized multi-profile automation** (`src/core/sync.py`, `/sync/run`, `sync` CLI)
+- [x] **Docker** (`Dockerfile` + `docker-compose.yml`, `docker compose up`)
+- [x] 340+ pytest tests passing
 
 ### Known limitations
 
-- **Simulated CDP multiplexer.** The `/json/list` + `/devtools/page/...` endpoints don't expose a real Chrome debug port for external automation — use the per-profile websocket from `POST /user/start` instead.
+- **Real per-profile CDP** is available at `GET /user/{id}/cdp` (Chromium engines). The legacy `/json/list` + `/devtools/page/...` multiplexer is still simulated — prefer `/user/{id}/cdp` or the websocket from `POST /user/start`.
 - **API auth is opt-in.** Set `ANTIQUE_API_TOKEN` to require a Bearer token; unset, the API is open on `127.0.0.1` (still protected by the cross-origin guard). Single-process, no multi-user roles.
 - **No proxy provider integration.** You supply proxies; we don't pull them from BrightData/Decodo/etc. Rotation/failover over a supplied pool is implemented.
 - **Headless stealth is best-effort.** `window.chrome` + permissions tells are patched; deep headless heuristics (paint timing, GPU quirks) are not fully covered.
@@ -794,7 +812,8 @@ python -m pytest tests/test_engines.py tests/test_api_endpoints.py -v
 
 ### Roadmap
 
-- [ ] **Real CDP per profile** — assign a unique `--remote-debugging-port` per profile (still simulated).
+- [x] **Real CDP per profile** — `--remote-debugging-port` per profile, surfaced at `/user/{id}/cdp`.
+- [x] **Live View, sync groups, account statuses, Docker** — shipped in 0.3.0.
 - [ ] **WebRTC proxy-IP rewriting** — expose the proxy's public IP via ICE candidates instead of blocking.
 - [ ] **MCP server UI integration** — start/stop MCP from the dashboard.
 - [ ] **Proxy provider integrations** — BrightData, Decodo, smartproxy.

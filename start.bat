@@ -15,12 +15,29 @@ if errorlevel 1 (
   exit /b 1
 )
 
+set SETUP_NEEDED=0
+
 if not exist ".venv\Scripts\activate.bat" (
-  echo [setup] Creating virtual environment...
-  python -m venv .venv
+  set SETUP_NEEDED=1
+) else (
   call .venv\Scripts\activate.bat
+  python -c "import fastapi, playwright, typer" >nul 2>nul
+  if errorlevel 1 (
+    echo [info] Virtual environment exists but dependencies are missing or corrupt.
+    echo [info] Triggering repair / dependency installation...
+    set SETUP_NEEDED=1
+  )
+)
+
+if "%SETUP_NEEDED%"=="1" (
+  echo [setup] Creating or repairing virtual environment...
+  if not exist ".venv\Scripts\activate.bat" (
+    python -m venv .venv
+  )
+  call .venv\Scripts\activate.bat
+  echo [setup] Upgrading pip...
+  python -m pip install --upgrade pip
   echo [setup] Installing antique + dependencies...
-  python -m pip install --upgrade pip >nul
   pip install -e .
   echo [setup] Downloading Chromium engine (one-time)...
   python -m playwright install chromium

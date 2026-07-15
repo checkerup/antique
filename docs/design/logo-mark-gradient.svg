@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" role="img" aria-label="antique">
+  <defs>
+    <linearGradient id="idGrad" x1="0" y1="0" x2="128" y2="128" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#4d8dfd"/>
+      <stop offset="1" stop-color="#b98cff"/>
+    </linearGradient>
+  </defs>
+  <!-- squircle tile (iOS-style rounded square) -->
+  <rect x="4" y="4" width="120" height="120" rx="28" fill="url(#idGrad)"/>
+  <!-- domino privacy mask motif = the two 'eyes' of the identity mark -->
+  <g fill="none" stroke="#ffffff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round">
+    <!-- mask body: a soft rounded bar spanning the width -->
+    <path d="M34 58 Q64 44 94 58 Q96 70 88 78 Q64 86 40 78 Q32 70 34 58 Z"/>
+    <!-- left eye hole -->
+    <circle cx="50" cy="64" r="5.5" fill="#4d8dfd" stroke="none"/>
+    <!-- right eye hole -->
+    <circle cx="78" cy="64" r="5.5" fill="#7a6cf0" stroke="none"/>
+  </g>
+  <!-- lowercase 'a' stem hinted below the mask to tie the letterform -->
+  <path d="M64 92 v-6" stroke="#ffffff" stroke-width="7" stroke-linecap="round"/>
+  <!-- NOTE: this is a HAND-CODED STARTER. The design agent should refine the
+       glyph into a single confident monoline per BRAND.md Concept A and
+       ensure legibility at 16px. Keep the gradient + squircle as-is. -->
+</svg>

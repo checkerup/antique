@@ -84,6 +84,7 @@ class UserCreate(BaseModel):
     cookies: Optional[List[Dict[str, Any]]] = None
     remark: Optional[str] = ""
     tags: Optional[List[str]] = None
+    account_status: Optional[str] = None
     user_id: Optional[str] = None
 
 
@@ -96,6 +97,7 @@ class UserUpdate(BaseModel):
     cookies: Optional[List[Dict[str, Any]]] = None
     remark: Optional[str] = None
     tags: Optional[List[str]] = None
+    account_status: Optional[str] = None
 
 
 class UserDelete(BaseModel):
@@ -157,6 +159,7 @@ def _profile_to_adspower_shape(p) -> Dict[str, Any]:
         "launch_count": p.launch_count,
         "remark": p.remark,
         "tags": p.tags,
+        "account_status": p.account_status,
         "user_proxy_config": p.proxy,
         "fingerprint_config": p.fingerprint,
         "cookies": p.cookies,
@@ -177,7 +180,7 @@ def _ads_response(success: bool, **data: Any) -> Dict[str, Any]:
 
 @router.get("/health")
 def health() -> Dict[str, Any]:
-    return {"status": "ok", "service": "antique", "version": "0.2.0"}
+    return {"status": "ok", "service": "antique", "version": "0.3.0"}
 
 
 # ---------------------------------------------------------------------------
@@ -204,6 +207,7 @@ def user_create(body: UserCreate) -> Dict[str, Any]:
         cookies=body.cookies or [],
         tags=body.tags or [],
         remark=body.remark or "",
+        account_status=body.account_status or "new",
         user_id=body.user_id,
     )
     return _ads_response(True, **{
@@ -232,6 +236,7 @@ def user_update(body: UserUpdate) -> Dict[str, Any]:
             cookies=body.cookies,
             tags=body.tags,
             remark=body.remark,
+            account_status=body.account_status,
         )
     except KeyError:
         raise HTTPException(status_code=404, detail="user_id not found")
@@ -249,9 +254,10 @@ def user_list(
     page_size: int = Query(100, ge=1, le=1000),
     search: Optional[str] = Query(None),
     tag: Optional[str] = Query(None),
+    account_status: Optional[str] = Query(None),
 ) -> Dict[str, Any]:
     assert _store is not None
-    profiles = _store.list(group_id=group_id, tag=tag, search=search)
+    profiles = _store.list(group_id=group_id, tag=tag, search=search, account_status=account_status)
     total = len(profiles)
     start = (page - 1) * page_size
     end = start + page_size
@@ -874,6 +880,108 @@ def engine_list() -> Dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# Account status (multi-account lifecycle)
+# ---------------------------------------------------------------------------
+
+ACCOUNT_STATUSES = ["new", "warming", "active", "limited", "banned", "retired"]
+
+
+class StatusUpdate(BaseModel):
+    account_status: str
+
+
+@router.get("/status/list")
+def status_list() -> Dict[str, Any]:
+    """Preset account-status values (the UI offers these; field is free-form)."""
+    return _ads_response(True, statuses=ACCOUNT_STATUSES)
+
+
+@router.post("/user/{user_id}/status")
+def user_set_status(user_id: str, body: StatusUpdate) -> Dict[str, Any]:
+    """Set a profile's account status (e.g. active/banned/warming)."""
+    assert _store is not None
+    try:
+        p = _store.update(user_id, account_status=body.account_status)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="user_id not found")
+    return _ads_response(True, user_id=user_id, account_status=p.account_status)
+
+
+# ---------------------------------------------------------------------------
+# Live View + real per-profile CDP
+# ---------------------------------------------------------------------------
+
+
+@router.post("/user/{user_id}/screenshot")
+async def user_screenshot(user_id: str, full_page: bool = Query(False)) -> Dict[str, Any]:
+    """Live View: return a base64 PNG of the running profile's active page."""
+    assert _launcher is not None
+    if not _launcher.is_running(user_id):
+        raise HTTPException(status_code=409, detail="profile is not running")
+    import base64
+    buf = await _launcher.screenshot(user_id, full_page=full_page)
+    if buf is None:
+        raise HTTPException(status_code=409, detail="profile is not running")
+    return _ads_response(True, user_id=user_id, base64_png=base64.b64encode(buf).decode())
+
+
+@router.get("/user/{user_id}/cdp")
+def user_cdp(user_id: str) -> Dict[str, Any]:
+    """Return the REAL Chrome DevTools endpoint for a running Chromium profile.
+
+    Reads Chromium's own ``/json/version`` on the profile's debug port. Use
+    the returned ``webSocketDebuggerUrl`` to attach Selenium/Puppeteer/CDP.
+    """
+    assert _launcher is not None
+    if not _launcher.is_running(user_id):
+        raise HTTPException(status_code=409, detail="profile is not running")
+    info = _launcher.real_cdp_info(user_id)
+    if info is None:
+        raise HTTPException(status_code=502, detail="CDP endpoint not available (non-Chromium engine or port not ready)")
+    return _ads_response(True, **info)
+
+
+# ---------------------------------------------------------------------------
+# Synchronized multi-profile automation (sync groups)
+# ---------------------------------------------------------------------------
+
+
+class SyncRun(BaseModel):
+    user_ids: List[str]
+    flow: Any                       # list of step dicts, or {"steps": [...]}
+    stop_on_error: bool = False
+    max_concurrency: int = 0
+
+
+@router.post("/sync/run")
+async def sync_run(body: SyncRun) -> Dict[str, Any]:
+    """Run one automation flow across many running profiles concurrently.
+
+    Profiles must already be started (``/user/start``). Non-running or missing
+    profiles come back as failed entries rather than aborting the batch.
+    """
+    assert _launcher is not None
+    from ..core.automation import parse_flow, FlowValidationError
+    from ..core.sync import run_sync
+    try:
+        steps = parse_flow(body.flow)
+    except FlowValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    async def _page_for(uid: str):
+        handle = _launcher.get_handle(uid)
+        if handle is None:
+            raise RuntimeError("profile is not running")
+        return await _launcher._active_page(handle)
+
+    report = await run_sync(
+        body.user_ids, steps, _page_for,
+        stop_on_error=body.stop_on_error, max_concurrency=body.max_concurrency,
+    )
+    return _ads_response(True, **report.to_dict())
+
+
+# ---------------------------------------------------------------------------
 # CDP proxy endpoints
 # ---------------------------------------------------------------------------
 
@@ -937,7 +1045,7 @@ def info() -> Dict[str, Any]:
     running = _launcher.list_running()
     return {
         "service": "antique",
-        "version": "0.2.0",
+        "version": "0.3.0",
         "profile_count": len(profiles),
         "running_count": len(running),
         "running": [h.user_id for h in running],

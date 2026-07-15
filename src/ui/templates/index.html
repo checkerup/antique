@@ -78,6 +78,16 @@ td.name-cell { font-weight:600; }
 .badge.basic { color:var(--muted); }
 .tag { display:inline-block; padding:2px 7px; background:var(--chip); color:var(--accent); border-radius:5px; font-size:11px; margin:1px 3px 1px 0; }
 .kbd { font-family:var(--mono); font-size:11px; padding:1px 6px; background:var(--bg-2); border:1px solid var(--border); border-radius:5px; color:var(--muted); }
+.pill { display:inline-block; padding:2px 9px; border-radius:20px; font-size:11px; font-weight:600; border:1px solid var(--border-2); text-transform:capitalize; }
+.pill.new { color:var(--muted); }
+.pill.warming { color:var(--yellow); border-color:rgba(224,179,65,.4); background:rgba(224,179,65,.10); }
+.pill.active { color:var(--green); border-color:rgba(70,197,106,.4); background:rgba(70,197,106,.10); }
+.pill.limited { color:var(--yellow); border-color:rgba(224,179,65,.4); background:rgba(224,179,65,.10); }
+.pill.banned { color:var(--red); border-color:rgba(242,109,109,.4); background:rgba(242,109,109,.10); }
+.pill.retired { color:var(--faint); }
+.status-sel { background:transparent; border:1px solid var(--border); border-radius:20px; color:var(--text); font-size:11px; padding:2px 6px; cursor:pointer; font-family:inherit; }
+.liveview-img { width:100%; border-radius:var(--radius-sm); border:1px solid var(--border); background:var(--bg-2); min-height:180px; display:block; }
+.cdp-box { font-family:var(--mono); font-size:11px; background:var(--bg-2); border:1px solid var(--border); border-radius:var(--radius-sm); padding:10px; word-break:break-all; color:var(--muted); margin-top:10px; }
 .proxy-status { font-size:11px; padding:1px 6px; border-radius:5px; margin-left:6px; }
 .proxy-status.ok { color:var(--green); background:rgba(70,197,106,.12); }
 .proxy-status.error { color:var(--red); background:rgba(242,109,109,.12); }
@@ -132,6 +142,7 @@ td.name-cell { font-weight:600; }
     <input type="search" id="search" placeholder="Search by name or ID…" oninput="render()">
     <select id="group-filter" onchange="render()"><option value="">All groups</option></select>
     <select id="engine-filter" onchange="render()"><option value="">All engines</option></select>
+    <select id="status-filter" onchange="render()"><option value="">All statuses</option></select>
     <button class="btn" onclick="refresh()">↻ Refresh</button>
   </div>
   <div class="bulk-bar" id="bulk-bar">
@@ -148,7 +159,7 @@ td.name-cell { font-weight:600; }
     <table>
       <thead><tr>
         <th style="width:36px"><input type="checkbox" class="checkbox" id="sel-all" onchange="toggleAll(this)"></th>
-        <th>Status</th><th>Name</th><th>ID</th><th>Engine</th><th>Group</th><th>Tags</th><th>Proxy</th><th>Launches</th><th style="text-align:right">Actions</th>
+        <th>Live</th><th>Name</th><th>ID</th><th>Engine</th><th>Account</th><th>Group</th><th>Tags</th><th>Proxy</th><th style="text-align:right">Actions</th>
       </tr></thead>
       <tbody id="tbody"><tr><td colspan="10" class="empty">Loading…</td></tr></tbody>
     </table>
@@ -223,10 +234,21 @@ td.name-cell { font-weight:600; }
   <div id="fp-net" style="display:none"><div class="field"><label><input type="checkbox" class="checkbox" id="fp-webrtc"> Block WebRTC IP leak</label></div></div>
   <div class="row"><button class="btn ghost" onclick="close_('fpModal')">Cancel</button><button class="btn primary" onclick="saveFp()">Save</button></div>
 </div></div>
+<div class="modal" id="liveModal"><div class="panel">
+  <h2>Live View <span id="live-name" style="color:var(--muted);font-weight:400"></span></h2>
+  <p class="desc">Live screenshot of the running profile (auto-refreshes). Real CDP endpoint below for external automation.</p>
+  <img class="liveview-img" id="live-img" alt="live view">
+  <div class="cdp-box" id="live-cdp">CDP: …</div>
+  <div class="row">
+    <button class="btn ghost" onclick="copyCdp()">Copy CDP ws</button>
+    <button class="btn primary" onclick="closeLive()">Close</button>
+  </div>
+</div></div>
 <div class="toast" id="toast"></div>
 <script>
 const API="";
-let profiles=[],running=new Set(),groups=[],engines=[],selected=new Set(),fpUid=null;
+let profiles=[],running=new Set(),groups=[],engines=[],statuses=[],selected=new Set(),fpUid=null;
+let liveUid=null,liveTimer=null,liveCdpWs="";
 function initTheme(){setTheme(localStorage.getItem("antique-theme")||"dark");}
 function setTheme(t){document.documentElement.setAttribute("data-theme",t);localStorage.setItem("antique-theme",t);document.getElementById("theme-toggle").textContent=t==="dark"?"☀️":"🌙";}
 document.getElementById("theme-toggle").onclick=()=>setTheme(document.documentElement.getAttribute("data-theme")==="dark"?"light":"dark");
@@ -241,6 +263,9 @@ async function loadEngines(){try{engines=(await api("/engine/list")).data.list||
 function engineHint(){const k=document.getElementById("c-engine").value,e=engines.find(x=>x.key===k);document.getElementById("c-engine-hint").textContent=e?(e.description+(e.needs_install?"  ⚠ "+e.install_hint:"")):"";}
 document.getElementById("c-engine").addEventListener("change",engineHint);
 async function loadGeo(){try{const cs=(await api("/geo/countries")).data.countries||[];document.getElementById("c-geo").innerHTML='<option value="">— none —</option>'+cs.map(c=>`<option value="${c}">${c}</option>`).join("");}catch(e){}}
+async function loadStatuses(){try{statuses=(await api("/status/list")).data.statuses||[];}catch(e){statuses=["new","warming","active","limited","banned","retired"];}document.getElementById("status-filter").innerHTML='<option value="">All statuses</option>'+statuses.map(s=>`<option value="${s}">${s}</option>`).join("");}
+function statusSelect(uid,cur){return `<select class="status-sel" onchange="setStatus('${uid}',this.value)">`+statuses.map(s=>`<option value="${s}" ${s===cur?'selected':''}>${s}</option>`).join("")+`</select>`;}
+async function setStatus(uid,st){try{await api(`/user/${uid}/status`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({account_status:st})});const p=profiles.find(x=>x.user_id===uid);if(p)p.account_status=st;toast("Status → "+st,"ok");render();}catch(e){toast(e.message,"err");}}
 async function refresh(){try{
   const [list,info,grp]=await Promise.all([api("/user/list?page_size=1000"),api("/info"),api("/group/list")]);
   profiles=list.data.list||[];running=new Set((await api("/user/active")).data.list.map(h=>h.user_id));groups=grp.data.list||[];
@@ -253,23 +278,24 @@ async function refresh(){try{
 function engineBadge(k){const e=engines.find(x=>x.key===k);if(!e)return `<span class="badge basic">${esc(k||"chromium")}</span>`;return `<span class="badge ${e.stealth}" title="${esc(e.description)}">${esc(e.label.split(" ")[0])}</span>`;}
 function render(){
   const q=document.getElementById("search").value.toLowerCase(),gf=document.getElementById("group-filter").value,ef=document.getElementById("engine-filter").value;
-  const rows=profiles.filter(p=>{if(q&&!p.name.toLowerCase().includes(q)&&!p.user_id.includes(q))return false;if(gf&&p.group_id!==gf)return false;const eng=(p.fingerprint_config||{}).browser_engine||"chromium";if(ef&&eng!==ef)return false;return true;});
+  const sf=document.getElementById("status-filter").value;
+  const rows=profiles.filter(p=>{if(q&&!p.name.toLowerCase().includes(q)&&!p.user_id.includes(q))return false;if(gf&&p.group_id!==gf)return false;const eng=(p.fingerprint_config||{}).browser_engine||"chromium";if(ef&&eng!==ef)return false;if(sf&&(p.account_status||"new")!==sf)return false;return true;});
   const tb=document.getElementById("tbody");
   if(!rows.length){tb.innerHTML=`<tr><td colspan="10" class="empty"><div class="big">No profiles</div>Create one with “+ New profile” or import an AdsPower backup.</td></tr>`;updateBulk();return;}
   tb.innerHTML=rows.map(p=>{const on=running.has(p.user_id),sel=selected.has(p.user_id);const eng=(p.fingerprint_config||{}).browser_engine||"chromium";
     const px=p.user_proxy_config&&p.user_proxy_config.proxy_type&&p.user_proxy_config.proxy_type!=="direct"?`${p.user_proxy_config.proxy_type}://${p.user_proxy_config.proxy_host}:${p.user_proxy_config.proxy_port}`:"—";
     return `<tr class="${sel?'selected':''}">
       <td><input type="checkbox" class="checkbox" ${sel?'checked':''} onchange="toggleSel('${p.user_id}',this)"></td>
-      <td><span class="status ${on?'active':'inactive'}"><span class="dot ${on?'active':'inactive'}"></span>${on?'Active':'Idle'}</span></td>
+      <td><span class="status ${on?'active':'inactive'}"><span class="dot ${on?'active':'inactive'}"></span>${on?'Live':'Idle'}</span></td>
       <td class="name-cell">${esc(p.name)}</td>
       <td><span class="kbd">${p.user_id}</span></td>
       <td>${engineBadge(eng)}</td>
+      <td>${statusSelect(p.user_id,p.account_status||"new")}</td>
       <td>${esc(p.group_id)}</td>
       <td>${(p.tags||[]).map(t=>`<span class="tag">${esc(t)}</span>`).join("")||'<span style="color:var(--faint)">—</span>'}</td>
       <td style="font-size:12px">${esc(px)}<span id="px-${p.user_id}"></span></td>
-      <td>${p.launch_count||0}</td>
       <td style="text-align:right;white-space:nowrap">
-        ${on?`<button class="btn sm danger" onclick="act('stop','${p.user_id}')">Stop</button>`:`<button class="btn sm primary" onclick="act('start','${p.user_id}')">Start</button>`}
+        ${on?`<button class="btn sm danger" onclick="act('stop','${p.user_id}')">Stop</button> <button class="btn sm ghost" onclick="openLive('${p.user_id}')" title="Live view">👁</button>`:`<button class="btn sm primary" onclick="act('start','${p.user_id}')">Start</button>`}
         <button class="btn sm ghost" onclick="openFp('${p.user_id}')">FP</button>
         <button class="btn sm ghost" onclick="checkProxy('${p.user_id}')" title="Check proxy">⚡</button>
         <button class="btn sm ghost danger" onclick="del('${p.user_id}','${esc(p.name)}')">✕</button>
@@ -313,7 +339,12 @@ function openFp(uid){fpUid=uid;const p=profiles.find(x=>x.user_id===uid);if(!p)r
   document.getElementById("fp-webrtc").checked=fp.block_webrtc_ip!==false;fpTab("basic");open_("fpModal");}
 function fpTab(t){document.querySelectorAll("#fpModal .tab").forEach(el=>el.classList.toggle("active",el.dataset.fptab===t));["basic","screen","hw","net"].forEach(x=>document.getElementById("fp-"+x).style.display=x===t?"block":"none");}
 async function saveFp(){if(!fpUid)return;const fp={browser_engine:document.getElementById("fp-engine").value,user_agent:document.getElementById("fp-ua").value,platform:document.getElementById("fp-platform").value,locale:document.getElementById("fp-locale").value,timezone:document.getElementById("fp-tz").value,languages:document.getElementById("fp-langs").value.split(",").map(s=>s.trim()).filter(Boolean),screen_width:parseInt(document.getElementById("fp-sw").value)||1920,screen_height:parseInt(document.getElementById("fp-sh").value)||1080,pixel_ratio:parseFloat(document.getElementById("fp-dpr").value)||1,hardware_concurrency:parseInt(document.getElementById("fp-cores").value)||8,device_memory:parseFloat(document.getElementById("fp-mem").value)||8,webgl_vendor:document.getElementById("fp-glv").value,webgl_renderer:document.getElementById("fp-glr").value,block_webrtc_ip:document.getElementById("fp-webrtc").checked};try{await api("/user/update",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({user_id:fpUid,fingerprint_config:fp})});close_("fpModal");toast("Fingerprint saved","ok");await refresh();}catch(e){toast(e.message,"err");}}
-initTheme();(async()=>{await loadEngines();await loadGeo();await refresh();})();setInterval(refresh,6000);
+function openLive(uid){liveUid=uid;const p=profiles.find(x=>x.user_id===uid);document.getElementById("live-name").textContent=p?("· "+p.name):"";document.getElementById("live-img").removeAttribute("src");document.getElementById("live-cdp").textContent="CDP: …";liveCdpWs="";open_("liveModal");refreshLive();loadCdp();liveTimer=setInterval(refreshLive,2000);}
+function closeLive(){liveUid=null;if(liveTimer){clearInterval(liveTimer);liveTimer=null;}close_("liveModal");}
+async function refreshLive(){if(!liveUid)return;try{const r=await api(`/user/${liveUid}/screenshot`,{method:"POST"});document.getElementById("live-img").src="data:image/png;base64,"+r.data.base64_png;}catch(e){document.getElementById("live-cdp").textContent="screenshot: "+e.message;}}
+async function loadCdp(){if(!liveUid)return;try{const r=await api(`/user/${liveUid}/cdp`);liveCdpWs=r.data.webSocketDebuggerUrl||"";document.getElementById("live-cdp").textContent="CDP: "+(liveCdpWs||"(unavailable)")+"  ·  port "+r.data.debug_port;}catch(e){document.getElementById("live-cdp").textContent="CDP: unavailable ("+e.message+")";}}
+function copyCdp(){if(!liveCdpWs){toast("No CDP endpoint","err");return;}navigator.clipboard.writeText(liveCdpWs).then(()=>toast("CDP ws copied","ok")).catch(()=>toast("Copy failed","err"));}
+initTheme();(async()=>{await loadEngines();await loadGeo();await loadStatuses();await refresh();})();setInterval(refresh,6000);
 </script>
 </body>
 </html>

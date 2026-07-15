@@ -103,4 +103,23 @@ python -m camoufox fetch
 | `ANTIQUE_API_TOKEN` | (unset) | require Bearer token on the API |
 | `ANTIQUE_ALLOWED_ORIGINS` | (unset) | extra trusted origins (tunnels) |
 
+## 8. Run in Docker (alternative to start.bat)
+
+```bash
+docker compose up          # dashboard on http://127.0.0.1:8080/
+```
+Profiles + DB persist in the `antique-data` volume. Runs headless in the
+container. Set `ANTIQUE_API_TOKEN` in `docker-compose.yml` if you expose the port.
+
+## 9. New in 0.3.0
+
+- **Live View** — on a running profile click the eye icon to watch a live
+  screenshot; the modal also shows the real CDP websocket for automation.
+- **Account statuses** — each profile has a status (new/warming/active/limited/
+  banned/retired); set it inline in the table or filter by it.
+- **Sync groups** — run one automation flow across many profiles at once:
+  `python -m src.cli sync flow.json -u <id1> -u <id2>` or `POST /sync/run`.
+- **Real per-profile CDP** — `GET /user/{id}/cdp` returns the attachable
+  DevTools websocket for a running Chromium profile.
+
 That's it. Create a profile, hit **Start**, and you're running.

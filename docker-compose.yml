@@ -1,0 +1,20 @@
+# antique — one-command run:  docker compose up
+# Dashboard: http://127.0.0.1:8080/   ·   API docs: http://127.0.0.1:8080/docs
+services:
+  antique:
+    build: .
+    container_name: antique
+    ports:
+      - "8080:8080"
+    volumes:
+      - antique-data:/data          # persists profiles + SQLite across restarts
+    environment:
+      # Require a token on the API (recommended when the port is exposed).
+      # - ANTIQUE_API_TOKEN=change-me
+      # Trust extra origins if you front this with a tunnel/reverse proxy.
+      # - ANTIQUE_ALLOWED_ORIGINS=example.ngrok-free.app
+      - ANTIDETECT_ENGINE=chromium
+    restart: unless-stopped
+
+volumes:
+  antique-data:
