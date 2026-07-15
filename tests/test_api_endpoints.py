@@ -44,13 +44,13 @@ def test_extension_list_wired(client):
 def test_health_version(client):
     r = client.get("/health")
     assert r.status_code == 200
-    assert r.json()["version"] == "0.6.0"
+    assert r.json()["version"] == "0.7.0"
 
 
 def test_info_version(client):
     r = client.get("/info")
     assert r.status_code == 200
-    assert r.json()["version"] == "0.6.0"
+    assert r.json()["version"] == "0.7.0"
 
 
 # ---------------------------------------------------------------------------

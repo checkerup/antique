@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -27,8 +28,15 @@ class ProxyProvider:
             if isinstance(data, dict):
                 data = data.get("proxies", [])
             return [str(item.get("url") if isinstance(item, dict) else item) for item in data]
+        if self.config.kind == "http-json":
+            request = urllib.request.Request(self.config.source, headers={"Accept": "application/json", "User-Agent": "antique-proxy-provider/1"})
+            with urllib.request.urlopen(request, timeout=10) as response:
+                data = json.loads(response.read().decode("utf-8"))
+            if isinstance(data, dict):
+                data = data.get("proxies", data.get("data", []))
+            return [str(item.get("url") if isinstance(item, dict) else item) for item in data]
         raise ValueError(f"unsupported provider kind: {self.config.kind}")
 
 
 def list_provider_kinds() -> List[str]:
-    return ["file", "json"]
+    return ["file", "json", "http-json"]

@@ -53,6 +53,7 @@ from ..core.detect import score_report, expected_from_fingerprint
 from ..core.engines import list_engines, engine_keys
 from ..core.operations import list_activity, record_activity, preview_backup, create_from_template, encrypted_snapshot, decrypt_snapshot
 from ..core.providers import ProviderConfig, ProxyProvider, list_provider_kinds
+from ..core.backup_scheduler import add_schedule, list_schedules, run_schedule
 
 
 log = logging.getLogger("antique.api")
@@ -157,6 +158,16 @@ class ProviderRequest(BaseModel):
     enabled: bool = True
 
 
+class ScheduleRequest(BaseModel):
+    destination: str
+    interval_minutes: int = Field(default=1440, ge=5)
+
+
+class ScheduleRunRequest(BaseModel):
+    schedule_id: str
+    password: str
+
+
 class GroupRequest(BaseModel):
     group_id: str
     name: str
@@ -240,7 +251,7 @@ def _fingerprint_with_patch(raw: Optional[Dict[str, Any]], base: Optional[Dict[s
 
 @router.get("/health")
 def health() -> Dict[str, Any]:
-    return {"status": "ok", "service": "antique", "version": "0.6.0"}
+    return {"status": "ok", "service": "antique", "version": "0.7.0"}
 
 
 # ---------------------------------------------------------------------------
@@ -263,6 +274,7 @@ def user_create(body: UserCreate) -> Dict[str, Any]:
         account_status=body.account_status or "new",
         user_id=body.user_id,
     )
+    record_activity(_store, p.user_id, "create", {"name": p.name, "group_id": p.group_id})
     return _ads_response(True, **{
         "id": p.user_id,
         "user_id": p.user_id,
@@ -291,6 +303,7 @@ def user_update(body: UserUpdate) -> Dict[str, Any]:
         )
     except KeyError:
         raise HTTPException(status_code=404, detail="user_id not found")
+    record_activity(_store, p.user_id, "update", {"name": p.name})
     return _ads_response(True, **{
         "id": p.user_id,
         "user_id": p.user_id,
@@ -382,6 +395,28 @@ def snapshot_import(body: SnapshotRequest) -> Dict[str, Any]:
     return _ads_response(True, **result)
 
 
+@router.post("/backup/schedules")
+def backup_schedule_create(body: ScheduleRequest) -> Dict[str, Any]:
+    assert _store is not None
+    try: item = add_schedule(_store, body.destination, body.interval_minutes)
+    except ValueError as exc: raise HTTPException(status_code=400, detail=str(exc))
+    return _ads_response(True, schedule=item.__dict__)
+
+
+@router.get("/backup/schedules")
+def backup_schedule_list() -> Dict[str, Any]:
+    assert _store is not None
+    return _ads_response(True, schedules=[x.__dict__ for x in list_schedules(_store)])
+
+
+@router.post("/backup/schedules/run")
+def backup_schedule_run(body: ScheduleRunRequest) -> Dict[str, Any]:
+    assert _store is not None
+    try: item = run_schedule(_store, body.schedule_id, body.password)
+    except (KeyError, ValueError, RuntimeError, OSError) as exc: raise HTTPException(status_code=400, detail=str(exc))
+    return _ads_response(True, schedule=item)
+
+
 @router.get("/proxy/providers/kinds")
 def proxy_provider_kinds() -> Dict[str, Any]:
     return _ads_response(True, kinds=list_provider_kinds())
@@ -400,6 +435,8 @@ def proxy_provider_test(body: ProviderRequest) -> Dict[str, Any]:
 def user_delete(body: UserDelete) -> Dict[str, Any]:
     assert _store is not None
     ok = _store.delete(body.user_id)
+    if ok:
+        record_activity(_store, body.user_id, "delete")
     if not ok:
         raise HTTPException(status_code=404, detail="user_id not found")
     return _ads_response(True, **{
@@ -423,6 +460,7 @@ async def user_start(body: UserStart) -> Dict[str, Any]:
             status_code=422,
             detail=f"Could not start profile {p.user_id}: {message}",
         )
+    record_activity(_store, p.user_id, "start", {"debug_port": handle.debug_port})
     return _ads_response(True, **{
         "user_id": p.user_id,
         "debug_port": handle.debug_port,
@@ -436,6 +474,8 @@ async def user_start(body: UserStart) -> Dict[str, Any]:
 async def user_stop(body: UserStop) -> Dict[str, Any]:
     assert _launcher is not None
     ok = await _launcher.stop(body.user_id)
+    if ok and _store is not None:
+        record_activity(_store, body.user_id, "stop")
     return _ads_response(True, **{
         "user_id": body.user_id,
         "stopped": ok,
@@ -563,6 +603,7 @@ def user_import_backup(body: BackupImportRequest) -> Dict[str, Any]:
         overwrite=body.overwrite,
         limit=body.limit,
     )
+    record_activity(_store, "*", "backup_import", {"source_path": body.source_path, "summary": summary})
     return _ads_response(True, **summary)
 
 
@@ -737,6 +778,7 @@ def user_bulk_status(body: BulkStatusUpdate) -> Dict[str, Any]:
             results.append({"user_id": uid, "ok": True})
         except KeyError:
             results.append({"user_id": uid, "ok": False, "error": "not found"})
+    record_activity(_store, "*", "bulk_status", {"status": body.account_status, "updated_count": len([r for r in results if r["ok"]])})
     return _ads_response(True, results=results, updated_count=sum(1 for r in results if r["ok"]))
 
 
@@ -928,8 +970,24 @@ def activity_list(user_id: Optional[str] = Query(None), limit: int = Query(100, 
 @router.get("/resource/status")
 def resource_status() -> Dict[str, Any]:
     assert _launcher is not None
-    import os
-    return _ads_response(True, running=len(_launcher.list_running()), process_count=len(_launcher.list_running()), pid=os.getpid())
+    import os, time
+    running = []
+    for handle in _launcher.list_running():
+        running.append({"user_id": handle.user_id, "pid": handle.pid, "debug_port": handle.debug_port, "ws_endpoint": handle.ws_endpoint})
+    rss_kb = user_cpu_s = system_cpu_s = None
+    try:
+        import psutil
+        proc = psutil.Process(os.getpid())
+        rss_kb = proc.memory_info().rss // 1024
+        cpu = proc.cpu_times(); user_cpu_s, system_cpu_s = cpu.user, cpu.system
+    except ImportError:
+        try:
+            import resource
+            usage = resource.getrusage(resource.RUSAGE_SELF)
+            rss_kb, user_cpu_s, system_cpu_s = usage.ru_maxrss, usage.ru_utime, usage.ru_stime
+        except ImportError:
+            pass
+    return _ads_response(True, running_count=len(running), process_count=len(running), pid=os.getpid(), rss_kb=rss_kb, user_cpu_s=user_cpu_s, system_cpu_s=system_cpu_s, checked_at=time.time(), profiles=running)
 
 
 @router.get("/mcp/status")
@@ -1316,7 +1374,7 @@ def info() -> Dict[str, Any]:
     running = _launcher.list_running()
     return {
         "service": "antique",
-        "version": "0.6.0",
+        "version": "0.7.0",
         "profile_count": len(profiles),
         "running_count": len(running),
         "running": [h.user_id for h in running],

@@ -1,4 +1,4 @@
-# Инструкция локальному агенту: проверка antique 0.6.0
+# Инструкция локальному агенту: проверка antique 0.7.0
 
 Проект: `C:\ai_workflow\antidetect-local`. Не менять рабочую БД для тестов: pytest использует временные каталоги.
 
@@ -118,11 +118,19 @@ python -m src.cli snapshot-export data\backup.enc --password
 python -m src.cli snapshot-import data\backup.enc --password
 ```
 
-Swagger smoke: `/user/import/backup/preview`, `/user/template/create`, `/user/snapshot/export`, `/user/snapshot/import`, `/activity`, `/resource/status`, `/mcp/status`, `/proxy/providers/kinds`, `/proxy/providers/test`, `/group/create`, `/group/update`, `/group/delete`.
+Swagger smoke: `/user/import/backup/preview`, `/user/template/create`, `/user/snapshot/export`, `/user/snapshot/import`, `/activity`, `/resource/status`, `/mcp/status`, `/proxy/providers/kinds`, `/proxy/providers/test`, `/group/create`, `/group/update`, `/group/delete`, `/backup/schedules`, `/backup/schedules/run`.
+
+Activity regression: create and update a profile, then call `/activity?user_id=<id>` and confirm `update` appears before `create`. Register a backup schedule, list it, run it with the snapshot password, and confirm `last_run_at` changes. Test HTTP-JSON provider with a mocked endpoint in pytest, never with real proxy credentials.
 
 Критерий: preview не создаёт профили; template создаёт ровно N; неверный пароль snapshot не меняет БД; activity содержит события; provider file/json не отправляет секреты в логи.
 
-## 10. Финальный отчёт агента
+## 10. Full parity release additions
+
+- `src/core/backup_scheduler.py`: persistent local schedule registry plus encrypted snapshot execution.
+- `src/core/providers.py`: file, JSON and HTTP-JSON sources; no provider credentials are written to profile rows.
+- `routes.py`: audit hooks for create/update/start/stop/delete/backup import/bulk status and resource metrics with Windows-safe fallback.
+
+## 11. Финальный отчёт агента
 
 Отчёт должен содержать:
 

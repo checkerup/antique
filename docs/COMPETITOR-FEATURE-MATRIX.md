@@ -39,16 +39,19 @@ The goal is parity where it is useful, not blindly cloning every paid feature. M
 - Local file/JSON proxy providers: `/proxy/providers/kinds`, `/proxy/providers/test`.
 - Group CRUD: `/group/create`, `/group/update`, `/group/delete`.
 - Resource and MCP health status: `/resource/status`, `/mcp/status`.
+- Activity hooks on create/update/start/stop/delete/import/bulk status.
+- Backup scheduler registry with encrypted snapshot run: `/backup/schedules`, CLI `backup-schedule` and `backup-schedules`.
+- HTTP JSON proxy provider adapter, with no credentials stored in profile records.
 
 ## High-value parity backlog
 
 These are the remaining serious gaps against AdsPower/Dolphin/GoLogin-style managers:
 
-1. **Folder/group CRUD**: current group IDs and filtering work, but there is no first-class folder editor, nested folders or drag/drop assignment.
-2. **Activity history**: store an audit trail for create, update, launch, stop, proxy change, import and status changes.
-3. **Profile templates and mass creation**: create N profiles from a template with controlled fingerprint variation.
-4. **Backup scheduler**: scheduled encrypted database/profile snapshots and restore validation.
-5. **Proxy provider adapters**: optional integrations with provider APIs, with secrets kept out of profile JSON and logs.
+1. **Nested folders and drag/drop assignment**: flat group CRUD is implemented; nested hierarchy and drag/drop remain.
+2. **Activity history**: add richer event filters, retention and export. Core hooks are implemented.
+3. **Profile templates and mass creation**: add a dashboard template editor and preview. API/CLI batch creation are implemented.
+4. **Backup scheduler**: external scheduler integration and restore validation remain. Registry and encrypted run are implemented.
+5. **Proxy provider adapters**: add provider-specific auth/config adapters. File, JSON and HTTP-JSON sources are implemented.
 6. **Extension catalog UI**: search/install/update from Web Store or local catalog, not just API install.
 7. **MCP management in UI**: status, start/stop, tool health and connection settings.
 8. **Real Live View stream**: current Live View is periodic PNG screenshots, not low-latency video/input streaming.

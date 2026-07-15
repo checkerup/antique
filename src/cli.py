@@ -438,6 +438,21 @@ def snapshot_import_cmd(path: Path = typer.Argument(..., exists=True), password:
     console.print_json(json.dumps(result))
 
 
+@app.command("backup-schedule")
+def backup_schedule_cmd(destination: Path = typer.Argument(...), interval_minutes: int = typer.Option(1440, "--interval-minutes", min=5)):
+    """Register a local encrypted backup schedule."""
+    from .core.backup_scheduler import add_schedule
+    item = add_schedule(_store(), str(destination), interval_minutes)
+    console.print_json(json.dumps(item.__dict__))
+
+
+@app.command("backup-schedules")
+def backup_schedules_cmd():
+    """List registered backup schedules."""
+    from .core.backup_scheduler import list_schedules
+    console.print_json(json.dumps([x.__dict__ for x in list_schedules(_store())]))
+
+
 @app.command("activity")
 def activity_cmd(user_id: Optional[str] = typer.Option(None, "--user"), limit: int = typer.Option(100, "--limit")):
     """Show profile audit history."""
