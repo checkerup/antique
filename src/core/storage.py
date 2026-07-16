@@ -85,6 +85,7 @@ class GroupRecord(SQLModel, table=True):
     group_id: str = Field(primary_key=True)
     name: str
     sort_order: int = Field(default=0)
+    parent_id: str = Field(default="", index=True)
 
 
 class ActivityEventRecord(SQLModel, table=True):
@@ -138,6 +139,9 @@ def init_db(engine=None) -> None:
 _MIGRATIONS = {
     "profiles": {
         "account_status": "TEXT NOT NULL DEFAULT 'new'",
+    },
+    "groups": {
+        "parent_id": "TEXT NOT NULL DEFAULT ''",
     },
 }
 

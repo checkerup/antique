@@ -489,10 +489,10 @@ GET  /backup/schedules              → 获取已注册备份计划列表
 POST /backup/schedules/run          Body: {schedule_id, password}
 → {code:0, data:{schedule:{...}}}   # 手动触发指定快照备份任务
 
-POST /group/create                  Body: {group_id, name, sort_order?}
-→ {code:0, data:{group_id, name}}                 # 创建分组
+POST /group/create                  Body: {group_id, name, sort_order?, parent_id?}
+→ {code:0, data:{group_id, name}}                 # 创建分组 (支持 parent_id 实现嵌套分组)
 
-POST /group/update                  Body: {group_id, name, sort_order?}
+POST /group/update                  Body: {group_id, name, sort_order?, parent_id?}
 → {code:0, data:{group_id, name}}                 # 更新分组
 
 POST /group/delete                  Body: {group_id} (embed=True)
@@ -867,7 +867,7 @@ python -m pytest tests/test_operations_release.py tests/test_sort_clone_features
 
 ---
 
-## 17. 环境变量
+## 18. 环境变量
 
 | 变量 | 默认值 | 用途 |
 |---|---|---|
@@ -883,6 +883,6 @@ python -m pytest tests/test_operations_release.py tests/test_sort_clone_features
 
 ---
 
-## 18. License
+## 19. License
 
 MIT —— 参见 `LICENSE`。

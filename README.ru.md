@@ -497,10 +497,10 @@ GET  /backup/schedules              → получение списка всех
 POST /backup/schedules/run          Body: {schedule_id, password}
 → {code:0, data:{schedule:{...}}}   # ручной запуск зашифрованного резервного копирования по расписанию
 
-POST /group/create                  Body: {group_id, name, sort_order?}
-→ {code:0, data:{group_id, name}}                 # создание группы
+POST /group/create                  Body: {group_id, name, sort_order?, parent_id?}
+→ {code:0, data:{group_id, name}}                 # создание группы (поддерживает parent_id для вложенности)
 
-POST /group/update                  Body: {group_id, name, sort_order?}
+POST /group/update                  Body: {group_id, name, sort_order?, parent_id?}
 → {code:0, data:{group_id, name}}                 # изменение группы
 
 POST /group/delete                  Body: {group_id} (embed=True)
@@ -787,7 +787,7 @@ python -m pytest -k adb             # only .adb-related tests
 Запустить только новые наборы тестов:
 
 ```bash
-python -m pytest tests/test_operations_release.py tests/test_sort_clone_features.py tests/test_import_launch_and_randomize.py -v
+python -m pytest tests/test_operations_release.py tests/test_sort_clone_features.py tests/test_import_launch_and_randomize.py tests/test_ui_release_040.py -v
 ```
 
 ---
@@ -800,7 +800,11 @@ python -m pytest tests/test_operations_release.py tests/test_sort_clone_features
 
 Добавлены расширенные функции паритета с AdsPower: полноценная запись событий аудита активности (при создании, обновлении, запуске, остановке, удалении, импорте бэкапов и пакетной смене статуса), планировщик локальных зашифрованных резервных копий (с AES-GCM шифрованием и интервальным запуском без скрытых демонов через cron или планировщик Windows), HTTP JSON провайдер прокси для подгрузки динамических списков прокси из внешних API, а также детальные resource-метрики системных ресурсов (PID, RSS-память, процессорное время) с безопасным fallback-режимом для Windows.
 
-## 17. Известные ограничения и roadmap
+## 17. Релиз паритета функций 0.8.0
+
+Добавлены вложенные папки/группы (поддержка иерархии групп через поле `parent_id` в таблице `groups`), полноценная интеграция панели инструментов (Tools Workspace) в веб-интерфейс дашборда (для просмотра аудита событий, системных ресурсов, расписаний бэкапов и dry-run импорта AdsPower), а также детальный сквозной чеклист владельца в `docs/OWNER-FULL-TEST-CHECKLIST.md` для ручного тестирования от A до H.
+
+## 18. Известные ограничения и roadmap
 
 ### Сделано (в этой сборке)
 
@@ -849,9 +853,11 @@ python -m pytest tests/test_operations_release.py tests/test_sort_clone_features
 - [x] **Зашифрованные AES-GCM снимки** (API `/user/snapshot/export` и `/user/snapshot/import`, CLI `snapshot-export` и `snapshot-import`)
 - [x] **История активности и аудит** (API `/activity`, CLI `activity`, детальные события аудита)
 - [x] **Локальные провайдеры прокси** (File/JSON/HTTP-JSON, API `/proxy/providers/test`)
-- [x] **CRUD групп** (`/group/create`, `/group/update`, `/group/delete`)
+- [x] **CRUD групп** (`/group/create`, `/group/update`, `/group/delete`, поддержка вложенных папок `parent_id`)
 - [x] **Мониторинг ресурсов и статус MCP** (`/resource/status`, `/mcp/status`, детальные метрики RSS/CPU)
 - [x] **Планировщик зашифрованных резервных копий** (API `/backup/schedules`, CLI `backup-schedule`)
+- [x] **Панель инструментов UI (Tools Workspace)** (аудит событий, системные ресурсы, расписания, dry-run бэкапов)
+- [x] **Чеклист владельца (Owner Checklist)** (`docs/OWNER-FULL-TEST-CHECKLIST.md`)
 - [x] 300+ тестов pytest пройдены
 
 ### Известные ограничения
@@ -876,7 +882,7 @@ python -m pytest tests/test_operations_release.py tests/test_sort_clone_features
 
 ---
 
-## 17. Переменные окружения
+## 18. Переменные окружения
 
 | Variable | Default | Purpose |
 |---|---|---|
@@ -892,6 +898,6 @@ python -m pytest tests/test_operations_release.py tests/test_sort_clone_features
 
 ---
 
-## 18. Лицензия
+## 19. Лицензия
 
 MIT — смотрите `LICENSE`.

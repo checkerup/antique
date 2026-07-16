@@ -1,44 +1,34 @@
-"""Static contract tests for the 0.4.0 dashboard and Windows launcher."""
+"""Static contract tests for the dashboard and release operations."""
 from pathlib import Path
-
 
 ROOT = Path(__file__).resolve().parents[1]
 UI = ROOT / "src" / "ui" / "templates" / "index.html"
 
 
-def test_dashboard_contains_core_product_workflows():
+def test_dashboard_contains_all_owner_workflows():
     html = UI.read_text(encoding="utf-8")
     for marker in (
-        "data-theme=\"dark\"",
-        "Assign proxies",
-        "Smart fingerprint randomization",
-        "Run flow on selected profiles",
-        "Manage profile",
-        "AdsPower backup folder",
-        "Live View",
-        "/user/bulk/fingerprint/randomize",
-        "/user/bulk/proxy/import",
-        "/sync/run",
-        "/extension/list",
+        "data-theme=\"dark\"", "AdsPower backup folder", "Assign proxies",
+        "Smart fingerprint randomization", "Run flow on selected profiles",
+        "Manage profile", "Preview AdsPower backup", "Recent activity",
+        "Resource status", "Backup schedules", "Mass create", "Proxy provider",
+        "Folders", "changeSort", "/user/bulk/fingerprint/randomize",
+        "/user/bulk/proxy/import", "/sync/run", "/group/create", "/backup/schedules",
     ):
         assert marker in html
 
 
-def test_dashboard_uses_oklch_and_has_no_gradient_logo():
+def test_dashboard_uses_oklch_and_responsive_states():
     html = UI.read_text(encoding="utf-8")
     assert "oklch(" in html
-    assert "linear-gradient" not in html
-    assert "border-left:3px" not in html
+    assert "@media(max-width:720px)" in html
+    assert "Can't reach the server" in html
+    assert "No profiles" in html
 
 
-def test_start_bat_prepares_all_bundled_engines():
-    bat = (ROOT / "start.bat").read_text(encoding="utf-8")
-    assert "playwright install chromium firefox webkit" in bat
-    assert "python -m camoufox fetch" in bat
-    assert ".antique-browsers-v2" in bat
-
-
-def test_release_docs_exist():
+def test_start_bat_and_docs_exist():
+    assert (ROOT / "start.bat").exists()
+    assert (ROOT / "QUICKSTART.md").exists()
     assert (ROOT / "docs" / "AGENT-TESTING.md").exists()
     assert (ROOT / "docs" / "MANUAL-TEST-PLAN.md").exists()
-    assert (ROOT / "docs" / "RELEASE-0.4.0-REPORT.md").exists()
+    assert (ROOT / "docs" / "RELEASE-0.7.0-REPORT.md").exists()

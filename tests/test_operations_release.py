@@ -39,6 +39,9 @@ def test_operations_endpoints_template_resource_mcp_and_group(tmp_path):
     assert client.get("/mcp/status").json()["data"]["status"] == "available"
     assert client.post("/group/create", json={"group_id": "x", "name": "X"}).status_code == 200
     assert any(g["group_id"] == "x" for g in client.get("/group/list").json()["data"]["list"])
+    assert client.post("/group/create", json={"group_id": "child", "name": "Child", "parent_id": "x"}).status_code == 200
+    child = next(g for g in client.get("/group/list").json()["data"]["list"] if g["group_id"] == "child")
+    assert child["parent_id"] == "x"
 
 
 def test_provider_http_json(monkeypatch):

@@ -1,4 +1,4 @@
-# Инструкция локальному агенту: проверка antique 0.7.0
+# Инструкция локальному агенту: проверка antique 0.8.0
 
 Проект: `C:\ai_workflow\antidetect-local`. Не менять рабочую БД для тестов: pytest использует временные каталоги.
 
@@ -128,7 +128,8 @@ Activity regression: create and update a profile, then call `/activity?user_id=<
 
 - `src/core/backup_scheduler.py`: persistent local schedule registry plus encrypted snapshot execution.
 - `src/core/providers.py`: file, JSON and HTTP-JSON sources; no provider credentials are written to profile rows.
-- `routes.py`: audit hooks for create/update/start/stop/delete/backup import/bulk status and resource metrics with Windows-safe fallback.
+- `routes.py`: audit hooks for create/update/start/stop/delete/backup import/bulk status, nested folder CRUD and resource metrics with Windows-safe fallback.
+- `docs/OWNER-FULL-TEST-CHECKLIST.md`: the complete owner run from A to H, including every UI workflow.
 
 ## 11. Финальный отчёт агента
 

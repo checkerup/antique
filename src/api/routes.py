@@ -172,6 +172,7 @@ class GroupRequest(BaseModel):
     group_id: str
     name: str
     sort_order: int = 0
+    parent_id: str = ""
 
 
 class BulkAction(BaseModel):
@@ -251,7 +252,7 @@ def _fingerprint_with_patch(raw: Optional[Dict[str, Any]], base: Optional[Dict[s
 
 @router.get("/health")
 def health() -> Dict[str, Any]:
-    return {"status": "ok", "service": "antique", "version": "0.7.0"}
+    return {"status": "ok", "service": "antique", "version": "0.8.0"}
 
 
 # ---------------------------------------------------------------------------
@@ -1003,7 +1004,9 @@ def group_create(body: GroupRequest) -> Dict[str, Any]:
     with Session(_store.engine) as s:
         if s.get(GroupRecord, body.group_id):
             raise HTTPException(status_code=409, detail="group already exists")
-        s.add(GroupRecord(group_id=body.group_id, name=body.name, sort_order=body.sort_order)); s.commit()
+        if body.parent_id and not s.get(GroupRecord, body.parent_id):
+            raise HTTPException(status_code=400, detail="parent group not found")
+        s.add(GroupRecord(group_id=body.group_id, name=body.name, sort_order=body.sort_order, parent_id=body.parent_id)); s.commit()
     return _ads_response(True, group_id=body.group_id, name=body.name)
 
 
@@ -1015,7 +1018,9 @@ def group_update(body: GroupRequest) -> Dict[str, Any]:
     with Session(_store.engine) as s:
         row = s.get(GroupRecord, body.group_id)
         if not row: raise HTTPException(status_code=404, detail="group not found")
-        row.name, row.sort_order = body.name, body.sort_order; s.add(row); s.commit()
+        if body.parent_id and body.parent_id != body.group_id and not s.get(GroupRecord, body.parent_id):
+            raise HTTPException(status_code=400, detail="parent group not found")
+        row.name, row.sort_order, row.parent_id = body.name, body.sort_order, body.parent_id; s.add(row); s.commit()
     return _ads_response(True, group_id=body.group_id, name=body.name)
 
 
@@ -1056,6 +1061,7 @@ def group_list() -> Dict[str, Any]:
             "group_id": g.group_id,
             "name": g.name,
             "sort_order": g.sort_order,
+            "parent_id": getattr(g, "parent_id", ""),
             "count": counts.get(g.group_id, 0)
         })
         
@@ -1374,7 +1380,7 @@ def info() -> Dict[str, Any]:
     running = _launcher.list_running()
     return {
         "service": "antique",
-        "version": "0.7.0",
+        "version": "0.8.0",
         "profile_count": len(profiles),
         "running_count": len(running),
         "running": [h.user_id for h in running],
