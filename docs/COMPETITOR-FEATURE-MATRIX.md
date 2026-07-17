@@ -1,4 +1,4 @@
-# Feature matrix: Antique 0.4.0 vs popular anti-detect managers
+# Feature matrix: Antique 0.9.0 vs popular anti-detect managers
 
 The goal is parity where it is useful, not blindly cloning every paid feature. Many vendor pages advertise anti-detect guarantees that cannot be verified from a local manager.
 
@@ -50,18 +50,18 @@ The goal is parity where it is useful, not blindly cloning every paid feature. M
 
 These are the remaining serious gaps against AdsPower/Dolphin/GoLogin-style managers:
 
-1. **Nested folders and drag/drop assignment**: flat group CRUD is implemented; nested hierarchy and drag/drop remain.
+1. **Drag/drop assignment**: nested folders, parent-aware CRUD, tree endpoint and UI folder manager are implemented; drag/drop profile assignment remains.
 2. **Activity history**: add richer event filters, retention and export. Core hooks are implemented.
 3. **Profile templates and mass creation**: add a dashboard template editor and preview. API/CLI batch creation are implemented.
 4. **Backup scheduler**: external scheduler integration and restore validation remain. Registry and encrypted run are implemented.
 5. **Proxy provider adapters**: add provider-specific auth/config adapters. File, JSON and HTTP-JSON sources are implemented.
-6. **Extension catalog UI**: search/install/update from Web Store or local catalog, not just API install.
-7. **MCP management in UI**: status, start/stop, tool health and connection settings.
+6. **Extension catalog UI**: installed list, local/Web Store install and uninstall are implemented; search/update catalog remains.
+7. **MCP management in UI**: status is visible; start/stop, tool health and connection settings remain.
 8. **Real Live View stream**: current Live View is periodic PNG screenshots, not low-latency video/input streaming.
 9. **CDP target proxy**: the legacy multiplexer remains simulated; direct Chromium CDP is real.
 10. **WebRTC proxy-IP rewriting**: current behavior blocks external candidates; it does not expose a proxy-matched ICE IP.
 11. **Resource/process dashboard**: CPU, RAM, browser PID, port, uptime and crash reason per profile.
-12. **Import validation wizard**: dry-run preview, collision report, invalid proxy report, cookie count and storage health before committing.
+12. **Import validation wizard**: dry-run preview exists; collision report, invalid proxy report and storage health UI remain.
 13. **Team/cloud sync**: intentionally not included in the local-first build; would require a security model and encrypted transport.
 
 ## Recommendation

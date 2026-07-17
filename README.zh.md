@@ -817,7 +817,11 @@ python -m pytest tests/test_operations_release.py tests/test_sort_clone_features
 
 新增了以下功能：支持按 Profile 和操作类型对活动日志（Activity Log）进行过滤；支持通过 API 和 UI 将活动日志导出为 JSON 格式；在 Tools 中新增了扩展程序目录（Extension Catalog）功能，支持查看已安装的扩展程序并能通过解压目录或 Chrome Web Store ID 进行安装；集成了 MCP 服务的状态显示及 stdio 状态；完善了在 `docs/OWNER-FULL-TEST-CHECKLIST.md` 和 `docs/RELEASE-0.9.0-REPORT.md` 中的自动化与操作验收用例。
 
-## 19. 已知限制与 roadmap
+## 19. 1.0.0 版本功能发布
+
+新增了以下功能：完整的 `GET /group/tree` API 以层级树形式获取嵌套分组结构；安全删除父组逻辑（删除父组时自动将子组提升至上一层）以及防止 default 分组被删除的保护机制；在 Tools 面板支持直接更新和删除文件夹（分组）；在 Extension Catalog 中新增卸载按鈕；扩展了 `docs/OWNER-FULL-TEST-CHECKLIST.md`（包含组层级和扩展目录验证步骤）并更新了 `docs/RELEASE-1.0.0-REPORT.md` 和功能对照矩阵。
+
+## 20. 已知限制与 roadmap
 
 ### 已完成（本次构建）
 
@@ -866,7 +870,10 @@ python -m pytest tests/test_operations_release.py tests/test_sort_clone_features
 - [x] **CRUD分组管理** (支持在后台与 API 进行自定义分组的创建、修改和删除)
 - [x] **资源状态与 MCP 监控** (支持查询 PID、活动浏览器进程数以及 MCP tools 映射，支持 CPU/RSS 资源消耗详细指标)
 - [x] **本地加密备份计划管理器** (API `/backup/schedules`，支持 AES-GCM 备份自动跑任务，无需守护进程)
-- [x] 300+ 个 pytest 测试通过
+- [x] **网页端工具箱面板 (Tools Workspace)** (操作审计、过滤与导出、系统资源、备份计划、扩展目录及 MCP 状态已全部集成)
+- [x] **扩展目录** (Extension Catalog，支持本地 unpacked 目录、Web Store ID 安装与卸载，及 profile 分配)
+- [x] **分组层级结构** (`GET /group/tree`，安全删除父组，保护 default 分组，UI update/delete 文件夹 — 1.0.0)
+- [x] 313+ 个 pytest 测试通过
 
 ### 已知限制
 
@@ -885,11 +892,12 @@ python -m pytest tests/test_operations_release.py tests/test_sort_clone_features
 - [ ] **WebRTC 代理外网 IP 重写** — 在 ICE 候选里暴露代理的公网 IP 而非直接阻断。
 - [x] **MCP 服务的 UI 集成** — 支持从 dashboard Tools 面板查看 stdio 运行状态 (0.9.0)。
 - [x] **扩展 Web Store 浏览器** — 扩展目录功能（支持 unpacked 目录与 Web Store ID）已在 Tools 中集成 (0.9.0)。
+- [x] **分组层级 `/group/tree`** — 层级树形分组、安全删除、UI update/delete 文件夹 (1.0.0)。
 - [ ] **FingerprintJS 验证集成** — 引入 fingerprintjs/fingerprintjs 检测套件以进行防关联效果检验。
 
 ---
 
-## 19. 环境变量
+## 20. 环境变量
 
 | 变量 | 默认值 | 用途 |
 |---|---|---|
@@ -905,6 +913,6 @@ python -m pytest tests/test_operations_release.py tests/test_sort_clone_features
 
 ---
 
-## 20. License
+## 21. License
 
 MIT —— 参见 `LICENSE`。

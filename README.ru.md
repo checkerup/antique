@@ -824,7 +824,11 @@ python -m pytest tests/test_operations_release.py tests/test_sort_clone_features
 
 Добавлены: фильтрация логов активности (activity) по профилю и типу действия, экспорт активности в JSON через API и UI дашборда, полноценный каталог расширений (Extension Catalog) в Tools для управления глобальными плагинами (установка unpacked каталогов и Chrome Web Store ID), интеграция статуса MCP-сервера прямо в UI (с поддержкой транспорта stdio), а также обновленный сквозной чеклист владельца `docs/OWNER-FULL-TEST-CHECKLIST.md` и матрица возможностей.
 
-## 19. Известные ограничения и roadmap
+## 19. Релиз 1.0.0 — Управление папками и стабилизация
+
+Добавлены: полноценный `GET /group/tree` для получения иерархии папок в виде дерева, безопасное удаление групп-родителей и защита default-группы от удаления, поддержка обновления и удаления папок прямо из UI в панели Tools, кнопка удаления расширения (extension uninstall) в каталоге Tools, расширенный `OWNER-FULL-TEST-CHECKLIST.md` с шагами проверки иерархии групп и каталога расширений, обновлённый отчёт `docs/RELEASE-1.0.0-REPORT.md` и матрица паритета.
+
+## 20. Известные ограничения и roadmap
 
 ### Сделано (в этой сборке)
 
@@ -878,8 +882,9 @@ python -m pytest tests/test_operations_release.py tests/test_sort_clone_features
 - [x] **Планировщик зашифрованных резервных копий** (API `/backup/schedules`, CLI `backup-schedule`)
 - [x] **Панель инструментов UI (Tools Workspace)** (аудит событий с фильтрацией и экспортом, системные ресурсы, расписания, каталог расширений)
 - [x] **Каталог расширений** (Extension Catalog в UI Tools, установка unpacked и Chrome Web Store ID, сопоставление с профилем)
+- [x] **Иерархия групп (папки)** (`GET /group/tree`, безопасное удаление родительских групп, защита default-группы, UI update/delete папок)
 - [x] **Чеклист владельца (Owner Checklist)** (`docs/OWNER-FULL-TEST-CHECKLIST.md`)
-- [x] 300+ тестов pytest пройдены
+- [x] 313+ тестов pytest пройдены
 
 ### Известные ограничения
 
@@ -899,11 +904,12 @@ python -m pytest tests/test_operations_release.py tests/test_sort_clone_features
 - [ ] **Подмена WebRTC IP через ICE-кандидаты** — выдавать публичный IP прокси вместо блокировки.
 - [x] **Интеграция MCP в UI** — отображение статуса MCP в панели инструментов (0.9.0).
 - [x] **Поиск и установка расширений** — каталог расширений (unpacked, Web Store ID) добавлен в 0.9.0.
+- [x] **Иерархия групп `/group/tree`** — дерево папок, безопасное удаление, update/delete в UI (1.0.0).
 - [ ] **FingerprintJS-интеграция** — использование fingerprintjs/fingerprintjs для проверки обнаружения.
 
 ---
 
-## 19. Переменные окружения
+## 20. Переменные окружения
 
 | Variable | Default | Purpose |
 |---|---|---|
@@ -919,6 +925,6 @@ python -m pytest tests/test_operations_release.py tests/test_sort_clone_features
 
 ---
 
-## 20. Лицензия
+## 21. Лицензия
 
 MIT — смотрите `LICENSE`.

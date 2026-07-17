@@ -81,7 +81,9 @@
 - [ ] Provider file and JSON source return proxy count.
 - [ ] HTTP JSON provider works against a local mock endpoint.
 - [ ] Proxy credentials do not appear in logs or profile metadata.
-- [ ] Folders: create root, create child with parent_id, list empty folders, update, delete test folder.
+- [ ] Folders: create root, create child with parent_id, inspect `/group/tree`, list empty folders, update, delete leaf folder.
+- [ ] Attempt to delete a parent with children returns a clear conflict.
+- [ ] Attempt to delete the default folder returns a clear validation error.
 - [ ] Default folder cannot be accidentally lost from UI flow.
 - [ ] Swagger `/mcp/status` returns available.
 
@@ -93,7 +95,8 @@
 - [ ] One failed profile does not cancel other profiles.
 - [ ] Live View screenshot refreshes.
 - [ ] Real Chromium CDP websocket attaches from Puppeteer/Selenium.
-- [ ] Extensions install, list, assign, launch.
+- [ ] Extension catalog: list, install a local unpacked fixture, assign, launch, uninstall.
+- [ ] MCP Tools status shows stdio and available.
 - [ ] MCP stdio tools list and basic browser operation.
 - [ ] Docker compose starts and data volume persists across restart.
 

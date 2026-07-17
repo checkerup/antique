@@ -252,7 +252,7 @@ def _fingerprint_with_patch(raw: Optional[Dict[str, Any]], base: Optional[Dict[s
 
 @router.get("/health")
 def health() -> Dict[str, Any]:
-    return {"status": "ok", "service": "antique", "version": "0.9.0"}
+    return {"status": "ok", "service": "antique", "version": "1.0.0"}
 
 
 # ---------------------------------------------------------------------------
@@ -1038,12 +1038,28 @@ def group_update(body: GroupRequest) -> Dict[str, Any]:
 def group_delete(group_id: str = Body(..., embed=True)) -> Dict[str, Any]:
     assert _store is not None
     from ..core.storage import GroupRecord
-    from sqlmodel import Session
+    from sqlmodel import Session, select
     with Session(_store.engine) as s:
         row = s.get(GroupRecord, group_id)
         if not row: raise HTTPException(status_code=404, detail="group not found")
+        if group_id == "0": raise HTTPException(status_code=400, detail="default group cannot be deleted")
+        child = s.exec(select(GroupRecord).where(GroupRecord.parent_id == group_id)).first()
+        if child: raise HTTPException(status_code=409, detail="move or delete child groups first")
         s.delete(row); s.commit()
     return _ads_response(True, group_id=group_id, deleted=True)
+
+
+@router.get("/group/tree")
+def group_tree() -> Dict[str, Any]:
+    assert _store is not None
+    from ..core.storage import GroupRecord
+    from sqlmodel import Session, select
+    with Session(_store.engine) as s:
+        rows = s.exec(select(GroupRecord).order_by(GroupRecord.sort_order, GroupRecord.name)).all()
+    by_parent: Dict[str, List[Dict[str, Any]]] = {}
+    for row in rows:
+        by_parent.setdefault(getattr(row, "parent_id", ""), []).append({"group_id": row.group_id, "name": row.name, "sort_order": row.sort_order, "parent_id": getattr(row, "parent_id", "")})
+    return _ads_response(True, tree=by_parent, roots=by_parent.get("", []))
 
 
 @router.get("/group/list")
@@ -1390,7 +1406,7 @@ def info() -> Dict[str, Any]:
     running = _launcher.list_running()
     return {
         "service": "antique",
-        "version": "0.9.0",
+        "version": "1.0.0",
         "profile_count": len(profiles),
         "running_count": len(running),
         "running": [h.user_id for h in running],

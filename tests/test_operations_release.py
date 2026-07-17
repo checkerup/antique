@@ -42,6 +42,10 @@ def test_operations_endpoints_template_resource_mcp_and_group(tmp_path):
     assert client.post("/group/create", json={"group_id": "child", "name": "Child", "parent_id": "x"}).status_code == 200
     child = next(g for g in client.get("/group/list").json()["data"]["list"] if g["group_id"] == "child")
     assert child["parent_id"] == "x"
+    tree = client.get("/group/tree").json()["data"]
+    assert any(item["group_id"] == "child" for item in tree["tree"]["x"])
+    assert client.post("/group/delete", json={"group_id": "x"}).status_code == 409
+    assert client.post("/group/delete", json={"group_id": "0"}).status_code == 400
 
 
 def test_provider_http_json(monkeypatch):
@@ -90,3 +94,4 @@ def test_api_actions_are_audited(tmp_path):
     assert [event["action"] for event in events[:2]] == ["update", "create"]
     assert client.get("/extension/list").status_code == 200
     assert client.get("/mcp/status").json()["data"]["transport"] == "stdio"
+    assert "/activity/export" in client.app.openapi().get("paths", {})

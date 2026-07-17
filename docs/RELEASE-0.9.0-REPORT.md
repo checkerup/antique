@@ -4,14 +4,13 @@
 
 - Activity filtering by `user_id` and `action`.
 - Activity JSON export via `POST /activity/export` and dashboard Tools button.
-- Extension catalog workflow in Tools: list installed extensions, install unpacked path or 32-character Web Store ID.
-- MCP status workflow in Tools, with the honest transport state `stdio`.
-- Nested group parent support and UI folder creation.
-- Static UI contract now covers all owner-facing Tools actions.
-- New activity/export/extension/MCP regression coverage.
+- Extension catalog workflow in Tools: list installed extensions, install unpacked path or 32-character Web Store ID, uninstall installed extensions.
+- MCP status in UI, with honest `stdio` transport reporting.
+- Nested group tree endpoint `/group/tree`, parent-aware CRUD, safe deletion guards for default and non-empty parent folders, and UI folder management.
+- Static UI contract and operation regression coverage expanded.
 - Version synchronized to 0.9.0.
 
-## Tests
+## Required test commands
 
 ```powershell
 cd C:\ai_workflow\antidetect-local
@@ -23,7 +22,7 @@ python -m pytest tests\test_operations_release.py tests\test_sort_clone_features
 
 ## Full owner run
 
-Use `docs/OWNER-FULL-TEST-CHECKLIST.md`. It now includes activity filter/export, extension catalog, MCP status, nested folders, backup schedules, provider testing and all earlier browser/import/fingerprint/automation checks.
+Use `docs/OWNER-FULL-TEST-CHECKLIST.md`. It covers activity filter/export, extension catalog install/uninstall, MCP status, nested folders, backup schedules, provider testing, resource metrics and all earlier browser/import/fingerprint/automation checks.
 
 ## Honest limits
 
