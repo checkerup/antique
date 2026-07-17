@@ -1,4 +1,4 @@
-# Antique: полный owner test checklist
+# Antique 0.9.0: полный owner test checklist
 
 Тестировать на копии рабочей папки/БД. Для рабочих AdsPower-профилей сначала сделать encrypted snapshot.
 
@@ -7,7 +7,7 @@
 - [ ] Двойной клик `start.bat` на чистой машине.
 - [ ] `.venv` создаётся, зависимости устанавливаются, Chromium/Firefox/WebKit доступны.
 - [ ] Camoufox устанавливается отдельно или корректно показывается fallback.
-- [ ] Dashboard `/`, Swagger `/docs`, `/health`, `/info` возвращают 0.8.0.
+- [ ] Dashboard `/`, Swagger `/docs`, `/health`, `/info` возвращают 0.9.0.
 - [ ] Повторный запуск не переустанавливает браузеры.
 - [ ] Запуск с `ANTIQUE_API_TOKEN` требует Bearer token.
 - [ ] ngrok origin работает только через `ANTIQUE_ALLOWED_ORIGINS`.
@@ -67,6 +67,10 @@
 ## F. Operations / Tools
 
 - [ ] Tools → Recent activity shows create/update/start/stop/delete/import/bulk status.
+- [ ] Activity filter by user/action returns only matching events.
+- [ ] Export activity writes JSON without exposing unrelated records.
+- [ ] Extension catalog lists installed extensions and installs a test unpacked extension.
+- [ ] MCP status shows stdio/available honestly.
 - [ ] Tools → Resource status shows RSS/CPU and running profile ports.
 - [ ] Tools → Backup schedules lists registered schedules.
 - [ ] Mass create from template creates exact N profiles.

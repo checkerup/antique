@@ -478,7 +478,10 @@ POST /user/snapshot/export          Body: {path, password, overwrite?}
 POST /user/snapshot/import          Body: {path, password, overwrite?}
 → {code:0, data:{imported_count, updated_count, skipped_count}} # импорт снимка
 
-GET  /activity?user_id=...&limit=...  → список событий истории аудита активности
+GET  /activity?user_id=...&action=...&limit=...  → список событий истории аудита активности с фильтрацией
+
+POST /activity/export               Body: {path, user_id?, action?}
+→ {code:0, data:{path, count}}      # экспорт отфильтрованных событий активности в JSON-файл
 
 GET  /resource/status                → статистика ресурсов (PID, количество запущенных профилей)
 
@@ -505,6 +508,19 @@ POST /group/update                  Body: {group_id, name, sort_order?, parent_i
 
 POST /group/delete                  Body: {group_id} (embed=True)
 → {code:0, data:{group_id, deleted:true}}         # удаление группы
+
+GET  /extension/list                → список всех установленных глобальных расширений
+
+POST /extension/install             Body: {source}
+→ {code:0, data:{ext_id, name, version}} # установка распакованного каталога, .crx или по Web Store ID
+
+POST /extension/uninstall           Body: {ext_id} (embed=True)
+→ {code:0, data:{ext_id, uninstalled:true}} # удаление расширения
+
+POST /user/{user_id}/extensions     Body: List[str] (IDs расширений)
+→ {code:0, data:{user_id, extensions:[...]}} # привязка расширений к профилю
+
+GET  /user/{user_id}/extensions     → получить ID расширений, назначенных профилю
 
 POST /user/clone                    Body: {user_id, name?, user_id_override?}
 → {code:0, data:{user_id, name, source_user_id}}
@@ -782,7 +798,7 @@ python -m pytest -k adb             # only .adb-related tests
 - `test_import_launch_and_randomize.py` — регрессия импортированных профилей, петлевой SOCKS5 мост, умная bulk-рандомизация
 - `test_ui_release_040.py` — проверка элементов интерфейса релиза 0.4.0
 - `test_sort_clone_features.py` — сортировка профилей, клонирование и групповое обновление статусов
-- `test_operations_release.py` — массовое создание по шаблону, зашифрованные snapshots, аудит истории активности, локальные провайдеры прокси (File/JSON/HTTP-JSON), CRUD групп и планировщик локальных резервных копий (НОВОЕ в 0.7.0)
+- `test_operations_release.py` — массовое создание по шаблону, зашифрованные snapshots, аудит истории активности (фильтрация и экспорт в JSON), локальные провайдеры прокси (File/JSON/HTTP-JSON), CRUD групп, планировщик локальных резервных копий, каталог расширений и интеграция MCP-статуса (НОВОЕ в 0.9.0)
 
 Запустить только новые наборы тестов:
 
@@ -804,7 +820,11 @@ python -m pytest tests/test_operations_release.py tests/test_sort_clone_features
 
 Добавлены вложенные папки/группы (поддержка иерархии групп через поле `parent_id` в таблице `groups`), полноценная интеграция панели инструментов (Tools Workspace) в веб-интерфейс дашборда (для просмотра аудита событий, системных ресурсов, расписаний бэкапов и dry-run импорта AdsPower), а также детальный сквозной чеклист владельца в `docs/OWNER-FULL-TEST-CHECKLIST.md` для ручного тестирования от A до H.
 
-## 18. Известные ограничения и roadmap
+## 18. Релиз паритета функций 0.9.0
+
+Добавлены: фильтрация логов активности (activity) по профилю и типу действия, экспорт активности в JSON через API и UI дашборда, полноценный каталог расширений (Extension Catalog) в Tools для управления глобальными плагинами (установка unpacked каталогов и Chrome Web Store ID), интеграция статуса MCP-сервера прямо в UI (с поддержкой транспорта stdio), а также обновленный сквозной чеклист владельца `docs/OWNER-FULL-TEST-CHECKLIST.md` и матрица возможностей.
+
+## 19. Известные ограничения и roadmap
 
 ### Сделано (в этой сборке)
 
@@ -851,12 +871,13 @@ python -m pytest tests/test_operations_release.py tests/test_sort_clone_features
 - [x] **Предпросмотр бэкапов AdsPower без импорта (dry-run)** (API `/user/import/backup/preview`, CLI `preview-backup`)
 - [x] **Массовое создание по шаблону** (API `/user/template/create`, CLI `template-create`)
 - [x] **Зашифрованные AES-GCM снимки** (API `/user/snapshot/export` и `/user/snapshot/import`, CLI `snapshot-export` и `snapshot-import`)
-- [x] **История активности и аудит** (API `/activity`, CLI `activity`, детальные события аудита)
+- [x] **История активности и аудит** (API `/activity`, CLI `activity`, детальные события аудита, фильтрация по профилю/действию, экспорт в JSON)
 - [x] **Локальные провайдеры прокси** (File/JSON/HTTP-JSON, API `/proxy/providers/test`)
 - [x] **CRUD групп** (`/group/create`, `/group/update`, `/group/delete`, поддержка вложенных папок `parent_id`)
-- [x] **Мониторинг ресурсов и статус MCP** (`/resource/status`, `/mcp/status`, детальные метрики RSS/CPU)
+- [x] **Мониторинг ресурсов и статус MCP** (`/resource/status`, `/mcp/status`, детальные метрики RSS/CPU, статус MCP в UI)
 - [x] **Планировщик зашифрованных резервных копий** (API `/backup/schedules`, CLI `backup-schedule`)
-- [x] **Панель инструментов UI (Tools Workspace)** (аудит событий, системные ресурсы, расписания, dry-run бэкапов)
+- [x] **Панель инструментов UI (Tools Workspace)** (аудит событий с фильтрацией и экспортом, системные ресурсы, расписания, каталог расширений)
+- [x] **Каталог расширений** (Extension Catalog в UI Tools, установка unpacked и Chrome Web Store ID, сопоставление с профилем)
 - [x] **Чеклист владельца (Owner Checklist)** (`docs/OWNER-FULL-TEST-CHECKLIST.md`)
 - [x] 300+ тестов pytest пройдены
 
@@ -876,13 +897,13 @@ python -m pytest tests/test_operations_release.py tests/test_sort_clone_features
 - [x] **Настоящий CDP на профиль** — уникальный `--remote-debugging-port` на профиль, выдается через `/user/{id}/cdp`.
 - [x] **Live View, статусы аккаунтов, синхронизация, Docker** — добавлены в 0.3.0.
 - [ ] **Подмена WebRTC IP через ICE-кандидаты** — выдавать публичный IP прокси вместо блокировки.
-- [ ] **Интеграция MCP в UI** — запуск и остановка MCP-сервера прямо из дашборда.
-- [ ] **Поиск расширений в Web Store** — поиск и установка расширений из UI.
+- [x] **Интеграция MCP в UI** — отображение статуса MCP в панели инструментов (0.9.0).
+- [x] **Поиск и установка расширений** — каталог расширений (unpacked, Web Store ID) добавлен в 0.9.0.
 - [ ] **FingerprintJS-интеграция** — использование fingerprintjs/fingerprintjs для проверки обнаружения.
 
 ---
 
-## 18. Переменные окружения
+## 19. Переменные окружения
 
 | Variable | Default | Purpose |
 |---|---|---|
@@ -898,6 +919,6 @@ python -m pytest tests/test_operations_release.py tests/test_sort_clone_features
 
 ---
 
-## 19. Лицензия
+## 20. Лицензия
 
 MIT — смотрите `LICENSE`.

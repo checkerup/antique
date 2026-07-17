@@ -70,9 +70,23 @@ def test_backup_schedule_roundtrip(tmp_path):
     assert list_schedules(store)[0].destination.endswith("backup.enc")
 
 
+def test_activity_filter_and_export(tmp_path):
+    client = TestClient(create_app(data_root=tmp_path))
+    uid = client.post("/user/create", json={"name": "audited"}).json()["data"]["user_id"]
+    client.post("/user/update", json={"user_id": uid, "remark": "changed"})
+    filtered = client.get(f"/activity?user_id={uid}&action=update").json()["data"]["events"]
+    assert len(filtered) == 1 and filtered[0]["action"] == "update"
+    target = tmp_path / "activity.json"
+    exported = client.post("/activity/export", json={"path": str(target), "user_id": uid})
+    assert exported.status_code == 200 and target.exists()
+    assert "create" in target.read_text(encoding="utf-8")
+
+
 def test_api_actions_are_audited(tmp_path):
     client = TestClient(create_app(data_root=tmp_path))
     uid = client.post("/user/create", json={"name": "audited"}).json()["data"]["user_id"]
     client.post("/user/update", json={"user_id": uid, "remark": "changed"})
     events = client.get(f"/activity?user_id={uid}").json()["data"]["events"]
     assert [event["action"] for event in events[:2]] == ["update", "create"]
+    assert client.get("/extension/list").status_code == 200
+    assert client.get("/mcp/status").json()["data"]["transport"] == "stdio"

@@ -12,8 +12,8 @@ def test_dashboard_contains_all_owner_workflows():
         "Smart fingerprint randomization", "Run flow on selected profiles",
         "Manage profile", "Preview AdsPower backup", "Recent activity",
         "Resource status", "Backup schedules", "Mass create", "Proxy provider",
-        "Folders", "changeSort", "/user/bulk/fingerprint/randomize",
-        "/user/bulk/proxy/import", "/sync/run", "/group/create", "/backup/schedules",
+        "Folders", "Export activity", "Extension catalog", "MCP status", "changeSort", "/user/bulk/fingerprint/randomize",
+        "/user/bulk/proxy/import", "/sync/run", "/group/create", "/backup/schedules", "/activity/export",
     ):
         assert marker in html
 
@@ -32,3 +32,4 @@ def test_start_bat_and_docs_exist():
     assert (ROOT / "docs" / "AGENT-TESTING.md").exists()
     assert (ROOT / "docs" / "MANUAL-TEST-PLAN.md").exists()
     assert (ROOT / "docs" / "RELEASE-0.7.0-REPORT.md").exists()
+    assert (ROOT / "docs" / "OWNER-FULL-TEST-CHECKLIST.md").exists()

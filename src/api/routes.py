@@ -51,7 +51,7 @@ from ..core.proxy_pool import ProxyPool
 from ..core.portable import build_bundle, import_profile as portable_import, PortableBundleError
 from ..core.detect import score_report, expected_from_fingerprint
 from ..core.engines import list_engines, engine_keys
-from ..core.operations import list_activity, record_activity, preview_backup, create_from_template, encrypted_snapshot, decrypt_snapshot
+from ..core.operations import list_activity, record_activity, preview_backup, create_from_template, encrypted_snapshot, decrypt_snapshot, export_activity
 from ..core.providers import ProviderConfig, ProxyProvider, list_provider_kinds
 from ..core.backup_scheduler import add_schedule, list_schedules, run_schedule
 
@@ -252,7 +252,7 @@ def _fingerprint_with_patch(raw: Optional[Dict[str, Any]], base: Optional[Dict[s
 
 @router.get("/health")
 def health() -> Dict[str, Any]:
-    return {"status": "ok", "service": "antique", "version": "0.8.0"}
+    return {"status": "ok", "service": "antique", "version": "0.9.0"}
 
 
 # ---------------------------------------------------------------------------
@@ -962,10 +962,20 @@ def user_get_extensions(user_id: str) -> Dict[str, Any]:
 
 
 @router.get("/activity")
-def activity_list(user_id: Optional[str] = Query(None), limit: int = Query(100, ge=1, le=1000)) -> Dict[str, Any]:
+def activity_list(user_id: Optional[str] = Query(None), action: Optional[str] = Query(None), limit: int = Query(100, ge=1, le=1000)) -> Dict[str, Any]:
     assert _store is not None
-    events = list_activity(_store, user_id=user_id, limit=limit)
+    events = list_activity(_store, user_id=user_id, action=action, limit=limit)
     return _ads_response(True, events=[{"user_id": e.user_id, "action": e.action, "detail": e.detail, "created_at": e.created_at} for e in events])
+
+
+@router.post("/activity/export")
+def activity_export(path: str = Body(..., embed=True), user_id: Optional[str] = Body(None, embed=True), action: Optional[str] = Body(None, embed=True)) -> Dict[str, Any]:
+    assert _store is not None
+    try:
+        out = export_activity(_store, Path(path), user_id=user_id, action=action)
+    except OSError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return _ads_response(True, path=str(out))
 
 
 @router.get("/resource/status")
@@ -1380,7 +1390,7 @@ def info() -> Dict[str, Any]:
     running = _launcher.list_running()
     return {
         "service": "antique",
-        "version": "0.8.0",
+        "version": "0.9.0",
         "profile_count": len(profiles),
         "running_count": len(running),
         "running": [h.user_id for h in running],

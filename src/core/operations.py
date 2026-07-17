@@ -38,17 +38,28 @@ def record_activity(store: ProfileStore, user_id: str, action: str, detail: Opti
     return event
 
 
-def list_activity(store: ProfileStore, user_id: Optional[str] = None, limit: int = 100) -> List[ActivityEvent]:
+def list_activity(store: ProfileStore, user_id: Optional[str] = None, limit: int = 100, action: Optional[str] = None) -> List[ActivityEvent]:
     sql = "SELECT user_id, action, detail, created_at FROM activity_events"
-    args: tuple[Any, ...] = ()
+    clauses: List[str] = []
+    args: List[Any] = []
     if user_id:
-        sql += " WHERE user_id = ?"
-        args = (user_id,)
+        clauses.append("user_id = ?"); args.append(user_id)
+    if action:
+        clauses.append("action = ?"); args.append(action)
+    if clauses:
+        sql += " WHERE " + " AND ".join(clauses)
     sql += " ORDER BY created_at DESC LIMIT ?"
-    args += (max(1, min(limit, 1000)),)
+    args.append(max(1, min(limit, 1000)))
     with store.engine.connect() as conn:
-        rows = conn.exec_driver_sql(sql, args).fetchall()
+        rows = conn.exec_driver_sql(sql, tuple(args)).fetchall()
     return [ActivityEvent(r[0], r[1], json.loads(r[2] or "{}"), r[3]) for r in rows]
+
+
+def export_activity(store: ProfileStore, destination: Path, user_id: Optional[str] = None, action: Optional[str] = None) -> Path:
+    rows = [asdict(event) for event in list_activity(store, user_id=user_id, action=action, limit=1000)]
+    destination = Path(destination)
+    destination.write_text(json.dumps(rows, ensure_ascii=False, indent=2), encoding="utf-8")
+    return destination
 
 
 def preview_backup(root: Path) -> Dict[str, Any]:

@@ -30,7 +30,7 @@ The goal is parity where it is useful, not blindly cloning every paid feature. M
 - Bulk status updates.
 - New regression tests for all three.
 
-## Implemented in 0.6.0
+## Implemented in 0.9.0
 
 - Backup dry-run preview: `/user/import/backup/preview`, CLI `preview-backup`, dashboard Tools.
 - Mass-create templates: `/user/template/create`, CLI `template-create`.
@@ -42,6 +42,9 @@ The goal is parity where it is useful, not blindly cloning every paid feature. M
 - Activity hooks on create/update/start/stop/delete/import/bulk status.
 - Backup scheduler registry with encrypted snapshot run: `/backup/schedules`, CLI `backup-schedule` and `backup-schedules`.
 - HTTP JSON proxy provider adapter, with no credentials stored in profile records.
+- Activity filters and JSON export.
+- Extension catalog UI for installed extensions and local/Web Store installation.
+- MCP status UI and nested folder creation in Tools.
 
 ## High-value parity backlog
 

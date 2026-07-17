@@ -470,7 +470,10 @@ POST /user/snapshot/export          Body: {path, password, overwrite?}
 POST /user/snapshot/import          Body: {path, password, overwrite?}
 → {code:0, data:{imported_count, updated_count, skipped_count}} # 导入加密快照
 
-GET  /activity?user_id=...&limit=...  → 获取操作审计日志列表
+GET  /activity?user_id=...&action=...&limit=...  → 获取操作审计日志列表 (支持用户与动作过滤)
+
+POST /activity/export               Body: {path, user_id?, action?}
+→ {code:0, data:{path, count}}      # 将操作审计日志导出为 JSON 文件
 
 GET  /resource/status                → 获取系统资源占用状态 (PID、活动进程数)
 
@@ -497,6 +500,19 @@ POST /group/update                  Body: {group_id, name, sort_order?, parent_i
 
 POST /group/delete                  Body: {group_id} (embed=True)
 → {code:0, data:{group_id, deleted:true}}         # 删除分组
+
+GET  /extension/list                → 获取已安装的全局扩展程序列表
+
+POST /extension/install             Body: {source}
+→ {code:0, data:{ext_id, name, version}} # 通过本地目录、.crx 文件或 Chrome Web Store ID 安装扩展程序
+
+POST /extension/uninstall           Body: {ext_id} (embed=True)
+→ {code:0, data:{ext_id, uninstalled:true}} # 卸载扩展程序
+
+POST /user/{user_id}/extensions     Body: List[str] (扩展程序 ID 列表)
+→ {code:0, data:{user_id, extensions:[...]}} # 为 profile 分配扩展程序
+
+GET  /user/{user_id}/extensions     → 获取分配给该 profile 的扩展程序 ID 列表
 
 POST /user/clone                    Body: {user_id, name?, user_id_override?}
 → {code:0, data:{user_id, name, source_user_id}}
@@ -775,7 +791,7 @@ python -m pytest -k adb             # only .adb-related tests
 - `test_import_launch_and_randomize.py` —— 导入后启动回归、本地带密 SOCKS5 代理桥接、批量指纹智能随机化 (0.4.0 新增)
 - `test_ui_release_040.py` —— 对发布版 0.4.0 UI 核心元素的静态与行为集成测试 (0.4.0 新增)
 - `test_sort_clone_features.py` —— profile 排序选择、复制克隆及批量账号状态更新测试
-- `test_operations_release.py` —— 模板批量创建、AES-GCM 加密快照、操作审计日志、本地/远程代理源测试（包含 HTTP-JSON）、分组 CRUD 及本地加密备份计划管理测试 (0.7.0 新增)
+- `test_operations_release.py` —— 模板批量创建、AES-GCM 加密快照、操作审计日志（支持过滤与 JSON 导出）、本地/远程代理源测试（包含 HTTP-JSON）、分组 CRUD、本地加密备份计划管理、扩展目录及 MCP 状态监测测试 (0.9.0 新增)
 
 仅运行最新的测试套件：
 
@@ -791,11 +807,17 @@ python -m pytest tests/test_operations_release.py tests/test_sort_clone_features
 
 ## 16. 0.7.0 版本功能发布
 
-新增了扩展的 AdsPower 功能对齐：支持完整的系统操作历史审计（在创建、修改、启动、停止、删除、导入备份及批量更新状态时自动记录详细 audit 日志）、本地加密备份计划管理器（支持 AES-GCM 快照备份及定期任务注册，无需驻留守护进程，可通过 Windows 任务计划程序或 cron 定期调用）、HTTP JSON 远程代理源提取器（支持从动态 API 获取代理池），以及更精细的 CPU 与 RSS 内存性能指标统计统计，在 Windows 下提供安全的回退机制。
+新增了扩展的 AdsPower 功能对齐：支持完整的系统操作历史审计（在创建、修改、启动、停止、删除、导入备份及批量更新状态时自动记录详细 audit 日志）、本地加密备份计划管理器（支持 AES-GCM 快照备份及定期任务注册，无需驻留守护进程，可通过 Windows 任务计划程序 or cron 定期调用）、HTTP JSON 远程代理源提取器（支持从动态 API 获取代理池），以及更精细的 CPU 与 RSS 内存性能指标统计统计，在 Windows 下提供安全的回退机制。
 
----
+## 17. 0.8.0 版本功能发布
 
-## 17. 已知限制与 roadmap
+新增了嵌套文件夹/嵌套分组（在 `groups` 表中通过 `parent_id` 实现文件夹层级管理功能）、网页端大工具箱面板（Tools Workspace）的完整集成（可直接在 UI 交互界面浏览操作审计、系统物理资源、快照备份计划以及 AdsPower 备份干跑预览），并提供了在 `docs/OWNER-FULL-TEST-CHECKLIST.md` 中的系统全面功能验收测试方案（A 至 H 章节）。
+
+## 18. 0.9.0 版本功能发布
+
+新增了以下功能：支持按 Profile 和操作类型对活动日志（Activity Log）进行过滤；支持通过 API 和 UI 将活动日志导出为 JSON 格式；在 Tools 中新增了扩展程序目录（Extension Catalog）功能，支持查看已安装的扩展程序并能通过解压目录或 Chrome Web Store ID 进行安装；集成了 MCP 服务的状态显示及 stdio 状态；完善了在 `docs/OWNER-FULL-TEST-CHECKLIST.md` 和 `docs/RELEASE-0.9.0-REPORT.md` 中的自动化与操作验收用例。
+
+## 19. 已知限制与 roadmap
 
 ### 已完成（本次构建）
 
@@ -861,13 +883,13 @@ python -m pytest tests/test_operations_release.py tests/test_sort_clone_features
 
 - [x] **每个 profile 的真实 CDP** — 为每个 profile 分配一个唯一的 `--remote-debugging-port`。
 - [ ] **WebRTC 代理外网 IP 重写** — 在 ICE 候选里暴露代理的公网 IP 而非直接阻断。
-- [ ] **MCP 服务的 UI 集成** — 支持从 dashboard 启停 MCP 服务。
-- [ ] **扩展 Web Store 浏览器** — 支持从 UI 搜索 and 安装扩展。
+- [x] **MCP 服务的 UI 集成** — 支持从 dashboard Tools 面板查看 stdio 运行状态 (0.9.0)。
+- [x] **扩展 Web Store 浏览器** — 扩展目录功能（支持 unpacked 目录与 Web Store ID）已在 Tools 中集成 (0.9.0)。
 - [ ] **FingerprintJS 验证集成** — 引入 fingerprintjs/fingerprintjs 检测套件以进行防关联效果检验。
 
 ---
 
-## 18. 环境变量
+## 19. 环境变量
 
 | 变量 | 默认值 | 用途 |
 |---|---|---|
@@ -883,6 +905,6 @@ python -m pytest tests/test_operations_release.py tests/test_sort_clone_features
 
 ---
 
-## 19. License
+## 20. License
 
 MIT —— 参见 `LICENSE`。
