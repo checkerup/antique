@@ -28,6 +28,35 @@ def test_dashboard_uses_oklch_and_responsive_states():
 
 def test_start_bat_and_docs_exist():
     assert (ROOT / "start.bat").exists()
+
+
+def test_randomize_modal_has_clean_checkbox_layout():
+    """Bug #2: randomize modal checkboxes use flex groups with separators."""
+    html = UI.read_text(encoding="utf-8")
+    assert 'class="checkbox-group"' in html
+    assert 'class="group-sep"' in html
+    # Both shared and preserve groups use the flex container
+    assert html.count('class="checkbox-group"') >= 2
+    # Separator between the two groups
+    assert html.count('class="group-sep"') >= 1
+
+
+def test_randomize_modal_has_overrides_panel():
+    """Bug #1: overrides checkbox + input panel with the full field set."""
+    html = UI.read_text(encoding="utf-8")
+    assert 'id="rnd-overrides-enabled"' in html
+    assert 'id="rnd-overrides-panel"' in html
+    assert 'id="rnd-ov-user-agent"' in html
+    assert 'id="rnd-ov-platform"' in html
+    assert 'id="rnd-ov-screen-width"' in html
+    assert 'id="rnd-ov-screen-height"' in html
+    assert 'id="rnd-ov-hardware-concurrency"' in html
+    assert 'id="rnd-ov-device-memory"' in html
+    assert 'id="rnd-ov-webgl-vendor"' in html
+    assert 'id="rnd-ov-webgl-renderer"' in html
+    assert 'id="rnd-ov-timezone"' in html
+    assert 'id="rnd-ov-languages"' in html
+    assert 'onchange="toggleOverridesPanel()"' in html
     assert (ROOT / "QUICKSTART.md").exists()
     assert (ROOT / "docs" / "AGENT-TESTING.md").exists()
     assert (ROOT / "docs" / "MANUAL-TEST-PLAN.md").exists()

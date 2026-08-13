@@ -209,6 +209,17 @@ _OS_PROFILES = {
 # ---------------------------------------------------------------------------
 
 
+# Valid values for ``Fingerprint.webrtc_mode``:
+#   block — kill ICE entirely (no candidates, no leak, detectable anomaly)
+#   real  — leave WebRTC alone (real IPs exposed; only for a clean network)
+#   proxy — rewrite candidate IPs to the proxy exit IP (matches proxy story)
+WEBRTC_MODES = ("block", "real", "proxy")
+
+# Documentation-range IPv6 address used to replace real IPv6 candidates when
+# rewriting in proxy mode (RFC 3849 — guaranteed never routable).
+WEBRTC_PROXY_IPV6 = "2001:db8::1"
+
+
 @dataclass
 class Fingerprint:
     """A coherent fingerprint bundle.
@@ -277,8 +288,19 @@ class Fingerprint:
     connection_downlink: float = 10.0
     connection_rtt: int = 50
 
-    # WebRTC IP-leak prevention (block all STUN/external IP)
+    # WebRTC IP-leak prevention (block all STUN/external IP).
+    # Legacy flag, kept for backward compatibility with profiles stored before
+    # ``webrtc_mode`` existed. See ``effective_webrtc_mode``.
     block_webrtc_ip: bool = True
+
+    # WebRTC handling mode — one of WEBRTC_MODES ("block" | "real" | "proxy").
+    # Empty string means "derive from the legacy block_webrtc_ip flag".
+    #   block — no ICE servers, no candidates at all (safest, most detectable)
+    #   real  — leave WebRTC untouched (real local/public IPs are exposed)
+    #   proxy — rewrite candidate IPs to the proxy's public IP (best realism)
+    webrtc_mode: str = ""
+    # Public IP advertised in ICE candidates when webrtc_mode == "proxy".
+    webrtc_public_ip: str = ""
 
     # Plugins / mime types (Chrome desktop realistic)
     plugins: List[Dict[str, Any]] = field(default_factory=list)
@@ -304,6 +326,88 @@ class Fingerprint:
 # ---------------------------------------------------------------------------
 # Generator
 # ---------------------------------------------------------------------------
+
+
+def _sample_corpus_fingerprint(
+    os_family: str,
+    seed: Optional[str] = None,
+) -> Optional[Fingerprint]:
+    """Sample a real fingerprint from the corpus and add deterministic noise.
+
+    Returns ``None`` when the corpus has no usable entry for ``os_family`` (or
+    is unavailable), so the caller can fall back to template synthesis.
+
+    The import is deferred: ``fingerprint_corpus`` imports this module, so a
+    module-level import would be circular.
+    """
+    try:
+        from .fingerprint_corpus import add_noise, sample_from_corpus
+    except Exception:
+        return None
+
+    try:
+        sampled = sample_from_corpus(os_family=os_family, seed=seed)
+        if sampled is None:
+            return None
+        fp = add_noise(sampled, seed=seed)
+    except Exception:
+        # A malformed corpus entry must never break profile creation.
+        return None
+
+    # Re-derive the identity fields so a noised sample gets its own id/noise
+    # instead of inheriting the corpus entry's.
+    raw = json.dumps(fp.canonical(), sort_keys=True, default=str).encode("utf-8")
+    fp.noise = hashlib.sha256(raw + (seed or "").encode("utf-8")).hexdigest()
+    fp.id = hashlib.sha256(fp.user_agent.encode("utf-8") + raw).hexdigest()[:16]
+    return fp
+
+
+def effective_webrtc_mode(fp: "Fingerprint") -> str:
+    """Resolve the WebRTC mode actually in force for ``fp``.
+
+    An explicit, valid ``webrtc_mode`` always wins (case-insensitive, trimmed).
+    Anything else — empty, whitespace, or an unknown value — falls back to the
+    legacy ``block_webrtc_ip`` flag so profiles stored before ``webrtc_mode``
+    existed keep their original behaviour.
+    """
+    # Accept both a Fingerprint instance and the plain dict shape the API and
+    # stored profiles use: getattr() alone silently reports "block" for every
+    # dict, which would ignore an explicitly configured mode.
+    def _get(name, default):
+        if isinstance(fp, dict):
+            value = fp.get(name, default)
+        else:
+            value = getattr(fp, name, default)
+        return default if value is None else value
+
+    mode = str(_get("webrtc_mode", "") or "").strip().lower()
+    if mode in WEBRTC_MODES:
+        return mode
+    return "block" if _get("block_webrtc_ip", True) else "real"
+
+
+def set_webrtc_mode(
+    fp: "Fingerprint",
+    mode: str,
+    public_ip: Optional[str] = None,
+) -> "Fingerprint":
+    """Set ``fp``'s WebRTC mode, keeping the legacy flag coherent.
+
+    ``block`` sets ``block_webrtc_ip=True``; ``real``/``proxy`` clear it, so
+    older code paths that only read the legacy flag still behave correctly.
+    In ``proxy`` mode ``public_ip`` is stored (whitespace-trimmed) and used as
+    the candidate IP. Raises ``ValueError`` for an unknown mode.
+    """
+    normalized = (mode or "").strip().lower()
+    if normalized not in WEBRTC_MODES:
+        raise ValueError(
+            f"unknown webrtc mode {mode!r}; expected one of {', '.join(WEBRTC_MODES)}"
+        )
+    fp.webrtc_mode = normalized
+    fp.block_webrtc_ip = normalized == "block"
+    if public_ip is not None:
+        fp.webrtc_public_ip = public_ip.strip()
+    return fp
 
 
 def _ua_for(os_family: str, rng: random.Random) -> str:
@@ -344,18 +448,35 @@ def _chrome_plugins(rng: random.Random) -> List[Dict[str, Any]]:
 def generate_fingerprint(
     seed: Optional[str] = None,
     os_family: str = "windows",
+    use_corpus: bool = True,
 ) -> Fingerprint:
     """Generate a new, internally-consistent fingerprint.
+
+    Two strategies, in order of preference:
+
+    1. **Corpus sampling** (default) — pick a real captured device fingerprint
+       matching ``os_family`` and add small deterministic noise. A real device
+       is inherently coherent, so this beats template synthesis on detectors
+       that cross-check field combinations against known-device statistics.
+    2. **Template synthesis** — build a fingerprint from the curated presets
+       below. Used when the corpus is empty, has no entry for ``os_family``,
+       or when ``use_corpus=False`` is passed explicitly.
 
     Args:
         seed: optional string; deterministic output if provided.
         os_family: 'windows' | 'macos' | 'linux'.
+        use_corpus: prefer sampling a real fingerprint from the corpus.
 
     Returns:
         Fingerprint dataclass.
     """
     if os_family not in _OS_PROFILES:
         raise ValueError(f"Unknown os_family: {os_family!r}")
+
+    if use_corpus:
+        sampled = _sample_corpus_fingerprint(os_family=os_family, seed=seed)
+        if sampled is not None:
+            return sampled
 
     rng = random.Random(seed) if seed else random.SystemRandom()
 
@@ -457,7 +578,10 @@ def to_playwright_launch_options(fp: Fingerprint, proxy: Optional[Dict[str, Any]
         "headless": False,  # most anti-detect use-cases need a real window
         "args": [
             "--disable-blink-features=AutomationControlled",
-            "--disable-features=IsolateOrigins,site-per-process",
+            # NOTE: Chromium honours only the LAST --disable-features flag, so
+            # every disabled feature must live in this single comma list.
+            # DevToolsConsole drops the console instrumentation sites probe for.
+            "--disable-features=IsolateOrigins,site-per-process,DevToolsConsole",
             "--disable-site-isolation-trials",
             "--disable-web-security",
             f"--lang={fp.locale}",
@@ -466,6 +590,9 @@ def to_playwright_launch_options(fp: Fingerprint, proxy: Optional[Dict[str, Any]
             "--no-first-run",
             "--disable-infobars",
             "--disable-dev-shm-usage",
+            # DevTools stealth: never auto-open DevTools — a docked panel shifts
+            # outerHeight/outerWidth, which is a classic automation tell.
+            "--auto-open-devtools-for-tabs=false",
             # Don't disable GPU — anti-detect checks for WebGL availability
         ],
         "viewport": {"width": fp.inner_width, "height": fp.inner_height},
@@ -671,29 +798,229 @@ INIT_SCRIPT_TEMPLATE = r"""
     }
   } catch (e) {}
 
-  // ---- WebRTC IP leak prevention ----
-  if (cfg.block_webrtc_ip) {
-    try {
-      const RTC = window.RTCPeerConnection || window.webkitRTCPeerConnection;
-      if (RTC) {
-        const origCreate = RTC.prototype.createDataChannel;
-        RTC.prototype.createDataChannel = function (...args) {
-          // Force empty iceServers to prevent STUN IP leak
-          if (this._iceServersOverridden) return origCreate.apply(this, args);
-          this._iceServersOverridden = true;
-          try {
-            this.setConfiguration({ iceServers: [] });
-          } catch (e) {}
-          return origCreate.apply(this, args);
-        };
-        const origSetConfig = RTC.prototype.setConfiguration;
-        RTC.prototype.setConfiguration = function (cfg) {
-          if (cfg && cfg.iceServers) cfg.iceServers = [];
-          return origSetConfig.call(this, cfg);
+  // ---- WebRTC handling (block | real | proxy) ----
+  // block — strip every ICE server so no candidate is ever gathered.
+  // real  — leave WebRTC completely untouched.
+  // proxy — rewrite candidate/SDP host IPs to the proxy exit IP so the WebRTC
+  //         story matches the HTTP story (no private/real IP leak).
+  try {
+    const wmode = cfg.webrtc_mode || (cfg.block_webrtc_ip ? 'block' : 'real');
+    const RTC = window.RTCPeerConnection || window.webkitRTCPeerConnection;
+
+    if (RTC && wmode === 'block') {
+      // Stripping iceServers only kills STUN/TURN reflexive candidates; the
+      // browser still gathers *host* candidates from local interfaces, so the
+      // LAN IP leaks via SDP and the onicecandidate event. Block all three
+      // surfaces: no ICE servers, no candidate events, no addresses in SDP.
+      const origCreate = RTC.prototype.createDataChannel;
+      RTC.prototype.createDataChannel = function (...args) {
+        // Force empty iceServers to prevent STUN IP leak
+        if (this._iceServersOverridden) return origCreate.apply(this, args);
+        this._iceServersOverridden = true;
+        try {
+          this.setConfiguration({ iceServers: [] });
+        } catch (e) {}
+        return origCreate.apply(this, args);
+      };
+      const origSetConfig = RTC.prototype.setConfiguration;
+      RTC.prototype.setConfiguration = function (conf) {
+        if (conf && conf.iceServers) conf.iceServers = [];
+        return origSetConfig.call(this, conf);
+      };
+
+      // Scrub every IP literal out of the SDP that leaves the page.
+      const RE4B = /\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/g;
+      const RE6B = /\b(?:[0-9a-fA-F]{0,4}:){2,7}[0-9a-fA-F]{0,4}\b/g;
+      const stripSdp = (text) => {
+        if (!text) return text;
+        let out = String(text);
+        // Drop candidate lines entirely — a blocked profile gathers none.
+        out = out.replace(/a=candidate:[^\x0d\x0a]*(\x0d?\x0a)?/g, '');
+        // Neutralise any remaining host addresses (c= lines etc).
+        out = out.replace(/c=IN IP4 [^\x0d\x0a]+/g, 'c=IN IP4 0.0.0.0');
+        out = out.replace(/c=IN IP6 [^\x0d\x0a]+/g, 'c=IN IP6 ::');
+        out = out.replace(RE4B, (ip) => (ip === '0.0.0.0' ? ip : '0.0.0.0'));
+        out = out.replace(RE6B, '::');
+        return out;
+      };
+      const stripDescription = (desc) => {
+        if (!desc || !desc.sdp) return desc;
+        try {
+          return { type: desc.type, sdp: stripSdp(desc.sdp) };
+        } catch (e) {
+          return desc;
+        }
+      };
+      for (const method of ['createOffer', 'createAnswer']) {
+        const origB = RTC.prototype[method];
+        if (typeof origB !== 'function') continue;
+        RTC.prototype[method] = function (...args) {
+          const res = origB.apply(this, args);
+          if (res && typeof res.then === 'function') return res.then(stripDescription);
+          return res;
         };
       }
-    } catch (e) {}
-  }
+      const localDescB = Object.getOwnPropertyDescriptor(RTC.prototype, 'localDescription');
+      if (localDescB && localDescB.get) {
+        Object.defineProperty(RTC.prototype, 'localDescription', {
+          get: function () {
+            return stripDescription(localDescB.get.call(this));
+          },
+          configurable: true,
+        });
+      }
+      // Swallow candidate events on both listener styles.
+      const origAddEventB = RTC.prototype.addEventListener;
+      RTC.prototype.addEventListener = function (type, listener, ...rest) {
+        if (type === 'icecandidate' && typeof listener === 'function') {
+          const wrapped = function (ev) {
+            try {
+              if (ev && ev.candidate) {
+                Object.defineProperty(ev, 'candidate', { value: null, configurable: true });
+              }
+            } catch (e) {}
+            return listener.call(this, ev);
+          };
+          return origAddEventB.call(this, type, wrapped, ...rest);
+        }
+        return origAddEventB.call(this, type, listener, ...rest);
+      };
+      const onIceB = Object.getOwnPropertyDescriptor(RTC.prototype, 'onicecandidate');
+      if (onIceB && onIceB.set) {
+        Object.defineProperty(RTC.prototype, 'onicecandidate', {
+          get: onIceB.get,
+          set: function (handler) {
+            if (typeof handler !== 'function') return onIceB.set.call(this, handler);
+            const wrapped = function (ev) {
+              try {
+                if (ev && ev.candidate) {
+                  Object.defineProperty(ev, 'candidate', { value: null, configurable: true });
+                }
+              } catch (e) {}
+              return handler.call(this, ev);
+            };
+            return onIceB.set.call(this, wrapped);
+          },
+          configurable: true,
+        });
+      }
+    } else if (RTC && wmode === 'proxy') {
+      const pubIP = cfg.webrtc_public_ip || '';
+      const pubIP6 = cfg.webrtc_public_ipv6 || '2001:db8::1';
+      // IPv4 / IPv6 literals inside candidate lines and SDP c= lines.
+      const RE4 = /\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/g;
+      const RE6 = /\b(?:[0-9a-fA-F]{0,4}:){2,7}[0-9a-fA-F]{0,4}\b/g;
+
+      const rewrite = (text) => {
+        if (!text) return text;
+        let out = String(text);
+        // c=IN IP4 <addr> / c=IN IP6 <addr> host lines
+        if (pubIP) out = out.replace(/c=IN IP4 [^\x0d\x0a]+/g, 'c=IN IP4 ' + pubIP);
+        out = out.replace(/c=IN IP6 [^\x0d\x0a]+/g, 'c=IN IP6 ' + pubIP6);
+        // a=candidate:... lines — swap the address literals
+        out = out.replace(/a=candidate:[^\x0d\x0a]+/g, (line) => {
+          let l = line;
+          if (pubIP) l = l.replace(RE4, pubIP);
+          l = l.replace(RE6, pubIP6);
+          return l;
+        });
+        return out;
+      };
+
+      // 1) Rewrite candidates surfaced via the onicecandidate event.
+      const origAddEvent = RTC.prototype.addEventListener;
+      const patchCandidate = (cand) => {
+        if (!cand || !cand.candidate) return cand;
+        try {
+          const fixed = rewrite(cand.candidate);
+          if (fixed === cand.candidate) return cand;
+          return new RTCIceCandidate({
+            candidate: fixed,
+            sdpMid: cand.sdpMid,
+            sdpMLineIndex: cand.sdpMLineIndex,
+            usernameFragment: cand.usernameFragment,
+          });
+        } catch (e) {
+          return cand;
+        }
+      };
+
+      // 2) Rewrite the local SDP so c=/candidate lines never expose real IPs.
+      const patchDescription = (desc) => {
+        if (!desc || !desc.sdp) return desc;
+        try {
+          return { type: desc.type, sdp: rewrite(desc.sdp) };
+        } catch (e) {
+          return desc;
+        }
+      };
+
+      for (const method of ['createOffer', 'createAnswer']) {
+        const orig = RTC.prototype[method];
+        if (typeof orig !== 'function') continue;
+        RTC.prototype[method] = function (...args) {
+          const res = orig.apply(this, args);
+          if (res && typeof res.then === 'function') {
+            return res.then(patchDescription);
+          }
+          return res;
+        };
+      }
+
+      const origLocalDesc = Object.getOwnPropertyDescriptor(RTC.prototype, 'localDescription');
+      if (origLocalDesc && origLocalDesc.get) {
+        Object.defineProperty(RTC.prototype, 'localDescription', {
+          get: function () {
+            return patchDescription(origLocalDesc.get.call(this));
+          },
+          configurable: true,
+        });
+      }
+
+      // 3) Intercept the candidate event on both listener styles.
+      RTC.prototype.addEventListener = function (type, listener, ...rest) {
+        if (type === 'icecandidate' && typeof listener === 'function') {
+          const wrapped = function (ev) {
+            try {
+              if (ev && ev.candidate) {
+                const fixed = patchCandidate(ev.candidate);
+                if (fixed !== ev.candidate) {
+                  Object.defineProperty(ev, 'candidate', { value: fixed, configurable: true });
+                }
+              }
+            } catch (e) {}
+            return listener.call(this, ev);
+          };
+          return origAddEvent.call(this, type, wrapped, ...rest);
+        }
+        return origAddEvent.call(this, type, listener, ...rest);
+      };
+
+      const onIceDesc = Object.getOwnPropertyDescriptor(RTC.prototype, 'onicecandidate');
+      if (onIceDesc && onIceDesc.set) {
+        Object.defineProperty(RTC.prototype, 'onicecandidate', {
+          get: onIceDesc.get,
+          set: function (handler) {
+            if (typeof handler !== 'function') return onIceDesc.set.call(this, handler);
+            const wrapped = function (ev) {
+              try {
+                if (ev && ev.candidate) {
+                  const fixed = patchCandidate(ev.candidate);
+                  if (fixed !== ev.candidate) {
+                    Object.defineProperty(ev, 'candidate', { value: fixed, configurable: true });
+                  }
+                }
+              } catch (e) {}
+              return handler.call(this, ev);
+            };
+            return onIceDesc.set.call(this, wrapped);
+          },
+          configurable: true,
+        });
+      }
+    }
+    // wmode === 'real' -> deliberately no patching at all.
+  } catch (e) {}
 
   // ---- WebGPU adapter info ----
   try {
@@ -813,6 +1140,53 @@ INIT_SCRIPT_TEMPLATE = r"""
     }
   } catch (e) {}
 
+  // ---- DevTools stealth ----
+  // Sites detect an open DevTools panel three ways; neutralise all of them.
+  try {
+    // (1) Timing side-channel: console.debug/log with a getter-trapped object
+    // is orders of magnitude slower while the console is rendering. Swallow the
+    // object so the probe measures nothing.
+    const origDebug = console.debug ? console.debug.bind(console) : null;
+    console.debug = function (...args) {
+      // Drop objects carrying a trapped `id` getter (the classic probe shape).
+      for (const a of args) {
+        if (a && typeof a === 'object') {
+          try {
+            const d = Object.getOwnPropertyDescriptor(a, 'id');
+            if (d && typeof d.get === 'function') return undefined;
+          } catch (e) {}
+        }
+      }
+      return origDebug ? origDebug(...args) : undefined;
+    };
+    try {
+      Object.defineProperty(console.debug, 'toString', {
+        value: () => 'function debug() { [native code] }',
+        configurable: true,
+      });
+    } catch (e) {}
+
+    // (2) window.chrome.runtime must be absent on a normal page — its presence
+    // is an extension/automation tell that DevTools probes look for.
+    try {
+      if (window.chrome && window.chrome.runtime) {
+        delete window.chrome.runtime;
+      }
+    } catch (e) {}
+
+    // (3) outer/inner delta heuristic: a docked DevTools panel makes
+    // outerWidth-innerWidth large. Report a normal chrome-only delta.
+    Object.defineProperty(window, 'outerWidth', {
+      get: () => window.innerWidth,
+      configurable: true,
+    });
+    Object.defineProperty(window, 'outerHeight', {
+      // ~74px of browser chrome (tab strip + omnibox) on a normal desktop.
+      get: () => window.innerHeight + 74,
+      configurable: true,
+    });
+  } catch (e) {}
+
   // ---- Screen / window size consistency ----
   try {
     Object.defineProperty(window.screen, 'width', { get: () => cfg.screen_width });
@@ -849,6 +1223,10 @@ def build_init_script(fp: Fingerprint) -> str:
         "audio_noise_seed": fp.audio_noise_seed,
         "canvas_noise_seed": fp.canvas_noise_seed,
         "block_webrtc_ip": fp.block_webrtc_ip,
+        # Resolved once here so the JS never has to re-derive the legacy flag.
+        "webrtc_mode": effective_webrtc_mode(fp),
+        "webrtc_public_ip": fp.webrtc_public_ip,
+        "webrtc_public_ipv6": WEBRTC_PROXY_IPV6,
         "screen_width": fp.screen_width,
         "screen_height": fp.screen_height,
         "avail_screen_width": fp.avail_screen_width,

@@ -43,6 +43,9 @@ class Profile:
     import_source_path: str = ""
     initial_state_applied: bool = False
 
+    # Operator reminder date (naive UTC). ``None`` = no reminder set.
+    due_date: Optional[datetime] = None
+
     created_at: datetime = field(default_factory=datetime.utcnow)
     updated_at: datetime = field(default_factory=datetime.utcnow)
     last_launched_at: Optional[datetime] = None
@@ -84,6 +87,7 @@ def _record_to_profile(r: ProfileRecord, running: Optional[SessionRecord] = None
         account_status=getattr(r, "account_status", "new") or "new",
         import_source_path=r.import_source_path or "",
         initial_state_applied=bool(r.initial_state_applied),
+        due_date=getattr(r, "due_date", None),
         created_at=r.created_at,
         updated_at=r.updated_at,
         last_launched_at=r.last_launched_at,
@@ -173,6 +177,7 @@ class ProfileStore:
         tag: Optional[str] = None,
         search: Optional[str] = None,
         account_status: Optional[str] = None,
+        remark: Optional[str] = None,
         sort_by: str = "name",
         sort_order: str = "asc",
     ) -> List[Profile]:
@@ -193,6 +198,8 @@ class ProfileStore:
                 if tag and tag not in p.tags:
                     continue
                 if account_status and p.account_status != account_status:
+                    continue
+                if remark and remark.lower() not in (p.remark or "").lower():
                     continue
                 if search and search.lower() not in p.name.lower():
                     continue
@@ -252,6 +259,23 @@ class ProfileStore:
                 r.remark = remark
             if account_status is not None:
                 r.account_status = account_status
+            r.touch()
+            s.add(r)
+            s.commit()
+            s.refresh(r)
+            return _record_to_profile(r)
+
+    def set_due_date(self, user_id: str, due_date: Optional[datetime]) -> Profile:
+        """Set or clear a profile's reminder date.
+
+        ``update()`` treats ``None`` as "leave unchanged", so clearing needs its
+        own entry point. Raises ``KeyError`` for an unknown ``user_id``.
+        """
+        with Session(self.engine) as s:
+            r = s.get(ProfileRecord, user_id)
+            if r is None:
+                raise KeyError(user_id)
+            r.due_date = due_date
             r.touch()
             s.add(r)
             s.commit()

@@ -41,5 +41,37 @@ logs/
 # Editor backups
 *.swp
 *.bak
-*.tmp
-*.antq
+*.tmp# Sensitive data
+*.env
+.env.*
+auth.json
+opencode.json
+config.yaml
+credentials.json
+secrets.json
+*_secret*
+*_token*
+*_key.json
+api_keys.json
+
+# Profiles and cookies
+**/twikit_profiles/*.json
+**/profiles/*.json
+cookies.json
+session.json
+
+# Proxy configs
+proxy_config.json
+proxies.json
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Logs with potential secrets
+*.log
+
+# OS
+.DS_Store
+Thumbs.db

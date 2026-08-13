@@ -1,4 +1,4 @@
-"""Extension manager: install, store, and assign extensions to profiles.
+﻿"""Extension manager: install, store, and assign extensions to profiles.
 
 Supports:
 - Unpacked directories
@@ -14,11 +14,16 @@ import hashlib
 import json
 import logging
 import os
+import re
 import shutil
+import urllib.parse
+import urllib.request
 import zipfile
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+from .safe_archive import safe_extract_zip
 
 
 log = logging.getLogger("antique.extension")
@@ -66,7 +71,7 @@ def _extract_crx(crx_path: Path, dest_dir: Path) -> None:
     import io
     zip_data = io.BytesIO(content[zip_start:])
     with zipfile.ZipFile(zip_data) as zf:
-        zf.extractall(dest_dir)
+        safe_extract_zip(zf, dest_dir)
 
 
 class ExtensionStore:
@@ -161,6 +166,45 @@ class ExtensionStore:
         self._save_index()
         return ext
 
+    def search_webstore(self, query: str, limit: int = 20) -> List[Dict[str, Any]]:
+        """Search Chrome Web Store and return installable extension summaries.
+
+        The Web Store has no supported public search API, so this uses its
+        public search page and only extracts detail links. Network failures are
+        surfaced to the API caller instead of returning fake results.
+        """
+        query = (query or "").strip()
+        if not query:
+            raise ValueError("search query is required")
+        limit = max(1, min(int(limit), 50))
+        url = "https://chromewebstore.google.com/search/" + urllib.parse.quote(query)
+        request = urllib.request.Request(
+            url,
+            headers={"Accept": "text/html", "User-Agent": "antique-extension-search/1"},
+        )
+        with urllib.request.urlopen(request, timeout=10) as response:
+            html = response.read().decode("utf-8", errors="replace")
+
+        results: List[Dict[str, Any]] = []
+        seen = set()
+        pattern = re.compile(r"/detail/([^/\\\"?]+)(?:/[^\\\"?]*)?")
+        for match in pattern.finditer(html):
+            ext_id = match.group(1)
+            if not re.fullmatch(r"[a-z]{32}", ext_id) or ext_id in seen:
+                continue
+            seen.add(ext_id)
+            start, end = max(0, match.start() - 300), min(len(html), match.end() + 500)
+            context = re.sub(r"<[^>]+>", " ", html[start:end])
+            context = re.sub(r"\\s+", " ", context).strip()
+            results.append({
+                "webstore_id": ext_id,
+                "name": context[:160] or ext_id,
+                "url": f"https://chromewebstore.google.com/detail/{ext_id}",
+            })
+            if len(results) >= limit:
+                break
+        return results
+
     def install_from_webstore(self, webstore_id: str, name: Optional[str] = None) -> Extension:
         """Download and install from Chrome Web Store.
 
@@ -208,3 +252,4 @@ class ExtensionStore:
             if ext and ext.enabled and Path(ext.path).exists():
                 paths.append(ext.path)
         return paths
+

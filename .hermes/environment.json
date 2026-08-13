@@ -1,0 +1,19 @@
+{
+  "name": "antidetect-local",
+  "kind": "fastapi",
+  "bootstrap": [
+    "pip install -r requirements.txt"
+  ],
+  "build": [],
+  "test": [
+    "pytest"
+  ],
+  "start": ".venv/Scripts/python.exe -m src.cli serve --ui-port 18975",
+  "port": 18975,
+  "readinessPath": "/info",
+  "evidence": [
+    "Entry point is src.cli serve (Typer CLI wrapping uvicorn), not main:app",
+    "create_app() is a factory in src/api/server.py — uvicorn needs --factory or the CLI",
+    "Port is chosen with --ui-port; 18975 avoids the default 8000 in case a real instance is running"
+  ]
+}

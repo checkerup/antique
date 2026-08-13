@@ -46,6 +46,10 @@ class ProfileRecord(SQLModel, table=True):
     import_source_path: str = Field(default="")  # absolute path on disk
     initial_state_applied: bool = Field(default=False)
 
+    # Operator reminder: when this profile next needs attention (warm-up step,
+    # subscription renewal, manual check). Naive UTC, ``None`` = no reminder.
+    due_date: Optional[datetime] = Field(default=None, index=True)
+
     # Bookkeeping
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
@@ -139,6 +143,7 @@ def init_db(engine=None) -> None:
 _MIGRATIONS = {
     "profiles": {
         "account_status": "TEXT NOT NULL DEFAULT 'new'",
+        "due_date": "TIMESTAMP NULL",
     },
     "groups": {
         "parent_id": "TEXT NOT NULL DEFAULT ''",

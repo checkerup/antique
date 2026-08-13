@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Optional
 
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 
@@ -36,6 +36,8 @@ _AUTH_EXEMPT_PREFIXES = (
     "/redoc",
     "/json/",        # CDP discovery endpoints used by local tooling
     "/devtools/",    # CDP websockets
+    "/manifest.json",  # PWA manifest (static, no profile data)
+    "/sw.js",          # PWA service worker (must load before any token is set)
 )
 
 
@@ -122,7 +124,7 @@ def create_app(
     # it those endpoints hit `assert _ext_store is not None` and 500.
     wire_routes(store, launcher, cdp, launcher.ext_store)
 
-    app = FastAPI(title="antique", version="1.0.0")
+    app = FastAPI(title="antique", version="1.0.1")
 
     app.add_middleware(
         CORSMiddleware,
@@ -162,9 +164,14 @@ def create_app(
     app.state.launcher = launcher
     app.state.cdp = cdp
 
-    @app.on_event("shutdown")
-    async def shutdown():
+    from contextlib import asynccontextmanager
+    
+    @asynccontextmanager
+    async def lifespan(app):
+        yield
         await launcher.stop_all()
+    
+    app.router.lifespan_context = lifespan
 
     @app.get("/", include_in_schema=False)
     async def root():
@@ -172,6 +179,39 @@ def create_app(
         if dash.exists():
             return FileResponse(str(dash))
         return {"msg": "antique API running", "docs": "/docs"}
+
+    # ------------------------------------------------------------------
+    # PWA assets
+    #
+    # Served from src/ui/templates/ so the dashboard is installable and works
+    # offline. The service worker must be served from the origin root for its
+    # scope to cover the whole dashboard, which is why these are app-level
+    # routes rather than a mounted /static sub-path. Both files are authored
+    # with a UTF-8 BOM, so they are read with utf-8-sig and re-served as clean
+    # UTF-8 (a BOM makes manifest.json unparseable for strict JSON clients).
+    # ------------------------------------------------------------------
+
+    def _pwa_asset(name: str, media_type: str) -> Response:
+        path = (Path(__file__).parent.parent / "ui" / "templates" / name).resolve()
+        if not path.exists():
+            raise HTTPException(status_code=404, detail=f"{name} not found")
+        return Response(
+            content=path.read_text(encoding="utf-8-sig"),
+            media_type=media_type,
+            headers={"Cache-Control": "no-cache"},
+        )
+
+    @app.get("/manifest.json", include_in_schema=False)
+    async def pwa_manifest():
+        return _pwa_asset("manifest.json", "application/manifest+json")
+
+    @app.get("/ui/manifest.json", include_in_schema=False)
+    async def pwa_manifest_ui():
+        return _pwa_asset("manifest.json", "application/manifest+json")
+
+    @app.get("/sw.js", include_in_schema=False)
+    async def pwa_service_worker():
+        return _pwa_asset("sw.js", "application/javascript")
 
     return app
 

@@ -1,4 +1,4 @@
-# Antique 0.9.0: полный owner test checklist
+# Antique 1.0.1: полный owner test checklist
 
 Тестировать на копии рабочей папки/БД. Для рабочих AdsPower-профилей сначала сделать encrypted snapshot.
 
@@ -7,7 +7,7 @@
 - [ ] Двойной клик `start.bat` на чистой машине.
 - [ ] `.venv` создаётся, зависимости устанавливаются, Chromium/Firefox/WebKit доступны.
 - [ ] Camoufox устанавливается отдельно или корректно показывается fallback.
-- [ ] Dashboard `/`, Swagger `/docs`, `/health`, `/info` возвращают 0.9.0.
+- [ ] Dashboard `/`, Swagger `/docs`, `/health`, `/info` возвращают 1.0.1.
 - [ ] Повторный запуск не переустанавливает браузеры.
 - [ ] Запуск с `ANTIQUE_API_TOKEN` требует Bearer token.
 - [ ] ngrok origin работает только через `ANTIQUE_ALLOWED_ORIGINS`.

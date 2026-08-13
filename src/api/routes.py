@@ -54,6 +54,9 @@ from ..core.engines import list_engines, engine_keys
 from ..core.operations import list_activity, record_activity, preview_backup, create_from_template, encrypted_snapshot, decrypt_snapshot, export_activity
 from ..core.providers import ProviderConfig, ProxyProvider, list_provider_kinds
 from ..core.backup_scheduler import add_schedule, list_schedules, run_schedule
+from ..core import notify, rotation
+from ..core.ssh_tunnel import SSHTunnelManager
+from ..core.mcp_manager import get_mcp_manager
 
 
 log = logging.getLogger("antique.api")
@@ -64,6 +67,10 @@ _store: Optional[ProfileStore] = None
 _launcher: Optional[BrowserLauncher] = None
 _cdp: Optional[CDPProxy] = None
 _ext_store: Optional[ExtensionStore] = None
+
+# One SSH tunnel per profile, shared process-wide. It keeps no on-disk state,
+# so it is created eagerly rather than wired in by server.py.
+_ssh_tunnels = SSHTunnelManager()
 
 
 def wire(store: ProfileStore, launcher: BrowserLauncher, cdp: CDPProxy, ext_store: Optional[ExtensionStore] = None) -> None:
@@ -89,6 +96,10 @@ class UserCreate(BaseModel):
     tags: Optional[List[str]] = None
     account_status: Optional[str] = None
     user_id: Optional[str] = None
+    # Optional digital portrait (age/gender/occupation/income/country/device).
+    # Any omitted field is filled coherently by the persona generator, and the
+    # resulting persona drives locale, timezone, hardware, screen and fonts.
+    persona: Optional[Dict[str, Any]] = None
 
 
 class UserUpdate(BaseModel):
@@ -156,6 +167,36 @@ class ProviderRequest(BaseModel):
     kind: str = "file"
     source: str
     enabled: bool = True
+    # Vendor pools (brightdata/decodo/smartproxy) authenticate with a bearer
+    # token. It may also come from the matching *_API_KEY env var, so it stays
+    # optional here and is never echoed back in responses.
+    api_key: Optional[str] = None
+    username: Optional[str] = None
+    password: Optional[str] = None
+    params: Optional[Dict[str, str]] = None
+
+
+class DueDateRequest(BaseModel):
+    """Reminder date for one profile. ``None``/empty clears it.
+
+    Kept as a string so an unparseable value yields a 400 from our own
+    validation instead of a 422 from pydantic's datetime coercion.
+    """
+
+    due_date: Optional[str] = None
+
+
+class WebhookSettingsRequest(BaseModel):
+    url: str = ""
+    kind: str = "generic"
+    enabled: bool = False
+    events: Optional[List[str]] = None
+    telegram_chat_id: str = ""
+
+
+class RotationScheduleRequest(BaseModel):
+    interval_min: int
+    enabled: bool = True
 
 
 class ScheduleRequest(BaseModel):
@@ -199,6 +240,28 @@ class BulkFingerprintRandomize(BaseModel):
     shared_fields: List[str] = Field(default_factory=list)
     preserve_fields: List[str] = Field(default_factory=lambda: ["engine", "extensions"])
     seed: Optional[str] = None
+    # Concrete field values applied after randomize/shared/preserve — they win.
+    # Unknown Fingerprint field names are rejected with 400.
+    overrides: Optional[Dict[str, Any]] = None
+
+
+class WebRTCRequest(BaseModel):
+    """Set one profile's WebRTC handling mode."""
+
+    mode: str
+    # Explicit public IP advertised in ICE candidates (proxy mode only).
+    public_ip: Optional[str] = None
+    # Derive the public IP from the profile's proxy exit instead of passing it.
+    # Requires the profile to actually have a proxy configured (else 400).
+    detect_from_proxy: bool = False
+
+
+class BulkWebRTCRequest(BaseModel):
+    """Set the WebRTC mode on many profiles at once."""
+
+    user_ids: List[str]
+    mode: str
+    public_ip: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------
@@ -206,11 +269,31 @@ class BulkFingerprintRandomize(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+def _is_overdue(due_date, now: Optional[Any] = None) -> bool:
+    """True when a reminder date has already passed. Pure."""
+    if due_date is None:
+        return False
+    from datetime import datetime as _dt
+    moment = now or _dt.utcnow()
+    stamp = due_date.replace(tzinfo=None) if getattr(due_date, "tzinfo", None) else due_date
+    return stamp <= moment
+
+
 def _profile_to_adspower_shape(p) -> Dict[str, Any]:
+    due = getattr(p, "due_date", None)
+    # Mask proxy password to prevent credential leakage in API responses
+    proxy_safe = None
+    if p.proxy:
+        proxy_safe = dict(p.proxy) if isinstance(p.proxy, dict) else p.proxy
+        if isinstance(proxy_safe, dict) and "proxy_password" in proxy_safe:
+            proxy_safe = dict(proxy_safe)  # Ensure we don't mutate original
+            proxy_safe["proxy_password"] = "****" if proxy_safe.get("proxy_password") else ""
     return {
         "user_id": p.user_id,
         "name": p.name,
         "group_id": p.group_id,
+        "due_date": due.isoformat() if due else None,
+        "overdue": _is_overdue(due),
         "created_at": p.created_at.isoformat() if p.created_at else None,
         "updated_at": p.updated_at.isoformat() if p.updated_at else None,
         "last_launched_at": p.last_launched_at.isoformat() if p.last_launched_at else None,
@@ -218,7 +301,7 @@ def _profile_to_adspower_shape(p) -> Dict[str, Any]:
         "remark": p.remark,
         "tags": p.tags,
         "account_status": p.account_status,
-        "user_proxy_config": p.proxy,
+        "user_proxy_config": proxy_safe,
         "fingerprint_config": p.fingerprint,
         "cookies": p.cookies,
         "status": "Active" if p.running_debug_port else "Inactive",
@@ -229,6 +312,20 @@ def _profile_to_adspower_shape(p) -> Dict[str, Any]:
 
 def _ads_response(success: bool, **data: Any) -> Dict[str, Any]:
     return {"code": 0 if success else 1, "msg": "success" if success else "error", "data": data}
+
+
+_PERSONA_KEYS = ("age", "gender", "occupation", "income_bracket", "country", "device_type", "seed")
+
+
+def _persona_kwargs(raw: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """Filter a raw persona dict down to ``generate_persona`` keyword args.
+
+    Unknown keys are dropped rather than raising, so a UI can post the whole
+    persona object back (including derived/display-only fields) unchanged.
+    ``None`` values are dropped too — the generator fills those coherently.
+    """
+    data = dict(raw or {})
+    return {k: data[k] for k in _PERSONA_KEYS if data.get(k) is not None}
 
 
 def _fingerprint_with_patch(raw: Optional[Dict[str, Any]], base: Optional[Dict[str, Any]] = None) -> Fingerprint:
@@ -263,7 +360,23 @@ def health() -> Dict[str, Any]:
 @router.post("/user/create")
 def user_create(body: UserCreate) -> Dict[str, Any]:
     assert _store is not None
-    fp = _fingerprint_with_patch(body.fingerprint_config)
+    persona_out: Optional[Dict[str, Any]] = None
+
+    if body.persona is not None:
+        # A persona drives the whole fingerprint: generate from the portrait,
+        # then let any explicit fingerprint_config patch win on top.
+        from ..core.persona import generate_with_persona, generate_persona, persona_to_dict
+
+        try:
+            portrait = generate_persona(**_persona_kwargs(body.persona))
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail=f"invalid persona: {exc}")
+        fp_obj, portrait = generate_with_persona(portrait)
+        fp = _fingerprint_with_patch(body.fingerprint_config, fp_obj.canonical())
+        persona_out = persona_to_dict(portrait)
+    else:
+        fp = _fingerprint_with_patch(body.fingerprint_config)
+
     p = _store.create(
         name=body.name,
         group_id=body.group_id,
@@ -276,11 +389,16 @@ def user_create(body: UserCreate) -> Dict[str, Any]:
         user_id=body.user_id,
     )
     record_activity(_store, p.user_id, "create", {"name": p.name, "group_id": p.group_id})
-    return _ads_response(True, **{
+    payload: Dict[str, Any] = {
         "id": p.user_id,
         "user_id": p.user_id,
         "name": p.name,
-    })
+    }
+    # Only present when a persona was requested — callers that don't use
+    # personas see the exact response shape they saw before.
+    if persona_out is not None:
+        payload["persona"] = persona_out
+    return _ads_response(True, **payload)
 
 
 @router.post("/user/update")
@@ -320,11 +438,12 @@ def user_list(
     search: Optional[str] = Query(None),
     tag: Optional[str] = Query(None),
     account_status: Optional[str] = Query(None),
+    remark: Optional[str] = Query(None, description="Substring filter on the profile note/remark."),
     sort_by: str = Query("name", pattern="^(name|id|user_id|group|status|tags|launches|cookies|created|updated|last_launched|proxy|engine|live)$"),
     sort_order: str = Query("asc", pattern="^(asc|desc)$"),
 ) -> Dict[str, Any]:
     assert _store is not None
-    profiles = _store.list(group_id=group_id, tag=tag, search=search, account_status=account_status, sort_by=sort_by, sort_order=sort_order)
+    profiles = _store.list(group_id=group_id, tag=tag, search=search, account_status=account_status, remark=remark, sort_by=sort_by, sort_order=sort_order)
     total = len(profiles)
     start = (page - 1) * page_size
     end = start + page_size
@@ -337,6 +456,60 @@ def user_list(
         page_size=page_size,
         sort_by=sort_by,
         sort_order=sort_order,
+    )
+
+
+@router.get("/user/reminders")
+def user_reminders(
+    only_overdue: bool = Query(False),
+    limit: int = Query(200, ge=1, le=1000),
+) -> Dict[str, Any]:
+    """Profiles with a due date, soonest first. Overdue ones therefore lead."""
+    assert _store is not None
+    from datetime import datetime as _dt
+    now = _dt.utcnow()
+    dated = [p for p in _store.list() if getattr(p, "due_date", None) is not None]
+    dated.sort(key=lambda p: p.due_date.replace(tzinfo=None) if p.due_date.tzinfo else p.due_date)
+    overdue_count = sum(1 for p in dated if _is_overdue(p.due_date, now))
+    selected = [p for p in dated if _is_overdue(p.due_date, now)] if only_overdue else dated
+    sliced = selected[:limit]
+    return _ads_response(
+        True,
+        list=[_profile_to_adspower_shape(p) for p in sliced],
+        total=len(selected),
+        overdue_count=overdue_count,
+        only_overdue=only_overdue,
+    )
+
+
+@router.post("/user/{user_id}/due-date")
+def user_set_due_date(user_id: str, body: DueDateRequest) -> Dict[str, Any]:
+    """Set (or clear, with ``due_date: null``) a profile's reminder date."""
+    assert _store is not None
+    parsed = None
+    if body.due_date is not None:
+        raw = body.due_date.strip()
+        if raw:
+            from datetime import datetime as _dt
+            try:
+                parsed = _dt.fromisoformat(raw.replace("Z", "+00:00"))
+            except ValueError:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"due_date must be an ISO-8601 date or datetime, got {body.due_date!r}",
+                )
+            if parsed.tzinfo is not None:
+                parsed = parsed.replace(tzinfo=None)
+    try:
+        p = _store.set_due_date(user_id, parsed)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="user_id not found")
+    record_activity(_store, user_id, "due_date", {"due_date": parsed.isoformat() if parsed else None})
+    return _ads_response(
+        True,
+        user_id=p.user_id,
+        due_date=p.due_date.isoformat() if p.due_date else None,
+        overdue=_is_overdue(p.due_date),
     )
 
 
@@ -426,10 +599,137 @@ def proxy_provider_kinds() -> Dict[str, Any]:
 @router.post("/proxy/providers/test")
 def proxy_provider_test(body: ProviderRequest) -> Dict[str, Any]:
     try:
-        values = ProxyProvider(ProviderConfig(body.name, body.kind, body.source, body.enabled)).fetch()
+        values = ProxyProvider(
+            ProviderConfig(
+                name=body.name,
+                kind=body.kind,
+                source=body.source,
+                enabled=body.enabled,
+                api_key=body.api_key,
+                username=body.username,
+                password=body.password,
+                params=body.params,
+            )
+        ).fetch()
     except (OSError, ValueError, json.JSONDecodeError) as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     return _ads_response(True, provider=body.name, count=len(values), proxies=values)
+
+
+# ---------------------------------------------------------------------------
+# Webhook settings, proxy rotation schedules, SSH tunnels
+# ---------------------------------------------------------------------------
+
+
+def _data_root() -> Path:
+    """Where per-install JSON settings live (webhooks, rotation schedules)."""
+    if _launcher is not None and getattr(_launcher, "data_root", None):
+        return Path(_launcher.data_root)
+    return Path(os.environ.get("ANTIQUE_DATA_DIR", "data"))
+
+
+@router.get("/settings/webhook")
+def webhook_settings_get() -> Dict[str, Any]:
+    return _ads_response(True, **notify.load_config(_data_root()).to_dict())
+
+
+@router.post("/settings/webhook")
+def webhook_settings_set(body: WebhookSettingsRequest) -> Dict[str, Any]:
+    cfg = notify.WebhookConfig(
+        url=body.url,
+        kind=body.kind,
+        enabled=body.enabled,
+        events=list(body.events) if body.events is not None else list(notify.EVENTS),
+        telegram_chat_id=body.telegram_chat_id,
+    )
+    try:
+        notify.save_config(_data_root(), cfg)
+    except notify.WebhookError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except OSError as exc:
+        raise HTTPException(status_code=500, detail=f"could not persist webhook settings: {exc}")
+    return _ads_response(True, **cfg.to_dict())
+
+
+@router.post("/settings/webhook/test")
+def webhook_settings_test() -> Dict[str, Any]:
+    """Deliver one synthetic event using the stored config. Never raises."""
+    cfg = notify.load_config(_data_root())
+    result = notify.send_event(cfg, "profile_start", {"name": "webhook test", "detail": "manual test"})
+    return _ads_response(True, **result)
+
+
+def _schedule_shape(schedule: rotation.RotationSchedule, now=None) -> Dict[str, Any]:
+    upcoming = rotation.next_run_at(schedule)
+    return {
+        **schedule.to_dict(),
+        "next_run_at": upcoming.isoformat() if upcoming else None,
+        "due": rotation.is_due(schedule, now),
+    }
+
+
+@router.get("/proxy/rotation/schedules")
+def rotation_schedule_list() -> Dict[str, Any]:
+    from datetime import datetime as _dt
+    now = _dt.utcnow()
+    schedules = rotation.load_schedules(_data_root())
+    return _ads_response(
+        True,
+        list=[_schedule_shape(s, now) for s in schedules],
+        total=len(schedules),
+        due_count=len(rotation.due_schedules(schedules, now)),
+    )
+
+
+@router.post("/proxy/pool/{pool_id}/schedule")
+def rotation_schedule_upsert(pool_id: str, body: RotationScheduleRequest) -> Dict[str, Any]:
+    schedule = rotation.RotationSchedule(
+        pool_id=pool_id, interval_min=body.interval_min, enabled=body.enabled
+    )
+    try:
+        rotation.upsert_schedule(_data_root(), schedule)
+    except rotation.RotationScheduleError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except OSError as exc:
+        raise HTTPException(status_code=500, detail=f"could not persist schedule: {exc}")
+    return _ads_response(True, schedule=_schedule_shape(schedule))
+
+
+@router.delete("/proxy/pool/{pool_id}/schedule")
+def rotation_schedule_delete(pool_id: str) -> Dict[str, Any]:
+    if not rotation.remove_schedule(_data_root(), pool_id):
+        raise HTTPException(status_code=404, detail=f"no rotation schedule for pool {pool_id!r}")
+    return _ads_response(True, pool_id=pool_id, deleted=True)
+
+
+@router.post("/proxy/rotation/run-due")
+def rotation_run_due() -> Dict[str, Any]:
+    """Stamp every due schedule as rotated and report which pools fired."""
+    root = _data_root()
+    due = rotation.due_schedules(rotation.load_schedules(root))
+    rotated: List[str] = []
+    for schedule in due:
+        if rotation.mark_ran(root, schedule.pool_id) is not None:
+            rotated.append(schedule.pool_id)
+    return _ads_response(True, rotated=rotated, count=len(rotated))
+
+
+@router.get("/proxy/ssh/tunnels")
+def ssh_tunnels_list() -> Dict[str, Any]:
+    active = _ssh_tunnels.active
+    return _ads_response(
+        True,
+        list=[{"key": key, "local_port": port, "proxy_type": "socks5", "host": "127.0.0.1"}
+              for key, port in sorted(active.items())],
+        total=len(active),
+    )
+
+
+@router.post("/proxy/ssh/tunnels/{key}/close")
+def ssh_tunnel_close(key: str) -> Dict[str, Any]:
+    if not _ssh_tunnels.close(key):
+        raise HTTPException(status_code=404, detail=f"no active ssh tunnel for {key!r}")
+    return _ads_response(True, key=key, closed=True)
 
 
 @router.post("/user/delete")
@@ -816,6 +1116,7 @@ def user_bulk_fingerprint_randomize(body: BulkFingerprintRandomize) -> Dict[str,
             shared_fields=body.shared_fields,
             preserve_fields=body.preserve_fields,
             seed=body.seed,
+            overrides=body.overrides,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
@@ -828,6 +1129,7 @@ def user_bulk_fingerprint_randomize(body: BulkFingerprintRandomize) -> Dict[str,
         missing=missing,
         shared_fields=body.shared_fields,
         preserved_fields=body.preserve_fields,
+        overrides=body.overrides or {},
     )
 
 
@@ -872,6 +1174,26 @@ def extension_list() -> Dict[str, Any]:
     assert _ext_store is not None
     exts = _ext_store.list()
     return _ads_response(True, list=[e.to_dict() for e in exts], total=len(exts))
+
+
+@router.get("/extension/webstore/search")
+def extension_webstore_search(
+    q: str = Query(..., min_length=1, description="Chrome Web Store search text."),
+    limit: int = Query(20, ge=1, le=50),
+) -> Dict[str, Any]:
+    """Search the Chrome Web Store for installable extensions.
+
+    Results carry the ``webstore_id`` you can hand straight to
+    ``/extension/install`` with ``source_type="webstore"``.
+    """
+    assert _ext_store is not None
+    try:
+        results = _ext_store.search_webstore(q, limit=limit)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:  # network/HTTP failures — surface, never fake results
+        raise HTTPException(status_code=502, detail=f"web store search failed: {exc}")
+    return _ads_response(True, query=q, results=results, count=len(results))
 
 
 @router.post("/extension/install")
@@ -1001,9 +1323,44 @@ def resource_status() -> Dict[str, Any]:
     return _ads_response(True, running_count=len(running), process_count=len(running), pid=os.getpid(), rss_kb=rss_kb, user_cpu_s=user_cpu_s, system_cpu_s=system_cpu_s, checked_at=time.time(), profiles=running)
 
 
+# ---------------------------------------------------------------------------
+# MCP server management
+# ---------------------------------------------------------------------------
+
+
 @router.get("/mcp/status")
 def mcp_status() -> Dict[str, Any]:
-    return _ads_response(True, transport="stdio", status="available", tools="browser profile automation")
+    """Live state of the managed MCP subprocess plus its tool inventory."""
+    mgr = get_mcp_manager()
+    state = mgr.status()
+    tools = mgr.tools_list()
+    return _ads_response(True, **state.to_dict(), tools=tools, tool_count=len(tools))
+
+
+@router.post("/mcp/start")
+def mcp_start() -> Dict[str, Any]:
+    """Start the MCP server subprocess (idempotent)."""
+    state = get_mcp_manager().start()
+    if not state.running:
+        raise HTTPException(status_code=500, detail=state.error or "failed to start MCP server")
+    return _ads_response(True, **state.to_dict())
+
+
+@router.post("/mcp/stop")
+def mcp_stop() -> Dict[str, Any]:
+    """Stop the MCP server subprocess (no-op when already stopped)."""
+    state = get_mcp_manager().stop()
+    if state.error:
+        raise HTTPException(status_code=500, detail=state.error)
+    return _ads_response(True, **state.to_dict())
+
+
+@router.get("/mcp/config")
+def mcp_config(include_env: bool = Query(False)) -> Dict[str, Any]:
+    """Return the client config snippet for Claude Desktop / Cursor / Windsurf."""
+    mgr = get_mcp_manager()
+    config = mgr.config_json(include_env=include_env)
+    return _ads_response(True, config=config, transport="stdio", include_env=include_env)
 
 
 @router.post("/group/create")
@@ -1229,6 +1586,84 @@ def detect_score(body: DetectScore) -> Dict[str, Any]:
     return _ads_response(True, **report.to_dict())
 
 
+class BulkDetectScore(BaseModel):
+    user_ids: List[str]
+
+
+@router.get("/user/{user_id}/detect-score")
+def user_detect_score(user_id: str) -> Dict[str, Any]:
+    """Audit one stored profile's fingerprint and return a graded stealth report.
+
+    Static analysis only — the profile does not need to be running.
+    """
+    assert _store is not None
+    profile = _store.get(user_id)
+    if profile is None:
+        raise HTTPException(status_code=404, detail="user_id not found")
+    from ..core.detect import score_fingerprint
+    report = score_fingerprint(profile.fingerprint or {})
+    return _ads_response(True, user_id=user_id, name=profile.name, **report.to_dict())
+
+
+@router.get("/user/{user_id}/fingerprint/preview")
+def user_fingerprint_preview(user_id: str) -> Dict[str, Any]:
+    """Human-readable, grouped view of a stored fingerprint plus its audit report."""
+    assert _store is not None
+    profile = _store.get(user_id)
+    if profile is None:
+        raise HTTPException(status_code=404, detail="user_id not found")
+    from ..core.detect import fingerprint_preview
+    preview = fingerprint_preview(profile.fingerprint or {})
+    return _ads_response(True, user_id=user_id, name=profile.name, **preview)
+
+
+@router.post("/user/bulk/detect-score")
+def user_bulk_detect_score(body: BulkDetectScore) -> Dict[str, Any]:
+    """Audit many profiles at once and summarise the grade distribution."""
+    assert _store is not None
+    if not body.user_ids:
+        raise HTTPException(status_code=400, detail="user_ids must not be empty")
+    from ..core.detect import score_fingerprint
+    profiles = []
+    missing: List[str] = []
+    for uid in body.user_ids:
+        profile = _store.get(uid)
+        if profile is None:
+            missing.append(uid)
+        else:
+            profiles.append(profile)
+    if missing:
+        raise HTTPException(status_code=400, detail=f"unknown user_ids: {', '.join(missing)}")
+    results: List[Dict[str, Any]] = []
+    count_by_grade: Dict[str, int] = {}
+    for profile in profiles:
+        report = score_fingerprint(profile.fingerprint or {})
+        data = report.to_dict()
+        grade = data["grade"]
+        count_by_grade[grade] = count_by_grade.get(grade, 0) + 1
+        results.append({
+            "user_id": profile.user_id,
+            "name": profile.name,
+            "score": data["score"],
+            "grade": grade,
+            "ok": data["ok"],
+            "passed": data["passed"],
+            "total": data["total"],
+            "failures": data["failures"],
+        })
+    scores = [r["score"] for r in results]
+    summary = {
+        "count": len(results),
+        "avg": round(sum(scores) / len(scores), 1) if scores else 0,
+        "min": min(scores) if scores else 0,
+        "max": max(scores) if scores else 0,
+        "count_by_grade": count_by_grade,
+        "failing": sum(1 for r in results if not r["ok"]),
+    }
+    record_activity(_store, "*", "bulk_detect_score", {"count": len(results), "avg": summary["avg"]})
+    return _ads_response(True, results=results, summary=summary)
+
+
 # ---------------------------------------------------------------------------
 # Browser engines
 # ---------------------------------------------------------------------------
@@ -1266,6 +1701,164 @@ def user_set_status(user_id: str, body: StatusUpdate) -> Dict[str, Any]:
     except KeyError:
         raise HTTPException(status_code=404, detail="user_id not found")
     return _ads_response(True, user_id=user_id, account_status=p.account_status)
+
+
+# ---------------------------------------------------------------------------
+# Personas
+# ---------------------------------------------------------------------------
+
+
+@router.get("/persona/generate")
+def persona_generate(
+    age: Optional[int] = Query(None, ge=13, le=99),
+    gender: Optional[str] = Query(None),
+    occupation: Optional[str] = Query(None),
+    income_bracket: Optional[str] = Query(None),
+    country: Optional[str] = Query(None),
+    device_type: Optional[str] = Query(None),
+    seed: Optional[str] = Query(None),
+    preview: bool = Query(False, description="also return the derived fingerprint"),
+) -> Dict[str, Any]:
+    """Generate a coherent persona; any omitted trait is filled by the generator.
+
+    With ``preview=true`` the fingerprint derived from that persona is returned
+    alongside it, so the dashboard can show what a profile would look like
+    before actually creating it.
+    """
+    from ..core.persona import generate_persona, generate_with_persona, persona_to_dict
+
+    try:
+        portrait = generate_persona(**_persona_kwargs({
+            "age": age,
+            "gender": gender,
+            "occupation": occupation,
+            "income_bracket": income_bracket,
+            "country": country,
+            "device_type": device_type,
+            "seed": seed,
+        }))
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=f"invalid persona: {exc}")
+
+    out: Dict[str, Any] = {"persona": persona_to_dict(portrait)}
+    if preview:
+        fp, _ = generate_with_persona(portrait, seed=seed)
+        out["fingerprint"] = fp.canonical()
+    return _ads_response(True, **out)
+
+
+# ---------------------------------------------------------------------------
+# WebRTC handling modes
+# ---------------------------------------------------------------------------
+
+
+@router.get("/webrtc/modes")
+def webrtc_modes() -> Dict[str, Any]:
+    """List the supported WebRTC handling modes."""
+    from ..core.fingerprint import WEBRTC_MODES
+    return _ads_response(
+        True,
+        modes=list(WEBRTC_MODES),
+        descriptions={
+            "block": "No ICE servers — no candidates gathered. Zero leak, but an anomaly.",
+            "real": "WebRTC untouched. Real local/public IPs are exposed.",
+            "proxy": "Candidate IPs rewritten to the proxy exit IP. Best realism.",
+        },
+    )
+
+
+@router.post("/user/bulk/webrtc")
+def user_bulk_webrtc(body: BulkWebRTCRequest) -> Dict[str, Any]:
+    """Set the WebRTC mode on many profiles at once.
+
+    NOTE: this route MUST stay declared before ``/user/{user_id}/webrtc``.
+    FastAPI matches in declaration order, so the parameterised route would
+    otherwise swallow this one with user_id="bulk".
+    """
+    assert _store is not None
+    from ..core.fingerprint import WEBRTC_MODES, set_webrtc_mode
+
+    mode = (body.mode or "").strip().lower()
+    if mode not in WEBRTC_MODES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"unknown webrtc mode {body.mode!r}; expected one of {', '.join(WEBRTC_MODES)}",
+        )
+    public_ip = (body.public_ip or "").strip()
+    if mode == "proxy" and not public_ip:
+        raise HTTPException(status_code=400, detail="proxy mode requires public_ip")
+
+    results: List[Dict[str, Any]] = []
+    for uid in body.user_ids:
+        profile = _store.get(uid)
+        if profile is None:
+            results.append({"user_id": uid, "ok": False, "error": "not found"})
+            continue
+        fp = _fingerprint_with_patch(None, base=profile.fingerprint or None)
+        set_webrtc_mode(fp, mode, public_ip=public_ip if mode == "proxy" else None)
+        _store.update(uid, fingerprint=fp)
+        results.append({"user_id": uid, "ok": True})
+
+    updated = sum(1 for r in results if r["ok"])
+    record_activity(_store, "*", "bulk_webrtc", {"mode": mode, "updated_count": updated})
+    return _ads_response(True, results=results, updated_count=updated, mode=mode)
+
+
+@router.post("/user/{user_id}/webrtc")
+async def user_set_webrtc(user_id: str, body: WebRTCRequest) -> Dict[str, Any]:
+    """Set one profile's WebRTC mode, preserving every other fingerprint field."""
+    assert _store is not None
+    from ..core.fingerprint import WEBRTC_MODES, set_webrtc_mode
+
+    mode = (body.mode or "").strip().lower()
+    if mode not in WEBRTC_MODES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"unknown webrtc mode {body.mode!r}; expected one of {', '.join(WEBRTC_MODES)}",
+        )
+
+    profile = _store.get(user_id)
+    if profile is None:
+        raise HTTPException(status_code=404, detail="user_id not found")
+
+    public_ip = (body.public_ip or "").strip()
+    detected_ip: Optional[str] = None
+
+    # Optionally learn the exit IP from the profile's own proxy.
+    if mode == "proxy" and body.detect_from_proxy:
+        cfg = parse_proxy(profile.proxy or {})
+        if cfg.type in ("direct", "system") or not cfg.host or not cfg.port:
+            raise HTTPException(
+                status_code=400,
+                detail="detect_from_proxy requires a proxy on this profile (it is direct)",
+            )
+        result = await check_proxy(cfg)
+        detected_ip = result.get("ip")
+        if not detected_ip:
+            raise HTTPException(
+                status_code=400,
+                detail=f"could not detect proxy exit IP: {result.get('error') or 'unknown error'}",
+            )
+        public_ip = detected_ip
+
+    if mode == "proxy" and not public_ip:
+        raise HTTPException(
+            status_code=400,
+            detail="proxy mode requires public_ip or detect_from_proxy=true",
+        )
+
+    # Merge onto the stored fingerprint so nothing else is disturbed.
+    fp = _fingerprint_with_patch(None, base=profile.fingerprint or None)
+    set_webrtc_mode(fp, mode, public_ip=public_ip if mode == "proxy" else None)
+    _store.update(user_id, fingerprint=fp)
+    record_activity(_store, user_id, "webrtc_mode", {"mode": mode, "public_ip": fp.webrtc_public_ip})
+    return _ads_response(
+        True,
+        user_id=user_id,
+        mode=mode,
+        public_ip=fp.webrtc_public_ip or None,
+        detected_ip=detected_ip,
+    )
 
 
 # ---------------------------------------------------------------------------

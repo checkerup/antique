@@ -1,4 +1,4 @@
-# Feature matrix: Antique 0.9.0 vs popular anti-detect managers
+# Feature matrix: Antique 1.0.1 vs popular anti-detect managers
 
 The goal is parity where it is useful, not blindly cloning every paid feature. Many vendor pages advertise anti-detect guarantees that cannot be verified from a local manager.
 
@@ -30,7 +30,7 @@ The goal is parity where it is useful, not blindly cloning every paid feature. M
 - Bulk status updates.
 - New regression tests for all three.
 
-## Implemented in 0.9.0
+## Implemented in 1.0.1
 
 - Backup dry-run preview: `/user/import/backup/preview`, CLI `preview-backup`, dashboard Tools.
 - Mass-create templates: `/user/template/create`, CLI `template-create`.

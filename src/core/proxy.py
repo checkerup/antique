@@ -26,21 +26,32 @@ from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
 
-VALID_TYPES = {"http", "https", "socks5", "direct", "system"}
+VALID_TYPES = {"http", "https", "socks5", "ssh", "direct", "system"}
 
 
 @dataclass
 class ProxyConfig:
-    type: str = "direct"  # http|https|socks5|direct|system
+    type: str = "direct"  # http|https|socks5|ssh|direct|system
     host: str = ""
     port: int = 0
     username: str = ""
     password: str = ""
 
     def to_playwright(self) -> Optional[Dict[str, Any]]:
-        """Return kwargs for ``playwright.chromium.launch(proxy=...)`` or ``None``."""
+        """Return kwargs for ``playwright.chromium.launch(proxy=...)`` or ``None``.
+
+        ``ssh`` proxies have no browser-level representation: they must first be
+        turned into a loopback SOCKS5 endpoint by
+        :class:`src.core.ssh_tunnel.SSHTunnelManager`, and the tunnel's own
+        ``socks5`` config is what gets handed to the browser.
+        """
         if self.type in ("direct", "system"):
             return None
+        if self.type == "ssh":
+            raise ValueError(
+                "ssh proxies must be tunnelled first: start an ssh -D tunnel and "
+                "pass the resulting local socks5 config to the browser"
+            )
         if not self.host or not self.port:
             raise ValueError("Proxy host and port required for non-direct proxy")
         server = f"{self.type}://{self.host}:{self.port}"

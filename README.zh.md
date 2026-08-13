@@ -622,7 +622,7 @@ Parser 流程：
 - **Fonts**：每个 OS 独立的文件字体白名单，通过 `document.fonts.check` 强制执行
 - **Audio**：用于 AudioContext jitter 的确定性 noise seed
 - **Canvas**：用于 `toDataURL`/`toBlob` 像素抖动 的确定性 noise seed
-- **WebRTC**：防止 IP 泄漏（`block_webrtc_ip`）
+- **WebRTC**：防止 IP 泄漏 —— `webrtc_mode`（`block` | `real` | `proxy`），仍兼容旧的 `block_webrtc_ip` 标志
 - **Plugins**：逼真的 Chrome plugin 列表（2-5 条）
 - **Connection**：type/downlink/rtt（Network Information API）
 - **Hardware**：hardwareConcurrency、deviceMemory
@@ -659,7 +659,7 @@ fp = generate_fingerprint(os_family="macos")                 # macOS UA + screen
 - 字体通过 `document.fonts.check` 强制执行（通过尺寸测量的字体枚举将返回白名单）。目前尚未完全覆盖绕过 `document.fonts` 的深层 canvas 尺寸字体探测。
 - WebGPU 伪装仅 patch 了 `requestAdapterInfo()` / `adapter.info`，并不重写底层的 `GPUAdapter` 限制/特性。
 - 无头模式防关联（headless stealth）属于基础性规避：已 patch `window.chrome` 以及 permissions API，但深层的渲染时序（paint timing）以及特定于 GPU 硬件的无头特征可能会被标记。
-- WebRTC 仅支持“禁用/阻断”模式：已对真实 IP 进行拦截阻断，通过重写 ICE 候选者来实现与代理一致的外网 IP 功能目前处于计划阶段。
+- WebRTC 支持三种模式（`webrtc_mode`）：`block`（默认 —— 完全抑制 ICE 候选收集，host 与 reflexive 候选都不会暴露）、`real`（不做改动）、`proxy`（将 host 候选重写为 `webrtc_public_ip`）。
 
 ---
 
@@ -881,7 +881,7 @@ python -m pytest tests/test_operations_release.py tests/test_sort_clone_features
 - **API 鉴权为可选机制。** 设置 `ANTIQUE_API_TOKEN` 环境变量后方要求提供 Bearer 令牌；如未设置，则默认对 `127.0.0.1` 开放（但仍受跨域 Cross-Origin 策略保护）。单进程，暂不支持多用户角色。
 - **没有 proxy provider 直连集成。** 代理需要由您以代理池方式提供；我们支持对已有的代理池进行自动轮换与故障切换。
 - **Headless 隐深为尽力而为（Best-effort）。** 已伪装 permissions 和 `window.chrome` 指标，但极其底层的渲染时序（paint timing）以及特定的 GPU 硬件指纹目前尚未完全涵盖。
-- **WebRTC 目前仅能选择阻断模式。** 阻断真实 IP 泄漏；重写 ICE 候选以暴露与代理一致的外网 IP 功能目前位于 Roadmap 中。
+- **WebRTC 有三种模式**（`webrtc_mode`）：`block`（默认 —— 抑制候选收集，本地 IP 不会泄漏）、`real`（不做改动）、`proxy`（将 host 候选重写为 `webrtc_public_ip`）。`proxy` 需要在配置文件中设置公网 IP；未设置时会直接拒绝，而不是静默降级。
 - **Camoufox 需要额外安装。** `pip install camoufox && python -m camoufox fetch`。若未安装，`camoufox` 引擎会自动回退至捆绑的 Firefox（标准防关联而非深度）。
 - **Chrome/Edge 引擎需要本地安装了对应的真实浏览器。** 否则建议使用默认的 `chromium`。
 - **Firefox/Camoufox/WebKit 引擎不支持 per-profile CDP 以及加载 .crx 扩展。** 这些能力仅限 Chromium。
@@ -889,7 +889,7 @@ python -m pytest tests/test_operations_release.py tests/test_sort_clone_features
 ### Roadmap
 
 - [x] **每个 profile 的真实 CDP** — 为每个 profile 分配一个唯一的 `--remote-debugging-port`。
-- [ ] **WebRTC 代理外网 IP 重写** — 在 ICE 候选里暴露代理的公网 IP 而非直接阻断。
+- [x] **WebRTC 代理外网 IP 重写** — `webrtc_mode: proxy` 将 host 候选重写为配置文件的 `webrtc_public_ip`。
 - [x] **MCP 服务的 UI 集成** — 支持从 dashboard Tools 面板查看 stdio 运行状态 (0.9.0)。
 - [x] **扩展 Web Store 浏览器** — 扩展目录功能（支持 unpacked 目录与 Web Store ID）已在 Tools 中集成 (0.9.0)。
 - [x] **分组层级 `/group/tree`** — 层级树形分组、安全删除、UI update/delete 文件夹 (1.0.0)。

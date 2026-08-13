@@ -254,15 +254,193 @@ def score_report(signals: Dict[str, Any], expected: Optional[Dict[str, Any]] = N
                 "low",
                 f"got {signals.get('languages_count')}, expected {expected['languages_count']}",
             )
+        # WebRTC leak check — only when the caller collected candidate IPs
+        # (``webrtc_ips``) and told us the intended mode. Kept optional so the
+        # base scorer stays browser-free and existing callers are unaffected.
+        if "webrtc_mode" in expected and "webrtc_ips" in signals:
+            ips = [str(i) for i in (signals.get("webrtc_ips") or []) if i]
+            mode = expected.get("webrtc_mode")
+            pub = (expected.get("webrtc_public_ip") or "").strip()
+            if mode == "block":
+                add(
+                    "webrtc_no_leak",
+                    len(ips) == 0,
+                    "high",
+                    f"WebRTC candidate IPs leaked in block mode: {ips}" if ips else "no candidates",
+                )
+            elif mode == "proxy":
+                private = [i for i in ips if _is_private_ip(i)]
+                real_leak = private or [i for i in ips if pub and i != pub]
+                add(
+                    "webrtc_matches_proxy",
+                    not real_leak,
+                    "high",
+                    f"WebRTC IPs {ips} do not all match proxy IP {pub!r}" if real_leak else f"all candidates = {pub}",
+                )
 
     return report
 
 
+def _is_private_ip(ip: str) -> bool:
+    """True for RFC1918 / loopback / link-local IPv4 (a real-IP leak tell)."""
+    parts = (ip or "").split(".")
+    if len(parts) != 4:
+        return False
+    try:
+        a, b = int(parts[0]), int(parts[1])
+    except ValueError:
+        return False
+    if a == 10 or a == 127:
+        return True
+    if a == 192 and b == 168:
+        return True
+    if a == 172 and 16 <= b <= 31:
+        return True
+    if a == 169 and b == 254:
+        return True
+    return False
+
+
 def expected_from_fingerprint(fp) -> Dict[str, Any]:
     """Build the ``expected`` cross-check dict from a Fingerprint dataclass."""
+    from .fingerprint import effective_webrtc_mode
     return {
         "webgl_vendor": fp.webgl_vendor,
         "timezone": fp.timezone,
         "platform": fp.platform,
         "languages_count": len(fp.languages),
+        "webrtc_mode": effective_webrtc_mode(fp),
+        "webrtc_public_ip": fp.webrtc_public_ip,
     }
+
+
+def build_webrtc_probe_script(timeout_ms: int = 1500) -> str:
+    """Return async JS (a Promise) that gathers WebRTC candidate IPs.
+
+    Resolves to ``{"webrtc_ips": [...]}`` — the deduped list of IPv4 addresses
+    exposed via ICE candidates. Merge this into the collector signals before
+    calling :func:`score_report` to activate the WebRTC leak checks. Safe to
+    run on any page; resolves (possibly empty) after ``timeout_ms``.
+    """
+    return (
+        r"""
+    (() => new Promise((resolve) => {
+      const ips = new Set();
+      const IP4 = /(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})/;
+      let pc;
+      try {
+        pc = new RTCPeerConnection({ iceServers: [] });
+      } catch (e) { resolve({ webrtc_ips: [] }); return; }
+      const done = () => {
+        try { pc.close(); } catch (e) {}
+        resolve({ webrtc_ips: Array.from(ips) });
+      };
+      pc.onicecandidate = (evt) => {
+        if (!evt || !evt.candidate) { done(); return; }
+        const c = evt.candidate.candidate || '';
+        if (/\.local\b/i.test(c)) return;
+        const m = IP4.exec(c);
+        if (m) ips.add(m[1]);
+      };
+      try {
+        pc.createDataChannel('probe');
+        pc.createOffer().then((o) => pc.setLocalDescription(o)).catch(() => {});
+      } catch (e) {}
+      setTimeout(done, __TIMEOUT__);
+    }))
+    """.replace("__TIMEOUT__", str(int(timeout_ms)))
+    )
+
+# ---------------------------------------------------------------------------
+# Static fingerprint consistency audit (browser-free)
+# ---------------------------------------------------------------------------
+def _fp_value(fp, key, default=None):
+    if isinstance(fp, dict):
+        return fp.get(key, default)
+    return getattr(fp, key, default)
+
+
+def score_fingerprint(fp) -> Report:
+    """Score a stored fingerprint without launching a browser."""
+    ua = str(_fp_value(fp, "user_agent", ""))
+    platform = str(_fp_value(fp, "platform", ""))
+    oscpu = str(_fp_value(fp, "oscpu", ""))
+    vendor = str(_fp_value(fp, "vendor", ""))
+    checks = []
+    checks.append(Check("ua_platform_coherence", _platform_matches_ua(platform, ua), "critical", "UA and platform agree"))
+    os_ok = ("Windows" in ua) == ("Win" in platform) and (not oscpu or ("Windows" in oscpu) == ("Win" in platform))
+    checks.append(Check("ua_oscpu_vendor", os_ok, "high", "OS strings agree"))
+    gl = str(_fp_value(fp, "webgl_vendor", "")) + " " + str(_fp_value(fp, "webgl_renderer", ""))
+    gl_ok = not ("Win" in platform and ("Apple" in gl or "Intel Iris" in gl)) and bool(gl.strip())
+    checks.append(Check("webgl_os_coherence", gl_ok, "high", "GPU is plausible for platform"))
+    webgpu = bool(_fp_value(fp, "webgpu_enabled", False))
+    wg_ok = (not webgpu) or bool(_fp_value(fp, "webgpu_vendor", "")) and bool(_fp_value(fp, "webgpu_architecture", ""))
+    checks.append(Check("webgpu_coherence", wg_ok, "medium", "WebGPU fields are complete when enabled"))
+    tz = str(_fp_value(fp, "timezone", "")); locale = str(_fp_value(fp, "locale", "")); langs = _fp_value(fp, "languages", []) or []
+    locale_ok = bool(tz and locale and langs)
+    checks.append(Check("timezone_locale_coherence", locale_ok, "high", "Timezone, locale, and languages are present"))
+    geo_ok = True
+    if _fp_value(fp, "spoof_geolocation", False):
+        lat = _fp_value(fp, "geo_latitude"); lon = _fp_value(fp, "geo_longitude")
+        geo_ok = lat is not None and lon is not None and -90 <= float(lat) <= 90 and -180 <= float(lon) <= 180
+    checks.append(Check("geo_timezone_coherence", geo_ok, "high", "Geolocation coordinates are valid"))
+    sw, sh = _fp_value(fp,"screen_width",0), _fp_value(fp,"screen_height",0)
+    aw, ah = _fp_value(fp,"avail_screen_width",sw), _fp_value(fp,"avail_screen_height",sh)
+    iw, ih = _fp_value(fp,"inner_width",aw), _fp_value(fp,"inner_height",ah)
+    ratio = _fp_value(fp,"pixel_ratio",1)
+    screen_ok = all(isinstance(x,(int,float)) and x > 0 for x in (sw,sh,aw,ah,iw,ih)) and aw <= sw and ah <= sh and iw <= aw and ih <= ah and 1 <= float(ratio) <= 3
+    checks.append(Check("screen_sanity", screen_ok, "medium", "Viewport dimensions are coherent"))
+    hc, dm = _fp_value(fp,"hardware_concurrency",0), _fp_value(fp,"device_memory",0)
+    hardware_ok = isinstance(hc,(int,float)) and 2 <= hc <= 32 and isinstance(dm,(int,float)) and 2 <= dm <= 64
+    checks.append(Check("hardware_plausible", hardware_ok, "medium", "Hardware values are plausible"))
+    fonts = _fp_value(fp,"fonts",[]) or []
+    fonts_ok = isinstance(fonts, (list,tuple)) and len(fonts) > 0
+    checks.append(Check("fonts_os_coherence", fonts_ok, "medium", "Font allow-list is present"))
+    noise_ok = bool(_fp_value(fp,"audio_noise_seed",None)) and bool(_fp_value(fp,"canvas_noise_seed",None))
+    checks.append(Check("noise_seeds_present", noise_ok, "low", "Stable noise seeds are present"))
+    checks.append(Check("webdriver_off", _fp_value(fp,"webdriver",False) is False, "critical", "webdriver is disabled"))
+    # An empty webrtc_mode is legal: it means "fall back to the legacy
+    # block_webrtc_ip flag". Resolve it the way the launcher does, but via
+    # _fp_value so dict-shaped fingerprints work too (effective_webrtc_mode uses
+    # getattr, which silently reports "block" for every dict).
+    #
+    # Note this only accepts an *empty* mode as legacy. A non-empty unknown value
+    # ("banana") stays a failure here: the launcher tolerates it, but a profile
+    # carrying a mode string nothing understands is a misconfiguration worth
+    # surfacing in the audit.
+    raw_mode = str(_fp_value(fp, "webrtc_mode", "") or "").strip().lower()
+    if raw_mode:
+        mode = raw_mode
+    else:
+        mode = "block" if _fp_value(fp, "block_webrtc_ip", True) else "real"
+    mode_ok = mode in {"block","real","proxy"} and (mode != "proxy" or bool(_fp_value(fp,"webrtc_public_ip",None)))
+    checks.append(Check("webrtc_mode_valid", mode_ok, "high", "WebRTC mode and public IP agree"))
+    plugins = _fp_value(fp,"plugins",[]) or []
+    plugins_ok = ("Chrome" not in ua and "Chrom" not in ua) or bool(plugins)
+    checks.append(Check("plugins_present", plugins_ok, "low", "Chrome profiles expose plugins"))
+    return Report(checks=checks)
+
+
+def fingerprint_preview(fp) -> Dict[str, Any]:
+    report = score_fingerprint(fp).to_dict()
+    failed = {x["name"] for x in report["failures"]}
+    groups = [
+        ("Identity", ("user_agent","platform","vendor","oscpu")),
+        ("Display", ("screen_width","screen_height","avail_screen_width","avail_screen_height","inner_width","inner_height","pixel_ratio")),
+        ("Locale + Geo", ("locale","languages","timezone","spoof_geolocation","geo_latitude","geo_longitude","geo_accuracy")),
+        ("Graphics", ("webgl_vendor","webgl_renderer","webgpu_enabled","webgpu_vendor","webgpu_architecture","webgpu_description")),
+        ("Hardware", ("hardware_concurrency","device_memory")),
+        ("Noise", ("audio_noise_seed","canvas_noise_seed","noise")),
+        ("Network / WebRTC", ("connection_type","connection_downlink","connection_rtt","webrtc_mode","webrtc_public_ip","block_webrtc_ip")),
+        ("Fonts", ("fonts","plugins")),
+        ("Extensions", ("extensions","browser_engine")),
+    ]
+    fields = []
+    for title, keys in groups:
+        items = []
+        for key in keys:
+            value = _fp_value(fp, key, None)
+            if value is not None:
+                items.append({"key": key, "value": value, "warn": key in failed, "note": "failed consistency check" if key in failed else ""})
+        fields.append({"title": title, "fields": items})
+    return {"groups": fields, "report": report}

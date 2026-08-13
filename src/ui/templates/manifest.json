@@ -1,0 +1,10 @@
+﻿{
+  "name": "Antique Antidetect Dashboard",
+  "short_name": "Antique",
+  "start_url": "/dashboard",
+  "display": "standalone",
+  "background_color": "#0b1020",
+  "theme_color": "#6d5dfc",
+  "description": "Manage browser profiles, proxies, fingerprints, and stealth audits.",
+  "icons": []
+}

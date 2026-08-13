@@ -55,6 +55,7 @@ def build_bundle(profile: Any) -> Dict[str, Any]:
     return {
         "format": BUNDLE_FORMAT,
         "version": BUNDLE_VERSION,
+        "format_version": BUNDLE_VERSION,
         "exported_at": datetime.utcnow().isoformat() + "Z",
         "source_user_id": getattr(profile, "user_id", ""),
         "profile": {
@@ -97,7 +98,7 @@ def parse_bundle(data: Union[str, bytes, Dict[str, Any]]) -> Dict[str, Any]:
         raise PortableBundleError(
             f"unexpected format {data.get('format')!r}, expected {BUNDLE_FORMAT!r}"
         )
-    version = data.get("version")
+    version = data.get("format_version", data.get("version", 1))
     if version != BUNDLE_VERSION:
         raise PortableBundleError(
             f"unsupported bundle version {version!r}; this build supports {BUNDLE_VERSION}"

@@ -147,3 +147,13 @@ def apply_geo_to_fingerprint(fp, geo: GeoProfile):
     fp.geo_accuracy = geo.accuracy
     fp.spoof_geolocation = True
     return fp
+
+
+def country_to_coords(country: str) -> Optional[tuple]:
+    """Return (latitude, longitude) for a country code, or None."""
+    code = (country or "").strip().upper()
+    if not code:
+        return None
+    tz, locale, langs, lat, lon = _GEO_TABLE.get(code, _GEO_TABLE[DEFAULT_COUNTRY])
+    return (lat, lon)
+    return fp

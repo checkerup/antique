@@ -77,6 +77,68 @@ def test_bulk_randomize_api(tmp_path):
     assert fps[0]["screen_width"] == fps[1]["screen_width"]
 
 
+def test_bulk_randomize_with_overrides(tmp_path):
+    """overrides dict sets concrete values on all selected profiles (Bug #1)."""
+    client = TestClient(create_app(data_root=tmp_path))
+    ids = [client.post("/user/create", json={"name": f"p{i}"}).json()["data"]["user_id"] for i in range(2)]
+    response = client.post("/user/bulk/fingerprint/randomize", json={
+        "user_ids": ids,
+        "os_family": "windows",
+        "overrides": {
+            "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Custom/1.0",
+            "platform": "Win32",
+            "screen_width": 1920,
+            "screen_height": 1080,
+            "hardware_concurrency": 16,
+            "timezone": "America/New_York",
+            "languages": ["en-US", "en"],
+        },
+    })
+    assert response.status_code == 200, response.text
+    data = response.json()["data"]
+    assert data["updated_count"] == 2
+    assert data["overrides"]["user_agent"] == "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Custom/1.0"
+    fps = [client.get(f"/profile/{uid}").json()["data"]["fingerprint_config"] for uid in ids]
+    for fp in fps:
+        assert fp["user_agent"] == "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Custom/1.0"
+        assert fp["platform"] == "Win32"
+        assert fp["screen_width"] == 1920
+        assert fp["screen_height"] == 1080
+        assert fp["hardware_concurrency"] == 16
+        assert fp["timezone"] == "America/New_York"
+        assert fp["languages"] == ["en-US", "en"]
+    # webgl was NOT overridden — it must differ per profile (randomized independently)
+    assert fps[0]["webgl_renderer"] != fps[1]["webgl_renderer"] or fps[0]["noise"] != fps[1]["noise"]
+
+
+def test_bulk_randomize_overrides_win_over_shared_and_preserve(tmp_path):
+    """overrides are applied AFTER shared+preserve — they always win."""
+    a = generate_fingerprint(seed="a")
+    b = generate_fingerprint(seed="b")
+    out = randomize_batch(
+        {"a": a.canonical(), "b": b.canonical()},
+        os_family="windows",
+        shared_fields=["screen"],
+        preserve_fields=["engine"],
+        seed="batch",
+        overrides={"screen_width": 2560, "browser_engine": "firefox"},
+    )
+    assert out["a"].screen_width == 2560
+    assert out["b"].screen_width == 2560
+    assert out["a"].browser_engine == "firefox"
+    assert out["b"].browser_engine == "firefox"
+
+
+def test_bulk_randomize_rejects_unknown_override_field(tmp_path):
+    client = TestClient(create_app(data_root=tmp_path))
+    uid = client.post("/user/create", json={"name": "p"}).json()["data"]["user_id"]
+    response = client.post("/user/bulk/fingerprint/randomize", json={
+        "user_ids": [uid],
+        "overrides": {"not_a_real_field": "x"},
+    })
+    assert response.status_code == 400, response.text
+
+
 @pytest.mark.asyncio
 async def test_authenticated_socks_bridge_protocol_roundtrip():
     """A fake auth SOCKS upstream verifies credentials and echoes one payload."""

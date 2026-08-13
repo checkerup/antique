@@ -35,6 +35,7 @@ from .fingerprint import Fingerprint, build_init_script, to_playwright_launch_op
 from .profile import Profile, ProfileStore
 from .proxy import ProxyConfig, parse_proxy
 from .socks_bridge import Socks5AuthBridge
+from .ssh_tunnel import SSHTunnelManager
 
 
 log = logging.getLogger("antique.browser")
@@ -159,12 +160,15 @@ class BrowserLauncher:
         data_root: Optional[Path] = None,
         headless: bool = False,
         ext_store: Optional[ExtensionStore] = None,
+        ssh_tunnels: Optional[SSHTunnelManager] = None,
     ):
         self.store = store
         self.data_root = data_root or Path(os.environ.get("ANTIQUE_DATA_DIR", "data"))
         self.data_root.mkdir(parents=True, exist_ok=True)
         self.headless = headless
         self.ext_store = ext_store or ExtensionStore(data_root=self.data_root)
+        # Shared with the API layer so /proxy/ssh/tunnels reports real tunnels.
+        self.ssh_tunnels = ssh_tunnels or SSHTunnelManager()
         self._live: Dict[str, BrowserHandle] = {}
         self._launch_locks: Dict[str, asyncio.Lock] = {}
         self._lock = asyncio.Lock()
@@ -356,7 +360,12 @@ class BrowserLauncher:
         # Chromium cannot authenticate directly to SOCKS5. AdsPower backups
         # commonly contain authenticated SOCKS5 proxies, so expose a private
         # no-auth loopback endpoint and authenticate upstream in Python.
-        if proxy_cfg.type == "socks5" and (proxy_cfg.username or proxy_cfg.password):
+        if proxy_cfg.type == "ssh":
+            # SSH proxies are not a browser-level proxy: spawn `ssh -D` and point
+            # Chromium at the resulting loopback SOCKS5 port instead.
+            tunnel = self.ssh_tunnels.ensure(profile.user_id, proxy_cfg, wait=0.6)
+            proxy_pw = tunnel.proxy.to_playwright()
+        elif proxy_cfg.type == "socks5" and (proxy_cfg.username or proxy_cfg.password):
             proxy_bridge = await Socks5AuthBridge(
                 proxy_cfg.host, proxy_cfg.port, proxy_cfg.username, proxy_cfg.password
             ).start()

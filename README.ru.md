@@ -630,7 +630,7 @@ def import_cookies(path):
 - **Шрифты**: белый список установленных шрифтов под каждую ОС, форсируется через `document.fonts.check`
 - **Audio**: детерминированный noise seed для джиттера AudioContext
 - **Canvas**: детерминированный noise seed для пиксельного джиттера `toDataURL`/`toBlob`
-- **WebRTC**: предотвращение утечки IP (`block_webrtc_ip`)
+- **WebRTC**: предотвращение утечки IP — `webrtc_mode` (`block` | `real` | `proxy`), легаси-флаг `block_webrtc_ip` по-прежнему учитывается
 - **Plugins**: реалистичный список плагинов Chrome (2-5 записей)
 - **Connection**: type/downlink/rtt (Network Information API)
 - **Hardware**: hardwareConcurrency, deviceMemory
@@ -666,7 +666,7 @@ fp = generate_fingerprint(os_family="macos")                 # macOS UA + screen
 - Шрифты форсируются через `document.fonts.check` (эмуляция перечисления через измерение размеров возвращает белый список). Глубокие проверки шрифтов через размеры canvas, обходящие `document.fonts`, пока полностью не скрыты.
 - Подмена WebGPU патчит `requestAdapterInfo()` / `adapter.info`, но не переписывает низкоуровневые лимиты/функции `GPUAdapter`.
 - Стелс безголового режима (headless stealth) является базовым: патчатся основные детекты (`window.chrome`, permissions API), но глубокие тайминги рендеринга и специфичные для GPU тесты в headless-режиме могут палиться.
-- WebRTC работает в режиме блокировки: реальные IP блокируются, но подмена публичного IP через ICE candidates пока в планах.
+- WebRTC поддерживает три режима (`webrtc_mode`): `block` (по умолчанию — сбор ICE-кандидатов подавляется целиком, ни host-, ни reflexive-кандидаты не выдаются), `real` (без подмены) и `proxy` (host-кандидаты переписываются на `webrtc_public_ip`).
 
 ---
 
@@ -892,7 +892,7 @@ python -m pytest tests/test_operations_release.py tests/test_sort_clone_features
 - **API-авторизация опциональна.** Задайте `ANTIQUE_API_TOKEN` для требования Bearer-токена; если не задано, доступ открыт локально на `127.0.0.1` (все еще защищено Cross-Origin гардом). Ролей и мультипользователей нет.
 - **Нет интеграции с провайдерами прокси.** Прокси поставляются пулом; автоматическая ротация поверх вашего пула реализована.
 - **Стелс безголового режима (headless stealth) базовый.** Внедрены патчи на `window.chrome` и permissions, но глубокие тесты таймингов и GPU в headless-режиме могут палиться.
-- **WebRTC работает только в режиме блокировки.** IP-адреса блокируются; подмена на публичный IP через ICE-кандидаты в планах.
+- **У WebRTC три режима** (`webrtc_mode`): `block` (по умолчанию — сбор кандидатов подавляется, локальный IP не утекает), `real` (без подмены) и `proxy` (host-кандидаты переписываются на `webrtc_public_ip`). Для `proxy` нужен публичный IP в профиле; без него режим отклоняется, а не понижается молча.
 - **Для Camoufox требуется отдельная установка.** Запустите `pip install camoufox && python -m camoufox fetch`. Без установки движок `camoufox` автоматически откатывается на bundled Firefox (стандартный стелс вместо глубокого).
 - **Для движков Chrome/Edge требуется установленный реальный браузер** в системе. Иначе используйте стандартный `chromium`.
 - **Движки Firefox/Camoufox/WebKit не поддерживают per-profile CDP и загрузку расширений .crx** — эти возможности эксклюзивны для Chromium.
@@ -901,7 +901,7 @@ python -m pytest tests/test_operations_release.py tests/test_sort_clone_features
 
 - [x] **Настоящий CDP на профиль** — уникальный `--remote-debugging-port` на профиль, выдается через `/user/{id}/cdp`.
 - [x] **Live View, статусы аккаунтов, синхронизация, Docker** — добавлены в 0.3.0.
-- [ ] **Подмена WebRTC IP через ICE-кандидаты** — выдавать публичный IP прокси вместо блокировки.
+- [x] **Подмена WebRTC IP через ICE-кандидаты** — `webrtc_mode: proxy` переписывает host-кандидаты на `webrtc_public_ip` профиля.
 - [x] **Интеграция MCP в UI** — отображение статуса MCP в панели инструментов (0.9.0).
 - [x] **Поиск и установка расширений** — каталог расширений (unpacked, Web Store ID) добавлен в 0.9.0.
 - [x] **Иерархия групп `/group/tree`** — дерево папок, безопасное удаление, update/delete в UI (1.0.0).

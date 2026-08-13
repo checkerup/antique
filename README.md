@@ -560,7 +560,7 @@ A `Fingerprint` is a coherent bundle of browser-visible attributes:
 - **Fonts**: per-OS installed-font allow-list, enforced through `document.fonts.check`
 - **Audio**: deterministic noise seed for AudioContext jitter
 - **Canvas**: deterministic noise seed for `toDataURL`/`toBlob` pixel jitter
-- **WebRTC**: IP-leak prevention (`block_webrtc_ip`)
+- **WebRTC**: IP-leak prevention — `webrtc_mode` (`block` | `real` | `proxy`), legacy `block_webrtc_ip` still honoured
 - **Geolocation**: `navigator.geolocation` coordinates + accuracy, spoofable and aligned to the proxy exit country (see [geo matching](#geo-matching-timezone--locale--geolocation))
 - **Headless stealth**: `window.chrome`/`chrome.runtime` shims + `permissions.query` coherence so new-headless doesn't leak the classic tells
 - **Plugins**: realistic Chrome plugin list (2-5 entries)
@@ -827,7 +827,7 @@ Added operational parity features: AdsPower backup dry-run preview, profile temp
 - **API auth is opt-in.** Set `ANTIQUE_API_TOKEN` to require a Bearer token; unset, the API is open on `127.0.0.1` (still protected by the cross-origin guard). Single-process, no multi-user roles.
 - **No proxy provider integration.** You supply proxies; we don't pull them from BrightData/Decodo/etc. Rotation/failover over a supplied pool is implemented.
 - **Headless stealth is best-effort.** `window.chrome` + permissions tells are patched; deep headless heuristics (paint timing, GPU quirks) are not fully covered.
-- **WebRTC is block-only.** IPs are blocked; exposing a proxy-matched public IP via ICE candidate rewriting is on the roadmap.
+- **WebRTC has three modes** (`webrtc_mode`): `block` (default — candidate gathering is suppressed, so neither host nor reflexive candidates are exposed), `real` (untouched), and `proxy` (host candidates rewritten to `webrtc_public_ip`). `proxy` needs a public IP set on the profile; without one it is rejected rather than silently downgraded.
 - **Camoufox requires a separate install.** `pip install camoufox && python -m camoufox fetch`. Without it, the `camoufox` engine falls back to bundled Firefox (standard stealth, not deep).
 - **Chrome/Edge engines need the real browser installed** on the host (Playwright channel). Otherwise use the bundled `chromium`.
 - **Firefox/Camoufox/WebKit engines don't expose per-profile CDP or load .crx extensions** — those are Chromium-only.
@@ -836,7 +836,7 @@ Added operational parity features: AdsPower backup dry-run preview, profile temp
 
 - [x] **Real CDP per profile** — `--remote-debugging-port` per profile, surfaced at `/user/{id}/cdp`.
 - [x] **Live View, sync groups, account statuses, Docker** — shipped in 0.3.0.
-- [ ] **WebRTC proxy-IP rewriting** — expose the proxy's public IP via ICE candidates instead of blocking.
+- [x] **WebRTC proxy-IP rewriting** — `webrtc_mode: proxy` rewrites host candidates to the profile's `webrtc_public_ip`.
 - [ ] **MCP server UI integration** — start/stop MCP from the dashboard.
 - [ ] **Proxy provider integrations** — BrightData, Decodo, smartproxy.
 - [ ] **Extension Web Store browser** — search and install extensions from UI.
