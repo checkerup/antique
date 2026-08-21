@@ -1,76 +1,77 @@
+﻿[![English](https://img.shields.io/badge/lang-English-blue.svg)](README.md) [![Русский](https://img.shields.io/badge/lang-Русский-red.svg)](README.ru.md) [![中文](https://img.shields.io/badge/lang-中文-green.svg)](README.zh.md)
+
 # antique
 
-**一个自托管、开源的 AdsPower 替代方案 —— 多 profile 浏览器农场，具备 fingerprint 伪装、proxy 轮换、.adb bundle 导入，以及 AdsPower 兼容的 REST API。**
+**дёЂдёЄи‡Єж‰з®ЎгЂЃејЂжєђзљ„ AdsPower ж›їд»Јж–№жЎ€ вЂ”вЂ” е¤љ profile жµЏи§€е™Ёе†њењєпјЊе…·е¤‡ fingerprint дјЄиЈ…гЂЃproxy иЅ®жЌўгЂЃ.adb bundle еЇје…ҐпјЊд»ҐеЏЉ AdsPower е…је®№зљ„ REST APIгЂ‚**
 
-> 自主构建，用于替代付费的 AdsPower 订阅，保持相同的 UX 和 API 接口，无需授权，完全本地运行。
+> и‡Єдё»жћ„е»єпјЊз”ЁдєЋж›їд»Јд»иґ№зљ„ AdsPower и®ўй…пјЊдїќжЊЃз›ёеђЊзљ„ UX е’Њ API жЋҐеЏЈпјЊж— йњЂжЋ€жќѓпјЊе®Ње…Ёжњ¬ењ°иїђиЎЊгЂ‚
 
-[English](README.md) · [Русский](README.ru.md) · [中文](README.zh.md)
 
 ---
 
-## 目录
+## з›®еЅ•
 
-1. [这是什么（给 agent 的 TL;DR）](#1-这是什么给-agent-的-tldr)
-2. [快速开始](#2-快速开始)
-3. [架构概览](#3-架构概览)
-4. [模块结构](#4-模块结构)
-5. [数据模型与存储 schema](#5-数据模型与存储-schema)
-6. [Profile 生命周期](#6-profile-生命周期)
-7. [CLI 参考](#7-cli-参考)
-8. [REST API 参考](#8-rest-api-参考)
-9. [Cookie 导入 / 导出格式](#9-cookie-导入--导出格式)
-10. [Fingerprint 系统](#10-fingerprint-系统)
-11. [完整 profile（.adb）导入流程](#11-完整-profileadb-导入流程)
+1. [иї™жЇд»Ђд№€пј€з»™ agent зљ„ TL;DRпј‰](#1-иї™жЇд»Ђд№€з»™-agent-зљ„-tldr)
+2. [еї«йЂџејЂе§‹](#2-еї«йЂџејЂе§‹)
+3. [жћ¶жћ„ж¦‚и§€](#3-жћ¶жћ„ж¦‚и§€)
+4. [жЁЎеќ—з»“жћ„](#4-жЁЎеќ—з»“жћ„)
+5. [ж•°жЌ®жЁЎећ‹дёЋе­е‚Ё schema](#5-ж•°жЌ®жЁЎећ‹дёЋе­е‚Ё-schema)
+6. [Profile з”џе‘Ѕе‘Ёжњџ](#6-profile-з”џе‘Ѕе‘Ёжњџ)
+7. [CLI еЏ‚иЂѓ](#7-cli-еЏ‚иЂѓ)
+8. [REST API еЏ‚иЂѓ](#8-rest-api-еЏ‚иЂѓ)
+9. [Cookie еЇје…Ґ / еЇје‡єж јејЏ](#9-cookie-еЇје…Ґ--еЇје‡єж јејЏ)
+10. [Fingerprint зі»з»џ](#10-fingerprint-зі»з»џ)
+11. [е®Њж•ґ profileпј€.adbпј‰еЇје…ҐжµЃзЁ‹](#11-е®Њж•ґ-profileadb-еЇје…ҐжµЃзЁ‹)
 12. [CDP multiplexer](#12-cdp-multiplexer)
-13. [数据目录布局](#13-数据目录布局)
-14. [测试](#14-测试)
-15. [已知限制与 roadmap](#15-已知限制与-roadmap)
-16. [环境变量](#16-环境变量)
+13. [ж•°жЌ®з›®еЅ•еёѓе±Ђ](#13-ж•°жЌ®з›®еЅ•еёѓе±Ђ)
+14. [жµ‹иЇ•](#14-жµ‹иЇ•)
+15. [е·ІзџҐй™ђе€¶дёЋ roadmap](#15-е·ІзџҐй™ђе€¶дёЋ-roadmap)
+16. [зЋЇеўѓеЏй‡Џ](#16-зЋЇеўѓеЏй‡Џ)
 17. [License](#17-license)
 
 ---
 
-## 1. 这是什么（给 agent 的 TL;DR）
+## 1. иї™жЇд»Ђд№€пј€з»™ agent зљ„ TL;DRпј‰
 
-antique 是一个 Python 服务，功能如下：
+antique жЇдёЂдёЄ Python жњЌеЉЎпјЊеЉџиѓЅе¦‚дё‹пјљ
 
-- 为每个 profile 启动独立的 Chromium context（Playwright `launch_persistent_context`）—— 每个 profile 拥有自己的 user data dir、cookies、localStorage、IndexedDB。
-- 生成内部一致的 browser fingerprint（UA、navigator、screen、timezone、locale、WebGL vendor/renderer、audio + canvas noise seed），并注入 JS init script 在启动时对浏览器进行 patch。
-- 在 SQLite（`data/antique.db`）中持久化 profile —— 包括 proxy、fingerprint、cookies、tags、sessions 以及导入相关的元数据。
-- 导入从 AdsPower 导出的 `.adb` profile bundle（cookies + LocalStorage + IndexedDB）。导入采用原生 Chromium 读取，而非脆弱的 LevelDB 解析 —— 我们把源目录拷贝到 Playwright 的 `user_data_dir`，让 Chromium 自己读取。
-- 在 `http://127.0.0.1:<port>/...` 上暴露 AdsPower 兼容的 REST API，因此已经对接 AdsPower 的现有脚本只需修改 base URL 即可切换。
-- 在 `/`（或 `/dashboard`）提供一个单页 dashboard，在 `/docs` 提供 FastAPI Swagger。
-- 340+ 个 pytest 测试通过。
-- 可更换的浏览器引擎：Chromium, Google Chrome, Microsoft Edge, Firefox, Camoufox（引擎级深层防关联）, WebKit。
-- 一键式 AdsPower 备份导入（导入整个备份目录或单个 profile），保留 user_id, cookies, proxy, tags。
-- 支持亮色/暗色主题、引擎选择器、AdsPower 导入、网页端 Live View、以及账号状态标签的 Dashboard。
-- Live View（运行中 profile 的实时截图）、真实的 profile 级别 CDP 端口、并发多 profile 自动化同步（在多 profile 间同步运行同一流程），以及 Docker 一键运行。
-- 批量操作：支持批量启动/停止/删除/导出 profile，批量导入和分配代理。
-- 分组管理与过滤。
-- 代理健康度检查（检测出口 IP 与网络延迟）。
-- 直接在 Dashboard 界面编辑指纹信息。
+- дёєжЇЏдёЄ profile еђЇеЉЁз‹¬з«‹зљ„ Chromium contextпј€Playwright `launch_persistent_context`пј‰вЂ”вЂ” жЇЏдёЄ profile ж‹Ґжњ‰и‡Єе·±зљ„ user data dirгЂЃcookiesгЂЃlocalStorageгЂЃIndexedDBгЂ‚
+- з”џж€ђе†…йѓЁдёЂи‡ґзљ„ browser fingerprintпј€UAгЂЃnavigatorгЂЃscreenгЂЃtimezoneгЂЃlocaleгЂЃWebGL vendor/rendererгЂЃaudio + canvas noise seedпј‰пјЊе№¶жіЁе…Ґ JS init script ењЁеђЇеЉЁж—¶еЇ№жµЏи§€е™Ёиї›иЎЊ patchгЂ‚
+- ењЁ SQLiteпј€`data/antique.db`пј‰дё­жЊЃд№…еЊ– profile вЂ”вЂ” еЊ…ж‹¬ proxyгЂЃfingerprintгЂЃcookiesгЂЃtagsгЂЃsessions д»ҐеЏЉеЇје…Ґз›ёе…ізљ„е…ѓж•°жЌ®гЂ‚
+- еЇје…Ґд»Ћ AdsPower еЇје‡єзљ„ `.adb` profile bundleпј€cookies + LocalStorage + IndexedDBпј‰гЂ‚еЇје…Ґй‡‡з”ЁеЋџз”џ Chromium иЇ»еЏ–пјЊиЂЊйќћи„†еј±зљ„ LevelDB и§Јжћђ вЂ”вЂ” ж€‘д»¬жЉЉжєђз›®еЅ•ж‹·иґќе€° Playwright зљ„ `user_data_dir`пјЊи®© Chromium и‡Єе·±иЇ»еЏ–гЂ‚
+- ењЁ `http://127.0.0.1:<port>/...` дёЉжљґйњІ AdsPower е…је®№зљ„ REST APIпјЊе› ж­¤е·Із»ЏеЇ№жЋҐ AdsPower зљ„зЋ°жњ‰и„љжњ¬еЏЄйњЂдї®ж”№ base URL еЌіеЏЇе€‡жЌўгЂ‚
+- ењЁ `/`пј€ж€– `/dashboard`пј‰жЏђдѕ›дёЂдёЄеЌ•йЎµ dashboardпјЊењЁ `/docs` жЏђдѕ› FastAPI SwaggerгЂ‚
+- 340+ дёЄ pytest жµ‹иЇ•йЂљиї‡гЂ‚
+- еЏЇж›ґжЌўзљ„жµЏи§€е™Ёеј•ж“ЋпјљChromium, Google Chrome, Microsoft Edge, Firefox, Camoufoxпј€еј•ж“Ћзє§ж·±е±‚йІе…іиЃ”пј‰, WebKitгЂ‚
+- дёЂй”®ејЏ AdsPower е¤‡д»ЅеЇје…Ґпј€еЇје…Ґж•ґдёЄе¤‡д»Ѕз›®еЅ•ж€–еЌ•дёЄ profileпј‰пјЊдїќз•™ user_id, cookies, proxy, tagsгЂ‚
+- ж”ЇжЊЃдє®и‰І/жљ—и‰Ідё»йўгЂЃеј•ж“ЋйЂ‰ж‹©е™ЁгЂЃAdsPower еЇје…ҐгЂЃзЅ‘йЎµз«Ї Live ViewгЂЃд»ҐеЏЉиґ¦еЏ·зЉ¶жЂЃж ‡з­ѕзљ„ DashboardгЂ‚
+- Live Viewпј€иїђиЎЊдё­ profile зљ„е®ћж—¶ж€Єе›ѕпј‰гЂЃзњџе®ћзљ„ profile зє§е€« CDP з«ЇеЏЈгЂЃе№¶еЏ‘е¤љ profile и‡ЄеЉЁеЊ–еђЊж­Ґпј€ењЁе¤љ profile й—ґеђЊж­ҐиїђиЎЊеђЊдёЂжµЃзЁ‹пј‰пјЊд»ҐеЏЉ Docker дёЂй”®иїђиЎЊгЂ‚
+- ж‰№й‡Џж“ЌдЅњпјљж”ЇжЊЃж‰№й‡ЏеђЇеЉЁ/еЃњж­ў/е€ й™¤/еЇје‡є profileпјЊж‰№й‡ЏеЇје…Ґе’Ње€†й…Ќд»Јзђ†гЂ‚
+- е€†з»„з®Ўзђ†дёЋиї‡ж»¤гЂ‚
+- д»Јзђ†еЃҐеє·еє¦жЈЂжџҐпј€жЈЂжµ‹е‡єеЏЈ IP дёЋзЅ‘з»ње»¶иїџпј‰гЂ‚
+- з›ґжЋҐењЁ Dashboard з•Њйќўзј–иѕ‘жЊ‡зє№дїЎжЃЇгЂ‚
 
-**它还不是（尚未实现的功能）：**
+**е®ѓиїдёЌжЇпј€е°љжњЄе®ћзЋ°зљ„еЉџиѓЅпј‰пјљ**
 
-- 不是为数千个 profile 设计的无头浏览器农场 —— 设计目标是单机几十个 profile。
-- 不是多用户鉴权层 —— 单进程，REST API 默认无鉴权，本地运行。
-- 不是 proxy provider —— 使用你提供的 proxy。
+- дёЌжЇдёєж•°еЌѓдёЄ profile и®ѕи®Ўзљ„ж— е¤ґжµЏи§€е™Ёе†њењє вЂ”вЂ” и®ѕи®Ўз›®ж ‡жЇеЌ•жњєе‡ еЌЃдёЄ profileгЂ‚
+- дёЌжЇе¤љз”Ёж€·й‰ґжќѓе±‚ вЂ”вЂ” еЌ•иї›зЁ‹пјЊREST API й»и®¤ж— й‰ґжќѓпјЊжњ¬ењ°иїђиЎЊгЂ‚
+- дёЌжЇ proxy provider вЂ”вЂ” дЅїз”ЁдЅ жЏђдѕ›зљ„ proxyгЂ‚
 
-**何时使用它：** 当需要一个 AdsPower 兼容的本地浏览器农场，具备完整 profile 隔离、fingerprint 控制和 .adb bundle 导入能力时 —— 并且不想为 AdsPower 付费。
+**дЅ•ж—¶дЅїз”Ёе®ѓпјљ** еЅ“йњЂи¦ЃдёЂдёЄ AdsPower е…је®№зљ„жњ¬ењ°жµЏи§€е™Ёе†њењєпјЊе…·е¤‡е®Њж•ґ profile йљ”з¦»гЂЃfingerprint жЋ§е€¶е’Њ .adb bundle еЇје…ҐиѓЅеЉ›ж—¶ вЂ”вЂ” е№¶дё”дёЌжѓідёє AdsPower д»иґ№гЂ‚
 
-**何时不要使用它：** 当你需要单台机器上 >100 个并发 browser context、需要跨进程 profile 共享，或者需要一个托管云方案时。
+**дЅ•ж—¶дёЌи¦ЃдЅїз”Ёе®ѓпјљ** еЅ“дЅ йњЂи¦ЃеЌ•еЏ°жњєе™ЁдёЉ >100 дёЄе№¶еЏ‘ browser contextгЂЃйњЂи¦Ѓи·Ёиї›зЁ‹ profile е…±дє«пјЊж€–иЂ…йњЂи¦ЃдёЂдёЄж‰з®Ўдє‘ж–№жЎ€ж—¶гЂ‚
 
 ---
 
-## 2. 快速开始
+## 2. еї«йЂџејЂе§‹
 
-### 环境要求
+### зЋЇеўѓи¦Ѓж±‚
 
 - Python 3.10+
 - Windows / macOS / Linux
-- Playwright（`pip install playwright && playwright install chromium`）
+- Playwrightпј€`pip install playwright && playwright install chromium`пј‰
 
-### 安装
+### е®‰иЈ…
 
 ```bash
 git clone https://github.com/<your-org>/antique
@@ -80,20 +81,20 @@ pip install -e .
 playwright install chromium
 ```
 
-### 启动服务
+### еђЇеЉЁжњЌеЉЎ
 
 ```bash
 python -m src.cli serve --ui-port 8080
 ```
 
-这将为你提供：
+иї™е°†дёєдЅ жЏђдѕ›пјљ
 
-- Dashboard：<http://127.0.0.1:8080/>
-- REST API：<http://127.0.0.1:8080/user/list>
-- API 文档：<http://127.0.0.1:8080/docs>
-- 健康检查：<http://127.0.0.1:8080/health>
+- Dashboardпјљ<http://127.0.0.1:8080/>
+- REST APIпјљ<http://127.0.0.1:8080/user/list>
+- API ж–‡жЎЈпјљ<http://127.0.0.1:8080/docs>
+- еЃҐеє·жЈЂжџҐпјљ<http://127.0.0.1:8080/health>
 
-### 创建一个 profile 并启动它
+### е€›е»єдёЂдёЄ profile е№¶еђЇеЉЁе®ѓ
 
 ```bash
 # Create a profile
@@ -109,7 +110,7 @@ python -m src.cli start <user_id>
 python -m src.cli stop <user_id>
 ```
 
-或者通过 REST API：
+ж€–иЂ…йЂљиї‡ REST APIпјљ
 
 ```bash
 curl -X POST http://127.0.0.1:8080/user/create \
@@ -121,114 +122,114 @@ curl -X POST http://127.0.0.1:8080/user/start \
   -d '{"user_id": "<user_id>"}'
 ```
 
-### 导入一个 AdsPower `.adb` bundle
+### еЇје…ҐдёЂдёЄ AdsPower `.adb` bundle
 
 ```bash
 # Cookies only (fast, works with .txt/.json/.adb/.zip/.tar.gz)
 python -m src.cli import-cookies path/to/bundle.adb --name "Imported"
 
-# Full profile — copies LocalStorage + IndexedDB into the new profile
+# Full profile вЂ” copies LocalStorage + IndexedDB into the new profile
 python -m src.cli import-cookies path/to/bundle.adb --full --name "Full import"
 ```
 
 ---
 
-## 3. 架构概览
+## 3. жћ¶жћ„ж¦‚и§€
 
 ```
-                            ┌──────────────────────────────────┐
-                            │           FastAPI app            │
-                            │   (src/api/server.py + routes)   │
-                            ├──────────────────────────────────┤
-                            │                                  │
-        REST /user/*  ───►   │  ProfileStore (SQLite)           │
-        WS /devtools/* ───►  │  BrowserLauncher (Playwright)    │
-                            │  CDPProxy (CDP multiplexer)      │
-                            │                                  │
-                            └─────────┬──────────┬─────────────┘
-                                      │          │
-                                      ▼          ▼
-                             ┌────────────────────────┐
-                             │  data/                  │
-                             │  ├─ antique.db       │  ← profiles, sessions, tags, groups
-                             │  └─ profiles/<user_id>/ │  ← Playwright user_data_dir per profile
-                             │      ├─ Default/         │  ← cookies, cache, Local Storage, IndexedDB
-                             │      └─ ...              │
-                             └────────────────────────┘
-                                      │
-                                      ▼
-                             ┌────────────────────────┐
-                             │  Chromium (one per      │
-                             │  running profile)       │
-                             └────────────────────────┘
+                            в”Њв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”ђ
+                            в”‚           FastAPI app            в”‚
+                            в”‚   (src/api/server.py + routes)   в”‚
+                            в”њв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”¤
+                            в”‚                                  в”‚
+        REST /user/*  в”Ђв”Ђв”Ђв–є   в”‚  ProfileStore (SQLite)           в”‚
+        WS /devtools/* в”Ђв”Ђв”Ђв–є  в”‚  BrowserLauncher (Playwright)    в”‚
+                            в”‚  CDPProxy (CDP multiplexer)      в”‚
+                            в”‚                                  в”‚
+                            в””в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”¬в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”¬в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”
+                                      в”‚          в”‚
+                                      в–ј          в–ј
+                             в”Њв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”ђ
+                             в”‚  data/                  в”‚
+                             в”‚  в”њв”Ђ antique.db       в”‚  в†ђ profiles, sessions, tags, groups
+                             в”‚  в””в”Ђ profiles/<user_id>/ в”‚  в†ђ Playwright user_data_dir per profile
+                             в”‚      в”њв”Ђ Default/         в”‚  в†ђ cookies, cache, Local Storage, IndexedDB
+                             в”‚      в””в”Ђ ...              в”‚
+                             в””в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”
+                                      в”‚
+                                      в–ј
+                             в”Њв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”ђ
+                             в”‚  Chromium (one per      в”‚
+                             в”‚  running profile)       в”‚
+                             в””в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”
 ```
 
-**三层架构：**
+**дё‰е±‚жћ¶жћ„пјљ**
 
-1. **存储层**（`src/core/storage.py`、`src/core/profile.py`）—— SQLModel/SQLite。Profile、session、tag、group，以及 proxy/fingerprint/cookies 以 JSON 编码列的形式存储。
-2. **浏览器层**（`src/core/browser.py`、`src/core/cdp.py`、`src/core/fingerprint.py`、`src/core/cookie.py`）—— Playwright persistent context、fingerprint JS 注入、CDP multiplexer、cookie/profile 导入。
-3. **接口层**（`src/api/server.py`、`src/api/routes.py`、`src/cli.py`、`src/ui/dashboard.py`）—— FastAPI REST + WS、typer CLI、单页 HTML dashboard。
+1. **е­е‚Ёе±‚**пј€`src/core/storage.py`гЂЃ`src/core/profile.py`пј‰вЂ”вЂ” SQLModel/SQLiteгЂ‚ProfileгЂЃsessionгЂЃtagгЂЃgroupпјЊд»ҐеЏЉ proxy/fingerprint/cookies д»Ґ JSON зј–з Ѓе€—зљ„еЅўејЏе­е‚ЁгЂ‚
+2. **жµЏи§€е™Ёе±‚**пј€`src/core/browser.py`гЂЃ`src/core/cdp.py`гЂЃ`src/core/fingerprint.py`гЂЃ`src/core/cookie.py`пј‰вЂ”вЂ” Playwright persistent contextгЂЃfingerprint JS жіЁе…ҐгЂЃCDP multiplexerгЂЃcookie/profile еЇје…ҐгЂ‚
+3. **жЋҐеЏЈе±‚**пј€`src/api/server.py`гЂЃ`src/api/routes.py`гЂЃ`src/cli.py`гЂЃ`src/ui/dashboard.py`пј‰вЂ”вЂ” FastAPI REST + WSгЂЃtyper CLIгЂЃеЌ•йЎµ HTML dashboardгЂ‚
 
 ---
 
-## 4. 模块结构
+## 4. жЁЎеќ—з»“жћ„
 
 ```
 src/
-├── __init__.py
-├── cli.py                         ← typer CLI (serve, create, list, start, stop, delete,
-│                                    import-cookies, reimport, export-cookies, fingerprint)
-├── core/
-│   ├── __init__.py
-│   ├── storage.py                 ← SQLModel models (ProfileRecord, SessionRecord, TagRecord,
-│   │                                 GroupRecord) + engine/session helpers
-│   ├── profile.py                 ← Profile dataclass（公开）+ ProfileStore（CRUD）
-│   ├── fingerprint.py             ← Fingerprint dataclass + generate_fingerprint() + JS init
-│   │                                 script 模板 + Playwright launch options
-│   ├── proxy.py                   ← ProxyConfig + parse_proxy() + AdsPower↔Playwright
-│   │                                 格式互转
-│   ├── cookie.py                  ← Cookie dataclass、Netscape/JSON/.adb parser、
-│   │                                 LocalStorage + IndexedDB 抽取与拷贝
-│   ├── browser.py                 ← BrowserLauncher —— 启动 persistent Chromium context，记录 session，应用导入的初始状态
-│   ├── cdp.py                     ← CDPProxy —— 在多个 user_id 间复用单个 debug port，暴露 /json/list + WS 路由
-│   ├── automation.py              ← Cookie Robot / 无代码自动化流程执行器（Step 模型，parse_flow，cookie_robot_flow，FlowRunner）
-│   ├── portable.py                ← 便携式 .antq 配置文件导入/导出（build_bundle，export_profile，import_profile）
-│   ├── geo.py                     ← 地理位置匹配：国家/出口代理 → 时区/语言/经纬度 (geo_for_country, geo_from_proxy, apply_geo_to_fingerprint)
-│   ├── proxy_pool.py              ← 代理池和轮换策略（sticky/round_robin/random）
-│   ├── detect.py                  ← 指纹防关联自检机制（build_collector_script, score_report）
-│   ├── engines.py                 ← 浏览器引擎注册表 (EngineSpec, resolve_engine, list_engines)
-│   ├── sync.py                    ← 多 profile 同步自动化处理器 (run_sync_flow, FlowTask)
-│   ├── fingerprint_ops.py         ← 智能批量指纹随机化，支持字段组共享/锁定
-│   ├── socks_bridge.py            ← 本地 SOCKS5 代理授权桥接器（解决 Chromium 不支持带账号密码的 SOCKS5 问题）
-│   ├── operations.py              ← 模板批量创建、AES-GCM 加密快照、备份预览与操作审计
-│   ├── providers.py               ← 本地/远程代理源提取器（支持 File/JSON/HTTP-JSON）
-│   └── backup_scheduler.py        ← 本地加密备份计划管理器（支持 AES-GCM 与多时段设置）
-├── api/
-│   ├── __init__.py
-│   ├── server.py                  ← FastAPI app factory、CORS、挂载 UI 与 API 路由
-│   └── routes.py                  ← 所有 REST 端点 + WS handler
-└── ui/
-    ├── __init__.py
-    ├── dashboard.py               ← 单页 HTML dashboard 路由
-    └── templates/
-        └── index.html             ← Dashboard SPA（原生 JS + fetch()）
+в”њв”Ђв”Ђ __init__.py
+в”њв”Ђв”Ђ cli.py                         в†ђ typer CLI (serve, create, list, start, stop, delete,
+в”‚                                    import-cookies, reimport, export-cookies, fingerprint)
+в”њв”Ђв”Ђ core/
+в”‚   в”њв”Ђв”Ђ __init__.py
+в”‚   в”њв”Ђв”Ђ storage.py                 в†ђ SQLModel models (ProfileRecord, SessionRecord, TagRecord,
+в”‚   в”‚                                 GroupRecord) + engine/session helpers
+в”‚   в”њв”Ђв”Ђ profile.py                 в†ђ Profile dataclassпј€е…¬ејЂпј‰+ ProfileStoreпј€CRUDпј‰
+в”‚   в”њв”Ђв”Ђ fingerprint.py             в†ђ Fingerprint dataclass + generate_fingerprint() + JS init
+в”‚   в”‚                                 script жЁЎжќї + Playwright launch options
+в”‚   в”њв”Ђв”Ђ proxy.py                   в†ђ ProxyConfig + parse_proxy() + AdsPowerв†”Playwright
+в”‚   в”‚                                 ж јејЏдє’иЅ¬
+в”‚   в”њв”Ђв”Ђ cookie.py                  в†ђ Cookie dataclassгЂЃNetscape/JSON/.adb parserгЂЃ
+в”‚   в”‚                                 LocalStorage + IndexedDB жЉЅеЏ–дёЋж‹·иґќ
+в”‚   в”њв”Ђв”Ђ browser.py                 в†ђ BrowserLauncher вЂ”вЂ” еђЇеЉЁ persistent Chromium contextпјЊи®°еЅ• sessionпјЊеє”з”ЁеЇје…Ґзљ„е€ќе§‹зЉ¶жЂЃ
+в”‚   в”њв”Ђв”Ђ cdp.py                     в†ђ CDPProxy вЂ”вЂ” ењЁе¤љдёЄ user_id й—ґе¤Ќз”ЁеЌ•дёЄ debug portпјЊжљґйњІ /json/list + WS и·Їз”±
+в”‚   в”њв”Ђв”Ђ automation.py              в†ђ Cookie Robot / ж— д»Јз Ѓи‡ЄеЉЁеЊ–жµЃзЁ‹ж‰§иЎЊе™Ёпј€Step жЁЎећ‹пјЊparse_flowпјЊcookie_robot_flowпјЊFlowRunnerпј‰
+в”‚   в”њв”Ђв”Ђ portable.py                в†ђ дѕїжђєејЏ .antq й…ЌзЅ®ж–‡д»¶еЇје…Ґ/еЇје‡єпј€build_bundleпјЊexport_profileпјЊimport_profileпј‰
+в”‚   в”њв”Ђв”Ђ geo.py                     в†ђ ењ°зђ†дЅЌзЅ®еЊ№й…Ќпјље›Ѕе®¶/е‡єеЏЈд»Јзђ† в†’ ж—¶еЊє/иЇ­иЁЂ/з»Џзє¬еє¦ (geo_for_country, geo_from_proxy, apply_geo_to_fingerprint)
+в”‚   в”њв”Ђв”Ђ proxy_pool.py              в†ђ д»Јзђ†ж± е’ЊиЅ®жЌўз­–з•Ґпј€sticky/round_robin/randomпј‰
+в”‚   в”њв”Ђв”Ђ detect.py                  в†ђ жЊ‡зє№йІе…іиЃ”и‡ЄжЈЂжњєе€¶пј€build_collector_script, score_reportпј‰
+в”‚   в”њв”Ђв”Ђ engines.py                 в†ђ жµЏи§€е™Ёеј•ж“ЋжіЁе†ЊиЎЁ (EngineSpec, resolve_engine, list_engines)
+в”‚   в”њв”Ђв”Ђ sync.py                    в†ђ е¤љ profile еђЊж­Ґи‡ЄеЉЁеЊ–е¤„зђ†е™Ё (run_sync_flow, FlowTask)
+в”‚   в”њв”Ђв”Ђ fingerprint_ops.py         в†ђ ж™єиѓЅж‰№й‡ЏжЊ‡зє№йљЏжњєеЊ–пјЊж”ЇжЊЃе­—ж®µз»„е…±дє«/й”Ѓе®љ
+в”‚   в”њв”Ђв”Ђ socks_bridge.py            в†ђ жњ¬ењ° SOCKS5 д»Јзђ†жЋ€жќѓжЎҐжЋҐе™Ёпј€и§Је†і Chromium дёЌж”ЇжЊЃеё¦иґ¦еЏ·еЇ†з Ѓзљ„ SOCKS5 й—®йўпј‰
+в”‚   в”њв”Ђв”Ђ operations.py              в†ђ жЁЎжќїж‰№й‡Џе€›е»єгЂЃAES-GCM еЉ еЇ†еї«з…§гЂЃе¤‡д»Ѕйў„и§€дёЋж“ЌдЅње®Ўи®Ў
+в”‚   в”њв”Ђв”Ђ providers.py               в†ђ жњ¬ењ°/иїњзЁ‹д»Јзђ†жєђжЏђеЏ–е™Ёпј€ж”ЇжЊЃ File/JSON/HTTP-JSONпј‰
+в”‚   в””в”Ђв”Ђ backup_scheduler.py        в†ђ жњ¬ењ°еЉ еЇ†е¤‡д»Ѕи®Ўе€’з®Ўзђ†е™Ёпј€ж”ЇжЊЃ AES-GCM дёЋе¤љж—¶ж®µи®ѕзЅ®пј‰
+в”њв”Ђв”Ђ api/
+в”‚   в”њв”Ђв”Ђ __init__.py
+в”‚   в”њв”Ђв”Ђ server.py                  в†ђ FastAPI app factoryгЂЃCORSгЂЃжЊ‚иЅЅ UI дёЋ API и·Їз”±
+в”‚   в””в”Ђв”Ђ routes.py                  в†ђ ж‰Ђжњ‰ REST з«Їз‚№ + WS handler
+в””в”Ђв”Ђ ui/
+    в”њв”Ђв”Ђ __init__.py
+    в”њв”Ђв”Ђ dashboard.py               в†ђ еЌ•йЎµ HTML dashboard и·Їз”±
+    в””в”Ђв”Ђ templates/
+        в””в”Ђв”Ђ index.html             в†ђ Dashboard SPAпј€еЋџз”џ JS + fetch()пј‰
 
 tests/
-├── test_fingerprint.py            ← Fingerprint 生成、init script 注入
-├── test_cookie.py                 ← Cookie 解析（所有格式）+ .adb bundle 处理
-├── test_profile.py                ← ProfileStore CRUD
-├── test_proxy.py                  ← Proxy config 校验
-├── test_storage.py                ← SQLite engine + 迁移
-└── test_profile_import.py         ← 完整 profile .adb 导入流程（新增）
+в”њв”Ђв”Ђ test_fingerprint.py            в†ђ Fingerprint з”џж€ђгЂЃinit script жіЁе…Ґ
+в”њв”Ђв”Ђ test_cookie.py                 в†ђ Cookie и§Јжћђпј€ж‰Ђжњ‰ж јејЏпј‰+ .adb bundle е¤„зђ†
+в”њв”Ђв”Ђ test_profile.py                в†ђ ProfileStore CRUD
+в”њв”Ђв”Ђ test_proxy.py                  в†ђ Proxy config ж ЎйЄЊ
+в”њв”Ђв”Ђ test_storage.py                в†ђ SQLite engine + иїЃз§»
+в””в”Ђв”Ђ test_profile_import.py         в†ђ е®Њж•ґ profile .adb еЇје…ҐжµЃзЁ‹пј€ж–°еўћпј‰
 ```
 
 ---
 
-## 5. 数据模型与存储 schema
+## 5. ж•°жЌ®жЁЎећ‹дёЋе­е‚Ё schema
 
-数据库：`data/antique.db`（SQLite，单文件）。
+ж•°жЌ®еє“пјљ`data/antique.db`пј€SQLiteпјЊеЌ•ж–‡д»¶пј‰гЂ‚
 
-### 表结构
+### иЎЁз»“жћ„
 
 ```sql
 -- Profiles: one row per browser profile
@@ -273,55 +274,55 @@ CREATE TABLE groups (
 );
 ```
 
-### 为什么要用 JSON 编码列？
+### дёєд»Ђд№€и¦Ѓз”Ё JSON зј–з Ѓе€—пјџ
 
-Proxy、fingerprint 和 cookies 都是异构的 dict/list，包含大量可选字段。JSON 编码的 TEXT 列避免了「稀疏表 + 大量列」的问题，也让迁移变得简单。代价是：无法在 SQL 层面查询 fingerprint 字段，但我们并不需要这种查询。
+ProxyгЂЃfingerprint е’Њ cookies йѓЅжЇеј‚жћ„зљ„ dict/listпјЊеЊ…еђ«е¤§й‡ЏеЏЇйЂ‰е­—ж®µгЂ‚JSON зј–з Ѓзљ„ TEXT е€—йЃїе…Ќдє†гЂЊзЁЂз–ЏиЎЁ + е¤§й‡Џе€—гЂЌзљ„й—®йўпјЊд№џи®©иїЃз§»еЏеѕ—з®ЂеЌ•гЂ‚д»Јд»·жЇпјљж— жі•ењЁ SQL е±‚йќўжџҐиЇў fingerprint е­—ж®µпјЊдЅ†ж€‘д»¬е№¶дёЌйњЂи¦Ѓиї™з§ЌжџҐиЇўгЂ‚
 
 ### Profile dataclass vs ProfileRecord
 
-- `Profile`（在 `src/core/profile.py`）—— 公开的 dataclass。与存储解耦，避免 API 泄漏 SQLModel 细节。
-- `ProfileRecord`（在 `src/core/storage.py`）—— 持久化的行。`_record_to_profile()` 由 `ProfileRecord` 构建 `Profile`。
+- `Profile`пј€ењЁ `src/core/profile.py`пј‰вЂ”вЂ” е…¬ејЂзљ„ dataclassгЂ‚дёЋе­е‚Ёи§ЈиЂ¦пјЊйЃїе…Ќ API жі„жјЏ SQLModel з»†иЉ‚гЂ‚
+- `ProfileRecord`пј€ењЁ `src/core/storage.py`пј‰вЂ”вЂ” жЊЃд№…еЊ–зљ„иЎЊгЂ‚`_record_to_profile()` з”± `ProfileRecord` жћ„е»є `Profile`гЂ‚
 
 ---
 
-## 6. Profile 生命周期
+## 6. Profile з”џе‘Ѕе‘Ёжњџ
 
 ```
-           ┌──────────┐
-           │ created  │  ← POST /user/create, cli create, import-cookies
-           └────┬─────┘
-                │
-                ▼
-           ┌──────────┐
-           │ idle     │  ← profile 已存在，但浏览器未启动
-           └────┬─────┘
-                │  POST /user/start  or  cli start
-                ▼
-           ┌──────────┐
-           │ running  │  ← Playwright persistent context 处于活跃状态
-           └────┬─────┘
-                │  POST /user/stop  or  cli stop
-                ▼
-           ┌──────────┐
-           │ stopped  │  ← context 已关闭，SessionRecord.status = 'stopped'
-           └────┬─────┘
+           в”Њв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”ђ
+           в”‚ created  в”‚  в†ђ POST /user/create, cli create, import-cookies
+           в””в”Ђв”Ђв”Ђв”Ђв”¬в”Ђв”Ђв”Ђв”Ђв”Ђв”
+                в”‚
+                в–ј
+           в”Њв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”ђ
+           в”‚ idle     в”‚  в†ђ profile е·Іе­ењЁпјЊдЅ†жµЏи§€е™ЁжњЄеђЇеЉЁ
+           в””в”Ђв”Ђв”Ђв”Ђв”¬в”Ђв”Ђв”Ђв”Ђв”Ђв”
+                в”‚  POST /user/start  or  cli start
+                в–ј
+           в”Њв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”ђ
+           в”‚ running  в”‚  в†ђ Playwright persistent context е¤„дєЋжґ»и·ѓзЉ¶жЂЃ
+           в””в”Ђв”Ђв”Ђв”Ђв”¬в”Ђв”Ђв”Ђв”Ђв”Ђв”
+                в”‚  POST /user/stop  or  cli stop
+                в–ј
+           в”Њв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”ђ
+           в”‚ stopped  в”‚  в†ђ context е·Іе…ій—­пјЊSessionRecord.status = 'stopped'
+           в””в”Ђв”Ђв”Ђв”Ђв”¬в”Ђв”Ђв”Ђв”Ђв”Ђв”
 
- (any state) ──► deleted   ← POST /user/delete, cli delete（级联删除 sessions）
+ (any state) в”Ђв”Ђв–є deleted   в†ђ POST /user/delete, cli deleteпј€зє§иЃ”е€ й™¤ sessionsпј‰
 ```
 
-### 完整 profile 导入生命周期（额外）
+### е®Њж•ґ profile еЇје…Ґз”џе‘Ѕе‘Ёжњџпј€йўќе¤–пј‰
 
 ```
- created → import_source_path 已设置 → (首次启动) → 拷贝 LocalStorage/IDB
-                                                     → initial_state_applied = True
-                                                     → (后续启动跳过拷贝)
+ created в†’ import_source_path е·Іи®ѕзЅ® в†’ (й¦–ж¬ЎеђЇеЉЁ) в†’ ж‹·иґќ LocalStorage/IDB
+                                                     в†’ initial_state_applied = True
+                                                     в†’ (еђЋз»­еђЇеЉЁи·іиї‡ж‹·иґќ)
 ```
 
-`initial_state_applied` 标志确保我们只拷贝源 bundle 的 `Local Storage/leveldb/` 和 `IndexedDB/` 一次。重新导入需要使用 `cli reimport <user_id>` 或 `POST /user/{id}/reimport`，它们会重置该标志。
+`initial_state_applied` ж ‡еї—зЎ®дїќж€‘д»¬еЏЄж‹·иґќжєђ bundle зљ„ `Local Storage/leveldb/` е’Њ `IndexedDB/` дёЂж¬ЎгЂ‚й‡Ќж–°еЇје…ҐйњЂи¦ЃдЅїз”Ё `cli reimport <user_id>` ж€– `POST /user/{id}/reimport`пјЊе®ѓд»¬дјљй‡ЌзЅ®иЇҐж ‡еї—гЂ‚
 
 ---
 
-## 7. CLI 参考
+## 7. CLI еЏ‚иЂѓ
 
 ```text
 python -m src.cli serve [--ui-port 8080] [--cdp-port 5555] [--host 127.0.0.1] [--headless]
@@ -340,45 +341,45 @@ python -m src.cli export-profile USER_ID [--out FILE.antq]
 python -m src.cli import-profile FILE.antq [--name NAME] [--user-id ID]
 python -m src.cli warm USER_ID [--url URL ...] [--urls FILE] [--dwell-min MS] [--dwell-max MS] [--scrolls N] [--headless]
 python -m src.cli run-flow USER_ID FLOW.json [--stop-on-error] [--headless]
-python -m src.cli engines                                        # 列出支持的浏览器引擎及其防关联等级
-python -m src.cli create ... [--engine chromium|chrome|edge|firefox|camoufox|webkit] # 创建指定引擎的 profile
-python -m src.cli import-backup PATH [--overwrite] [--limit N]   # 导入 AdsPower 备份目录
-python -m src.cli clone USER_ID [--name NAME] [--user-id NEW_ID] # 克隆 profile (复制指纹、代理、Cookie 及标签)
-python -m src.cli bulk-status USER_ID [USER_ID ...] STATUS      # 批量修改账号状态
-python -m src.cli list ... [--sort name|launches|...] [--order asc|desc] # 支持 13 种字段排序和升降序选择
+python -m src.cli engines                                        # е€—е‡єж”ЇжЊЃзљ„жµЏи§€е™Ёеј•ж“ЋеЏЉе…¶йІе…іиЃ”з­‰зє§
+python -m src.cli create ... [--engine chromium|chrome|edge|firefox|camoufox|webkit] # е€›е»єжЊ‡е®љеј•ж“Ћзљ„ profile
+python -m src.cli import-backup PATH [--overwrite] [--limit N]   # еЇје…Ґ AdsPower е¤‡д»Ѕз›®еЅ•
+python -m src.cli clone USER_ID [--name NAME] [--user-id NEW_ID] # е…‹йљ† profile (е¤Ќе€¶жЊ‡зє№гЂЃд»Јзђ†гЂЃCookie еЏЉж ‡з­ѕ)
+python -m src.cli bulk-status USER_ID [USER_ID ...] STATUS      # ж‰№й‡Џдї®ж”№иґ¦еЏ·зЉ¶жЂЃ
+python -m src.cli list ... [--sort name|launches|...] [--order asc|desc] # ж”ЇжЊЃ 13 з§Ќе­—ж®µжЋ’еєЏе’ЊеЌ‡й™ЌеєЏйЂ‰ж‹©
 python -m src.cli fingerprint [--seed SEED] [--os windows|macos|linux]
-python -m src.cli preview-backup PATH                                # 预览 AdsPower 备份目录而不实际导入
-python -m src.cli template-create TEMPLATE.json [--count N] [--seed S] # 使用 JSON 模板批量创建 profile
-python -m src.cli snapshot-export PATH                               # 导出 AES-GCM 加密的 profile 备份快照
-python -m src.cli snapshot-import PATH [--overwrite]                 # 从加密快照中恢复 profile 备份
-python -m src.cli activity [--user USER_ID] [--limit N]              # 查看操作审计历史日志
-python -m src.cli backup-schedule DESTINATION [--interval-minutes MIN] # 注册本地加密备份计划流程
-python -m src.cli backup-schedules                                   # 列出所有注册的备份计划
+python -m src.cli preview-backup PATH                                # йў„и§€ AdsPower е¤‡д»Ѕз›®еЅ•иЂЊдёЌе®ћй™…еЇје…Ґ
+python -m src.cli template-create TEMPLATE.json [--count N] [--seed S] # дЅїз”Ё JSON жЁЎжќїж‰№й‡Џе€›е»є profile
+python -m src.cli snapshot-export PATH                               # еЇје‡є AES-GCM еЉ еЇ†зљ„ profile е¤‡д»Ѕеї«з…§
+python -m src.cli snapshot-import PATH [--overwrite]                 # д»ЋеЉ еЇ†еї«з…§дё­жЃўе¤Ќ profile е¤‡д»Ѕ
+python -m src.cli activity [--user USER_ID] [--limit N]              # жџҐзњ‹ж“ЌдЅње®Ўи®ЎеЋ†еЏІж—Ґеї—
+python -m src.cli backup-schedule DESTINATION [--interval-minutes MIN] # жіЁе†Њжњ¬ењ°еЉ еЇ†е¤‡д»Ѕи®Ўе€’жµЃзЁ‹
+python -m src.cli backup-schedules                                   # е€—е‡єж‰Ђжњ‰жіЁе†Њзљ„е¤‡д»Ѕи®Ўе€’
 ```
 
-### 退出码
+### йЂЂе‡єз Ѓ
 
-- `0` —— 成功
-- `1` —— 用户错误（参数缺失、未找到 profile、格式无效）
-- 非零 —— typer 因 shell 错误返回
+- `0` вЂ”вЂ” ж€ђеЉџ
+- `1` вЂ”вЂ” з”Ёж€·й”™иЇЇпј€еЏ‚ж•°зјєе¤±гЂЃжњЄж‰ѕе€° profileгЂЃж јејЏж— ж•€пј‰
+- йќћй›¶ вЂ”вЂ” typer е›  shell й”™иЇЇиї”е›ћ
 
-### 环境变量
+### зЋЇеўѓеЏй‡Џ
 
-参见 [环境变量](#16-环境变量)。
+еЏ‚и§Ѓ [зЋЇеўѓеЏй‡Џ](#16-зЋЇеўѓеЏй‡Џ)гЂ‚
 
 ---
 
-## 8. REST API 参考
+## 8. REST API еЏ‚иЂѓ
 
-Base URL：`http://127.0.0.1:<ui-port>`（同一端口同时提供 UI 和 API；AdsPower 在 50325 上独立提供）。
+Base URLпјљ`http://127.0.0.1:<ui-port>`пј€еђЊдёЂз«ЇеЏЈеђЊж—¶жЏђдѕ› UI е’Њ APIпј›AdsPower ењЁ 50325 дёЉз‹¬з«‹жЏђдѕ›пј‰гЂ‚
 
-所有 response 均使用 AdsPower 格式：`{"code": 0, "msg": "success", "data": {...}}`。
+ж‰Ђжњ‰ response еќ‡дЅїз”Ё AdsPower ж јејЏпјљ`{"code": 0, "msg": "success", "data": {...}}`гЂ‚
 
 ### Health
 
 ```http
 GET /health
-→ {"status": "ok", "service": "antique", "version": "0.1.0"}
+в†’ {"status": "ok", "service": "antique", "version": "0.1.0"}
 ```
 
 ### Profiles
@@ -395,39 +396,39 @@ Body: {
   "tags": ["string"] (optional),
   "user_id": "string" (optional, generated if omitted)
 }
-→ {code:0, msg:"success", data:{id, user_id, name}}
+в†’ {code:0, msg:"success", data:{id, user_id, name}}
 
 POST /user/update
 Body: {user_id, name?, group_id?, user_proxy_config?, fingerprint_config?,
        cookies?, remark?, tags?}
-→ {code:0, msg:"success", data:{id, user_id, name}}
+в†’ {code:0, msg:"success", data:{id, user_id, name}}
 
 GET /user/list?group_id=&page=1&page_size=100&search=&tag=
-→ {code:0, msg:"success", data:{list:[Profile...], total, page, page_size}}
+в†’ {code:0, msg:"success", data:{list:[Profile...], total, page, page_size}}
 
 POST /user/delete
 Body: {user_id}
-→ {code:0, msg:"success", data:{user_id, deleted:true}}
+в†’ {code:0, msg:"success", data:{user_id, deleted:true}}
 
 POST /user/start
 Body: {user_id, debug_port? (optional), launch_args? (optional, unused)}
-→ {code:0, msg:"success", data:{user_id, debug_port, ws_endpoint, pid, session_id}}
+в†’ {code:0, msg:"success", data:{user_id, debug_port, ws_endpoint, pid, session_id}}
 
 POST /user/stop
 Body: {user_id}
-→ {code:0, msg:"success", data:{user_id, stopped:true|false}}
+в†’ {code:0, msg:"success", data:{user_id, stopped:true|false}}
 
 GET /user/active
-→ {code:0, msg:"success", data:{list:[{user_id, session_id, debug_port,
+в†’ {code:0, msg:"success", data:{list:[{user_id, session_id, debug_port,
                                        ws_endpoint, pid}]}}
 
 POST /user/import
 Body: {name, source_path}   OR   multipart file=@bundle.adb
-→ creates a profile from an AdsPower bundle (cookies-only by default,
+в†’ creates a profile from an AdsPower bundle (cookies-only by default,
   set Content-Type with multipart to use the full extraction path)
 
 POST /user/{user_id}/reimport
-→ resets initial_state_applied so the next launch re-copies LocalStorage/IDB
+в†’ resets initial_state_applied so the next launch re-copies LocalStorage/IDB
   from the saved bundle path
 ```
 
@@ -435,104 +436,104 @@ POST /user/{user_id}/reimport
 
 ```http
 GET  /geo/countries
-→ {code:0, data:{countries:["US","DE",...]}}
+в†’ {code:0, data:{countries:["US","DE",...]}}
 
-POST /user/{user_id}/geo/match      Body: {country?: "DE"}   # 若为空，则从该 profile 绑定的代理国家自动推导
-→ 对齐时区/语言/地理位置；持久化并写入 fingerprint
+POST /user/{user_id}/geo/match      Body: {country?: "DE"}   # и‹Ґдёєз©єпјЊе€™д»ЋиЇҐ profile з»‘е®љзљ„д»Јзђ†е›Ѕе®¶и‡ЄеЉЁжЋЁеЇј
+в†’ еЇ№йЅђж—¶еЊє/иЇ­иЁЂ/ењ°зђ†дЅЌзЅ®пј›жЊЃд№…еЊ–е№¶е†™е…Ґ fingerprint
 
 POST /proxy/pool/next               Body: {proxy_list, strategy?: sticky|round_robin|random, user_id?}
-→ {code:0, data:{proxy:{...}, assigned, server}}   # 选择性绑定代理给指定的 user_id
+в†’ {code:0, data:{proxy:{...}, assigned, server}}   # йЂ‰ж‹©жЂ§з»‘е®љд»Јзђ†з»™жЊ‡е®љзљ„ user_id
 
 POST /user/{user_id}/export/portable
-→ {code:0, data:{bundle:{...}}}   # .antq 打包数据 (fingerprint+proxy+cookies+tags)
+в†’ {code:0, data:{bundle:{...}}}   # .antq ж‰“еЊ…ж•°жЌ® (fingerprint+proxy+cookies+tags)
 
 POST /user/import/portable          Body: {bundle:{...}, name?, user_id?}
-→ {code:0, data:{user_id, name, cookie_count}}
+в†’ {code:0, data:{user_id, name, cookie_count}}
 
 POST /detect/score                  Body: {signals:{...}, expected?:{...}}
-→ {code:0, data:{score, grade, ok, checks, failures}}   # 纯指纹检测评分，无需运行浏览器
+в†’ {code:0, data:{score, grade, ok, checks, failures}}   # зєЇжЊ‡зє№жЈЂжµ‹иЇ„е€†пјЊж— йњЂиїђиЎЊжµЏи§€е™Ё
 
 GET  /engine/list
-→ {code:0, data:{list:[{key,label,base,stealth,channel,needs_install,supports_extensions,supports_cdp}]}}
+в†’ {code:0, data:{list:[{key,label,base,stealth,channel,needs_install,supports_extensions,supports_cdp}]}}
 
 POST /user/import/backup            Body: {source_path, overwrite?, limit?}
-→ {code:0, data:{imported_count, updated_count, skipped_count, error_count, ...}}
+в†’ {code:0, data:{imported_count, updated_count, skipped_count, error_count, ...}}
 
 POST /user/import/backup/preview    Body: {source_path}
-→ {code:0, data:{profiles:[...], total_count, groups:[...], tags:[...]}} # 预览 AdsPower 备份
+в†’ {code:0, data:{profiles:[...], total_count, groups:[...], tags:[...]}} # йў„и§€ AdsPower е¤‡д»Ѕ
 
 POST /user/template/create          Body: {template, count, seed?}
-→ {code:0, data:{created_count, user_ids:[...]}}  # 模板批量创建
+в†’ {code:0, data:{created_count, user_ids:[...]}}  # жЁЎжќїж‰№й‡Џе€›е»є
 
 POST /user/snapshot/export          Body: {path, password, overwrite?}
-→ {code:0, data:{path}}                           # 导出加密快照 (AES-GCM)
+в†’ {code:0, data:{path}}                           # еЇје‡єеЉ еЇ†еї«з…§ (AES-GCM)
 
 POST /user/snapshot/import          Body: {path, password, overwrite?}
-→ {code:0, data:{imported_count, updated_count, skipped_count}} # 导入加密快照
+в†’ {code:0, data:{imported_count, updated_count, skipped_count}} # еЇје…ҐеЉ еЇ†еї«з…§
 
-GET  /activity?user_id=...&action=...&limit=...  → 获取操作审计日志列表 (支持用户与动作过滤)
+GET  /activity?user_id=...&action=...&limit=...  в†’ иЋ·еЏ–ж“ЌдЅње®Ўи®Ўж—Ґеї—е€—иЎЁ (ж”ЇжЊЃз”Ёж€·дёЋеЉЁдЅњиї‡ж»¤)
 
 POST /activity/export               Body: {path, user_id?, action?}
-→ {code:0, data:{path, count}}      # 将操作审计日志导出为 JSON 文件
+в†’ {code:0, data:{path, count}}      # е°†ж“ЌдЅње®Ўи®Ўж—Ґеї—еЇје‡єдёє JSON ж–‡д»¶
 
-GET  /resource/status                → 获取系统资源占用状态 (PID、活动进程数)
+GET  /resource/status                в†’ иЋ·еЏ–зі»з»џиµ„жєђеЌ з”ЁзЉ¶жЂЃ (PIDгЂЃжґ»еЉЁиї›зЁ‹ж•°)
 
-GET  /mcp/status                     → 获取 MCP 服务端运行状态及支持的工具列表
+GET  /mcp/status                     в†’ иЋ·еЏ– MCP жњЌеЉЎз«ЇиїђиЎЊзЉ¶жЂЃеЏЉж”ЇжЊЃзљ„е·Ґе…·е€—иЎЁ
 
-GET  /proxy/providers/kinds          → 获取支持的本地代理源类型列表 (file, json, http-json)
+GET  /proxy/providers/kinds          в†’ иЋ·еЏ–ж”ЇжЊЃзљ„жњ¬ењ°д»Јзђ†жєђз±»ећ‹е€—иЎЁ (file, json, http-json)
 
 POST /proxy/providers/test          Body: {name, kind, source, enabled?}
-→ {code:0, data:{provider, count, proxies:[...]}} # 测试加载本地代理源数据
+в†’ {code:0, data:{provider, count, proxies:[...]}} # жµ‹иЇ•еЉ иЅЅжњ¬ењ°д»Јзђ†жєђж•°жЌ®
 
 POST /backup/schedules              Body: {destination, interval_minutes}
-→ {code:0, data:{schedule:{schedule_id, destination, interval_minutes, enabled, next_run_at, last_run_at}}} # 增加备份计划
+в†’ {code:0, data:{schedule:{schedule_id, destination, interval_minutes, enabled, next_run_at, last_run_at}}} # еўћеЉ е¤‡д»Ѕи®Ўе€’
 
-GET  /backup/schedules              → 获取已注册备份计划列表
+GET  /backup/schedules              в†’ иЋ·еЏ–е·ІжіЁе†Ње¤‡д»Ѕи®Ўе€’е€—иЎЁ
 
 POST /backup/schedules/run          Body: {schedule_id, password}
-→ {code:0, data:{schedule:{...}}}   # 手动触发指定快照备份任务
+в†’ {code:0, data:{schedule:{...}}}   # ж‰‹еЉЁи§¦еЏ‘жЊ‡е®љеї«з…§е¤‡д»Ѕд»»еЉЎ
 
 POST /group/create                  Body: {group_id, name, sort_order?, parent_id?}
-→ {code:0, data:{group_id, name}}                 # 创建分组 (支持 parent_id 实现嵌套分组)
+в†’ {code:0, data:{group_id, name}}                 # е€›е»єе€†з»„ (ж”ЇжЊЃ parent_id е®ћзЋ°еµЊеҐ—е€†з»„)
 
 POST /group/update                  Body: {group_id, name, sort_order?, parent_id?}
-→ {code:0, data:{group_id, name}}                 # 更新分组
+в†’ {code:0, data:{group_id, name}}                 # ж›ґж–°е€†з»„
 
 POST /group/delete                  Body: {group_id} (embed=True)
-→ {code:0, data:{group_id, deleted:true}}         # 删除分组
+в†’ {code:0, data:{group_id, deleted:true}}         # е€ й™¤е€†з»„
 
-GET  /extension/list                → 获取已安装的全局扩展程序列表
+GET  /extension/list                в†’ иЋ·еЏ–е·Іе®‰иЈ…зљ„е…Ёе±Ђж‰©е±•зЁ‹еєЏе€—иЎЁ
 
 POST /extension/install             Body: {source}
-→ {code:0, data:{ext_id, name, version}} # 通过本地目录、.crx 文件或 Chrome Web Store ID 安装扩展程序
+в†’ {code:0, data:{ext_id, name, version}} # йЂљиї‡жњ¬ењ°з›®еЅ•гЂЃ.crx ж–‡д»¶ж€– Chrome Web Store ID е®‰иЈ…ж‰©е±•зЁ‹еєЏ
 
 POST /extension/uninstall           Body: {ext_id} (embed=True)
-→ {code:0, data:{ext_id, uninstalled:true}} # 卸载扩展程序
+в†’ {code:0, data:{ext_id, uninstalled:true}} # еЌёиЅЅж‰©е±•зЁ‹еєЏ
 
-POST /user/{user_id}/extensions     Body: List[str] (扩展程序 ID 列表)
-→ {code:0, data:{user_id, extensions:[...]}} # 为 profile 分配扩展程序
+POST /user/{user_id}/extensions     Body: List[str] (ж‰©е±•зЁ‹еєЏ ID е€—иЎЁ)
+в†’ {code:0, data:{user_id, extensions:[...]}} # дёє profile е€†й…Ќж‰©е±•зЁ‹еєЏ
 
-GET  /user/{user_id}/extensions     → 获取分配给该 profile 的扩展程序 ID 列表
+GET  /user/{user_id}/extensions     в†’ иЋ·еЏ–е€†й…Ќз»™иЇҐ profile зљ„ж‰©е±•зЁ‹еєЏ ID е€—иЎЁ
 
 POST /user/clone                    Body: {user_id, name?, user_id_override?}
-→ {code:0, data:{user_id, name, source_user_id}}
+в†’ {code:0, data:{user_id, name, source_user_id}}
 
 POST /user/bulk/status              Body: {user_ids:[...], account_status}
-→ {code:0, data:{results:[{user_id, ok, error?}], updated_count}}
+в†’ {code:0, data:{results:[{user_id, ok, error?}], updated_count}}
 
 POST /user/bulk/fingerprint/randomize
 Body: {user_ids:[...], os_family?, shared_fields?:["screen","gpu",...], preserve_fields?:["engine",...], seed?}
-→ {code:0, data:{updated_count, user_ids:[...]}}
+в†’ {code:0, data:{updated_count, user_ids:[...]}}
 
-GET  /status/list                   → 预设账号状态列表
+GET  /status/list                   в†’ йў„и®ѕиґ¦еЏ·зЉ¶жЂЃе€—иЎЁ
 POST /user/{user_id}/status         Body: {account_status}
-POST /user/{user_id}/screenshot     → {code:0, data:{base64_png}}   # Live View 截图 (需处于运行状态)
-GET  /user/{user_id}/cdp            → {code:0, data:{webSocketDebuggerUrl, debug_port, ...}}  # 真实的 CDP
+POST /user/{user_id}/screenshot     в†’ {code:0, data:{base64_png}}   # Live View ж€Єе›ѕ (йњЂе¤„дєЋиїђиЎЊзЉ¶жЂЃ)
+GET  /user/{user_id}/cdp            в†’ {code:0, data:{webSocketDebuggerUrl, debug_port, ...}}  # зњџе®ћзљ„ CDP
 POST /sync/run                      Body: {user_ids:[...], flow:[...], stop_on_error?, max_concurrency?}
-→ {code:0, data:{ok, succeeded, total, results:[{user_id, ok, completed, total, error}]}}
+в†’ {code:0, data:{ok, succeeded, total, results:[{user_id, ok, completed, total, error}]}}
 ```
 
-### `/user/list` 返回的 profile 形状
+### `/user/list` иї”е›ћзљ„ profile еЅўзЉ¶
 
 ```json
 {
@@ -558,33 +559,33 @@ POST /sync/run                      Body: {user_ids:[...], flow:[...], stop_on_e
 
 ```http
 GET /json/version
-→ {Browser, Protocol-Version, User-Agent, webSocketDebuggerUrl, ...}
+в†’ {Browser, Protocol-Version, User-Agent, webSocketDebuggerUrl, ...}
 
 GET /json/list?user_id=<id>
-→ [{id, type:"page", title, url, webSocketDebuggerUrl, description}, ...]
+в†’ [{id, type:"page", title, url, webSocketDebuggerUrl, description}, ...]
 
 WS /devtools/page/{user_id}/{target_id}
-→ Chromium DevTools Protocol websocket
+в†’ Chromium DevTools Protocol websocket
 ```
 
 ---
 
-## 9. Cookie 导入 / 导出格式
+## 9. Cookie еЇје…Ґ / еЇје‡єж јејЏ
 
-### 支持的导入格式
+### ж”ЇжЊЃзљ„еЇје…Ґж јејЏ
 
-| 格式 | 检测方式 | 说明 |
+| ж јејЏ | жЈЂжµ‹ж–№ејЏ | иЇґжЋ |
 |---|---|---|
-| Netscape `cookies.txt` | `.txt` 后缀 | curl/wget 格式；使用 tab 或空格 |
-| Playwright/CDP JSON | `.json` 后缀 | `{name, value, domain, ...}` dict 的列表 |
-| AdsPower `.adb` | `.adb` / `.zip` / `.tar` / `.tgz` / 文件夹 | cookies + LocalStorage + IndexedDB |
+| Netscape `cookies.txt` | `.txt` еђЋзјЂ | curl/wget ж јејЏпј›дЅїз”Ё tab ж€–з©єж ј |
+| Playwright/CDP JSON | `.json` еђЋзјЂ | `{name, value, domain, ...}` dict зљ„е€—иЎЁ |
+| AdsPower `.adb` | `.adb` / `.zip` / `.tar` / `.tgz` / ж–‡д»¶е¤№ | cookies + LocalStorage + IndexedDB |
 
-### 支持的导出格式
+### ж”ЇжЊЃзљ„еЇје‡єж јејЏ
 
-- `json`（默认）—— Playwright/Chrome DevTools 格式
-- `netscape` —— 通用 curl 兼容的 `cookies.txt`
+- `json`пј€й»и®¤пј‰вЂ”вЂ” Playwright/Chrome DevTools ж јејЏ
+- `netscape` вЂ”вЂ” йЂљз”Ё curl е…је®№зљ„ `cookies.txt`
 
-### `import_cookies(path)` 中的自动检测
+### `import_cookies(path)` дё­зљ„и‡ЄеЉЁжЈЂжµ‹
 
 ```python
 def import_cookies(path):
@@ -596,114 +597,114 @@ def import_cookies(path):
     return import_cookies_netscape(p.read_text())
 ```
 
-### 解析 AdsPower `.adb`
+### и§Јжћђ AdsPower `.adb`
 
-`.adb` 是一个 Chrome user-profile bundle（文件夹、`.zip` 或 `.tar.gz`）。Chromium cookies 表位于 `<profile>/Default/Cookies`（SQLite）。
+`.adb` жЇдёЂдёЄ Chrome user-profile bundleпј€ж–‡д»¶е¤№гЂЃ`.zip` ж€– `.tar.gz`пј‰гЂ‚Chromium cookies иЎЁдЅЌдєЋ `<profile>/Default/Cookies`пј€SQLiteпј‰гЂ‚
 
-Parser 流程：
+Parser жµЃзЁ‹пјљ
 
-1. 将归档解压到临时目录（如需要）。
-2. 遍历查找 `*/Cookies` 文件；优先选择 `Default/Cookies`，回退到 `Profile 1/2/3/Cookies`。
-3. 以 RO 模式打开 SQLite DB（`file:...?mode=ro`）；若被锁定则回退到一份私有临时拷贝。
-4. 读取 cookies 表。处理 schema 差异（旧版 Chrome 缺少 `samesite` 和 `is_persistent` 列）。
-5. 将 Chrome 的 `expires_utc`（Windows FILETIME，自 1601-01-01 起的微秒数）转换为 Unix epoch 秒。
+1. е°†еЅ’жЎЈи§ЈеЋ‹е€°дёґж—¶з›®еЅ•пј€е¦‚йњЂи¦Ѓпј‰гЂ‚
+2. йЃЌеЋ†жџҐж‰ѕ `*/Cookies` ж–‡д»¶пј›дје…€йЂ‰ж‹© `Default/Cookies`пјЊе›ћйЂЂе€° `Profile 1/2/3/Cookies`гЂ‚
+3. д»Ґ RO жЁЎејЏж‰“ејЂ SQLite DBпј€`file:...?mode=ro`пј‰пј›и‹Ґиў«й”Ѓе®ље€™е›ћйЂЂе€°дёЂд»Ѕз§Ѓжњ‰дёґж—¶ж‹·иґќгЂ‚
+4. иЇ»еЏ– cookies иЎЁгЂ‚е¤„зђ† schema е·®еј‚пј€ж—§з‰€ Chrome зјєе°‘ `samesite` е’Њ `is_persistent` е€—пј‰гЂ‚
+5. е°† Chrome зљ„ `expires_utc`пј€Windows FILETIMEпјЊи‡Є 1601-01-01 иµ·зљ„еѕ®з§’ж•°пј‰иЅ¬жЌўдёє Unix epoch з§’гЂ‚
 
 ---
 
-## 10. Fingerprint 系统
+## 10. Fingerprint зі»з»џ
 
-`Fingerprint` 是一组内部一致的、浏览器可见属性：
+`Fingerprint` жЇдёЂз»„е†…йѓЁдёЂи‡ґзљ„гЂЃжµЏи§€е™ЁеЏЇи§Ѓе±ћжЂ§пјљ
 
-- **Identity**：User-Agent、navigator.platform/vendor/oscpu、webdriver flag
-- **Screen**：width/height/colorDepth/pixelRatio + window.innerWidth/Height
-- **Locale / timezone**：navigator.languages、Intl timezone
-- **WebGL**：vendor + renderer 字符串（通过 `WEBGL_debug_renderer_info`）
-- **WebGPU**：adapter vendor/architecture/description（通过 `navigator.gpu.requestAdapter().requestAdapterInfo()`），与 WebGL GPU 一致；使用软件渲染的 profile 会禁用 `navigator.gpu`
-- **Fonts**：每个 OS 独立的文件字体白名单，通过 `document.fonts.check` 强制执行
-- **Audio**：用于 AudioContext jitter 的确定性 noise seed
-- **Canvas**：用于 `toDataURL`/`toBlob` 像素抖动 的确定性 noise seed
-- **WebRTC**：防止 IP 泄漏 —— `webrtc_mode`（`block` | `real` | `proxy`），仍兼容旧的 `block_webrtc_ip` 标志
-- **Plugins**：逼真的 Chrome plugin 列表（2-5 条）
-- **Connection**：type/downlink/rtt（Network Information API）
-- **Hardware**：hardwareConcurrency、deviceMemory
+- **Identity**пјљUser-AgentгЂЃnavigator.platform/vendor/oscpuгЂЃwebdriver flag
+- **Screen**пјљwidth/height/colorDepth/pixelRatio + window.innerWidth/Height
+- **Locale / timezone**пјљnavigator.languagesгЂЃIntl timezone
+- **WebGL**пјљvendor + renderer е­—з¬¦дёІпј€йЂљиї‡ `WEBGL_debug_renderer_info`пј‰
+- **WebGPU**пјљadapter vendor/architecture/descriptionпј€йЂљиї‡ `navigator.gpu.requestAdapter().requestAdapterInfo()`пј‰пјЊдёЋ WebGL GPU дёЂи‡ґпј›дЅїз”ЁиЅЇд»¶жёІжџ“зљ„ profile дјљз¦Ѓз”Ё `navigator.gpu`
+- **Fonts**пјљжЇЏдёЄ OS з‹¬з«‹зљ„ж–‡д»¶е­—дЅ“з™ЅеђЌеЌ•пјЊйЂљиї‡ `document.fonts.check` ејєе€¶ж‰§иЎЊ
+- **Audio**пјљз”ЁдєЋ AudioContext jitter зљ„зЎ®е®љжЂ§ noise seed
+- **Canvas**пјљз”ЁдєЋ `toDataURL`/`toBlob` еѓЏзґ жЉ–еЉЁ зљ„зЎ®е®љжЂ§ noise seed
+- **WebRTC**пјљйІж­ў IP жі„жјЏ вЂ”вЂ” `webrtc_mode`пј€`block` | `real` | `proxy`пј‰пјЊд»Ќе…је®№ж—§зљ„ `block_webrtc_ip` ж ‡еї—
+- **Plugins**пјљйЂјзњџзљ„ Chrome plugin е€—иЎЁпј€2-5 жќЎпј‰
+- **Connection**пјљtype/downlink/rttпј€Network Information APIпј‰
+- **Hardware**пјљhardwareConcurrencyгЂЃdeviceMemory
 
-### 生成
+### з”џж€ђ
 
 ```python
 from src.core.fingerprint import generate_fingerprint
 
-fp = generate_fingerprint()                                  # 随机
-fp = generate_fingerprint(seed="my-profile-1")               # 确定性
+fp = generate_fingerprint()                                  # йљЏжњє
+fp = generate_fingerprint(seed="my-profile-1")               # зЎ®е®љжЂ§
 fp = generate_fingerprint(os_family="macos")                 # macOS UA + screen
 ```
 
-一致性规则：
+дёЂи‡ґжЂ§и§„е€™пјљ
 
-- OS family ↔ UA ↔ platform ↔ vendor ↔ screen
-- Locale ↔ timezone 池（例如 `en-GB` → `Europe/London`）
-- WebGL vendor ↔ renderer（NVIDIA vendor 永远不会与 Apple GPU 配对）
-- UA 版本使用较新的 Chrome（118-132）
+- OS family в†” UA в†” platform в†” vendor в†” screen
+- Locale в†” timezone ж± пј€дѕ‹е¦‚ `en-GB` в†’ `Europe/London`пј‰
+- WebGL vendor в†” rendererпј€NVIDIA vendor ж°ёиїњдёЌдјљдёЋ Apple GPU й…ЌеЇ№пј‰
+- UA з‰€жњ¬дЅїз”Ёиѕѓж–°зљ„ Chromeпј€118-132пј‰
 
-### 注入
+### жіЁе…Ґ
 
-两层机制：
+дё¤е±‚жњєе€¶пјљ
 
-1. **Launch args**（`to_playwright_launch_options`）—— 处理 proxy、locale、UA、timezone、窗口大小、viewport、device scale factor。在 Chromium 启动时设置。
+1. **Launch args**пј€`to_playwright_launch_options`пј‰вЂ”вЂ” е¤„зђ† proxyгЂЃlocaleгЂЃUAгЂЃtimezoneгЂЃзЄ—еЏЈе¤§е°ЏгЂЃviewportгЂЃdevice scale factorгЂ‚ењЁ Chromium еђЇеЉЁж—¶и®ѕзЅ®гЂ‚
 
-2. **JS init script**（`build_init_script`）—— 在每个新文档上 patch `Navigator.prototype`、`HTMLCanvasElement.prototype`、`AudioContext.prototype`、`RTCPeerConnection.prototype` 等。Canvas/audio noise 使用 Mulberry32 算法，由 fingerprint 的 `audio_noise_seed` 和 `canvas_noise_seed` 播种，保证可复现。
+2. **JS init script**пј€`build_init_script`пј‰вЂ”вЂ” ењЁжЇЏдёЄж–°ж–‡жЎЈдёЉ patch `Navigator.prototype`гЂЃ`HTMLCanvasElement.prototype`гЂЃ`AudioContext.prototype`гЂЃ`RTCPeerConnection.prototype` з­‰гЂ‚Canvas/audio noise дЅїз”Ё Mulberry32 з®—жі•пјЊз”± fingerprint зљ„ `audio_noise_seed` е’Њ `canvas_noise_seed` ж’­з§ЌпјЊдїќиЇЃеЏЇе¤ЌзЋ°гЂ‚
 
-### 局限性
+### е±Ђй™ђжЂ§
 
-- WebGL 在 Chromium 上对未掩码字段是只读的 —— 我们 patch `getParameter` 和 `getExtension`，但如果页面以其他方式使用 `WEBGL_debug_renderer_info`，patch 可以被绕过。
-- Canvas noise 幅度较轻（每通道 ±2）—— 强 noise 会破坏某些站点的视觉渲染。如有需要可按 profile 增加 noise。
-- 字体通过 `document.fonts.check` 强制执行（通过尺寸测量的字体枚举将返回白名单）。目前尚未完全覆盖绕过 `document.fonts` 的深层 canvas 尺寸字体探测。
-- WebGPU 伪装仅 patch 了 `requestAdapterInfo()` / `adapter.info`，并不重写底层的 `GPUAdapter` 限制/特性。
-- 无头模式防关联（headless stealth）属于基础性规避：已 patch `window.chrome` 以及 permissions API，但深层的渲染时序（paint timing）以及特定于 GPU 硬件的无头特征可能会被标记。
-- WebRTC 支持三种模式（`webrtc_mode`）：`block`（默认 —— 完全抑制 ICE 候选收集，host 与 reflexive 候选都不会暴露）、`real`（不做改动）、`proxy`（将 host 候选重写为 `webrtc_public_ip`）。
+- WebGL ењЁ Chromium дёЉеЇ№жњЄжЋ©з Ѓе­—ж®µжЇеЏЄиЇ»зљ„ вЂ”вЂ” ж€‘д»¬ patch `getParameter` е’Њ `getExtension`пјЊдЅ†е¦‚жћњйЎµйќўд»Ґе…¶д»–ж–№ејЏдЅїз”Ё `WEBGL_debug_renderer_info`пјЊpatch еЏЇд»Ґиў«з»•иї‡гЂ‚
+- Canvas noise е№…еє¦иѕѓиЅ»пј€жЇЏйЂљйЃ“ В±2пј‰вЂ”вЂ” ејє noise дјљз ґеќЏжџђдє›з«™з‚№зљ„и§†и§‰жёІжџ“гЂ‚е¦‚жњ‰йњЂи¦ЃеЏЇжЊ‰ profile еўћеЉ  noiseгЂ‚
+- е­—дЅ“йЂљиї‡ `document.fonts.check` ејєе€¶ж‰§иЎЊпј€йЂљиї‡е°єеЇёжµ‹й‡Џзљ„е­—дЅ“жћљдёѕе°†иї”е›ћз™ЅеђЌеЌ•пј‰гЂ‚з›®е‰Ќе°љжњЄе®Ње…Ёи¦†з›–з»•иї‡ `document.fonts` зљ„ж·±е±‚ canvas е°єеЇёе­—дЅ“жЋўжµ‹гЂ‚
+- WebGPU дјЄиЈ…д»… patch дє† `requestAdapterInfo()` / `adapter.info`пјЊе№¶дёЌй‡Ќе†™еє•е±‚зљ„ `GPUAdapter` й™ђе€¶/з‰№жЂ§гЂ‚
+- ж— е¤ґжЁЎејЏйІе…іиЃ”пј€headless stealthпј‰е±ћдєЋеџєзЎЂжЂ§и§„йЃїпјље·І patch `window.chrome` д»ҐеЏЉ permissions APIпјЊдЅ†ж·±е±‚зљ„жёІжџ“ж—¶еєЏпј€paint timingпј‰д»ҐеЏЉз‰№е®љдєЋ GPU зЎ¬д»¶зљ„ж— е¤ґз‰№еѕЃеЏЇиѓЅдјљиў«ж ‡и®°гЂ‚
+- WebRTC ж”ЇжЊЃдё‰з§ЌжЁЎејЏпј€`webrtc_mode`пј‰пјљ`block`пј€й»и®¤ вЂ”вЂ” е®Ње…ЁжЉ‘е€¶ ICE еЂ™йЂ‰ж”¶й›†пјЊhost дёЋ reflexive еЂ™йЂ‰йѓЅдёЌдјљжљґйњІпј‰гЂЃ`real`пј€дёЌеЃљж”№еЉЁпј‰гЂЃ`proxy`пј€е°† host еЂ™йЂ‰й‡Ќе†™дёє `webrtc_public_ip`пј‰гЂ‚
 
 ---
 
-## 11. 完整 profile（.adb）导入流程
+## 11. е®Њж•ґ profileпј€.adbпј‰еЇје…ҐжµЃзЁ‹
 
-完整 profile 导入的流程如下：
+е®Њж•ґ profile еЇје…Ґзљ„жµЃзЁ‹е¦‚дё‹пјљ
 
 ```
 1. POST /user/import  (or  cli import-cookies --full PATH)
-   ↓
+   в†“
 2. profile created (user_id assigned)
-   ↓
+   в†“
 3. .adb bundle extracted to  data/profiles/imports/<user_id>/
-   ↓
+   в†“
 4. Cookies parsed from <user_id>/Default/Cookies, written to profile.cookies
-   ↓
-5. profile.import_source_path = "<user_id>"   ← 供 launcher 使用
-   ↓
+   в†“
+5. profile.import_source_path = "<user_id>"   в†ђ дѕ› launcher дЅїз”Ё
+   в†“
 6. (later) POST /user/start
-   ↓
+   в†“
 7. BrowserLauncher._maybe_apply_imported_state(profile, user_dir):
      - if import_source_path set AND initial_state_applied is False:
        - find_profile_default_dir(<user_id>)
-       - copytree Local Storage/leveldb  →  user_dir/Default/Local Storage/leveldb
-       - copytree IndexedDB              →  user_dir/Default/IndexedDB
+       - copytree Local Storage/leveldb  в†’  user_dir/Default/Local Storage/leveldb
+       - copytree IndexedDB              в†’  user_dir/Default/IndexedDB
        - mark_initial_state_applied(user_id)
-   ↓
+   в†“
 8. Chromium reads the directories natively and treats them as if it had
-   written them itself — no LevelDB parser, no Snappy codec, no version drift.
+   written them itself вЂ” no LevelDB parser, no Snappy codec, no version drift.
 ```
 
-### 为什么选择「拷贝」而不是「解析」？
+### дёєд»Ђд№€йЂ‰ж‹©гЂЊж‹·иґќгЂЌиЂЊдёЌжЇгЂЊи§ЈжћђгЂЌпјџ
 
-Chrome ≥ 61 将 `localStorage` 存储在 Snappy 压缩的 LevelDB 中。IndexedDB 使用 V8 structured-clone 值。重新实现解码器意味着：
+Chrome в‰Ґ 61 е°† `localStorage` е­е‚ЁењЁ Snappy еЋ‹зј©зљ„ LevelDB дё­гЂ‚IndexedDB дЅїз”Ё V8 structured-clone еЂјгЂ‚й‡Ќж–°е®ћзЋ°и§Јз Ѓе™Ёж„Џе‘ізќЂпјљ
 
-- 与版本耦合（Chrome 的编码在各版本间发生变化）。
-- 对 Windows 不友好（`plyvel` 需要原生 LevelDB + Snappy 构建）。
-- 脆弱（一个字节错位，整个 profile 就无法加载）。
+- дёЋз‰€жњ¬иЂ¦еђ€пј€Chrome зљ„зј–з ЃењЁеђ„з‰€жњ¬й—ґеЏ‘з”џеЏеЊ–пј‰гЂ‚
+- еЇ№ Windows дёЌеЏ‹еҐЅпј€`plyvel` йњЂи¦ЃеЋџз”џ LevelDB + Snappy жћ„е»єпј‰гЂ‚
+- и„†еј±пј€дёЂдёЄе­—иЉ‚й”™дЅЌпјЊж•ґдёЄ profile е°±ж— жі•еЉ иЅЅпј‰гЂ‚
 
-原样拷贝这些目录是一种「笨拙但可靠」的方案，对 Playwright 附带的所有 Chromium 版本都有效。
+еЋџж ·ж‹·иґќиї™дє›з›®еЅ•жЇдёЂз§ЌгЂЊз¬Ёж‹™дЅ†еЏЇйќ гЂЌзљ„ж–№жЎ€пјЊеЇ№ Playwright й™„её¦зљ„ж‰Ђжњ‰ Chromium з‰€жњ¬йѓЅжњ‰ж•€гЂ‚
 
-### 重新导入
+### й‡Ќж–°еЇје…Ґ
 
-在 `.adb` 重新导出之后：
+ењЁ `.adb` й‡Ќж–°еЇје‡єд№‹еђЋпјљ
 
 ```bash
 python -m src.cli reimport <user_id>
@@ -711,25 +712,25 @@ python -m src.cli reimport <user_id>
 curl -X POST http://127.0.0.1:8080/user/<user_id>/reimport
 ```
 
-这会将 `initial_state_applied` 重置为 `False`。下次启动时会擦除现有的 `Local Storage/leveldb/` 和 `IndexedDB/`（因为在 `apply_initial_state_to_user_data` 内部再次应用时设置了 `force=True`），然后从 bundle 重新拷贝。
+иї™дјље°† `initial_state_applied` й‡ЌзЅ®дёє `False`гЂ‚дё‹ж¬ЎеђЇеЉЁж—¶дјљж“¦й™¤зЋ°жњ‰зљ„ `Local Storage/leveldb/` е’Њ `IndexedDB/`пј€е› дёєењЁ `apply_initial_state_to_user_data` е†…йѓЁе†Ќж¬Ўеє”з”Ёж—¶и®ѕзЅ®дє† `force=True`пј‰пјЊз„¶еђЋд»Ћ bundle й‡Ќж–°ж‹·иґќгЂ‚
 
-### Force 标志
+### Force ж ‡еї—
 
-`apply_initial_state_to_user_data(..., force=True)` 会覆盖现有目录。Launcher 在首次应用时使用 `force=False`（避免意外覆盖刚刚拷贝的状态），而 reimport 流程会显式翻转该标志。
+`apply_initial_state_to_user_data(..., force=True)` дјљи¦†з›–зЋ°жњ‰з›®еЅ•гЂ‚Launcher ењЁй¦–ж¬Ўеє”з”Ёж—¶дЅїз”Ё `force=False`пј€йЃїе…Ќж„Џе¤–и¦†з›–е€ље€љж‹·иґќзљ„зЉ¶жЂЃпј‰пјЊиЂЊ reimport жµЃзЁ‹дјљжѕејЏзї»иЅ¬иЇҐж ‡еї—гЂ‚
 
 ---
 
 ## 12. CDP multiplexer
 
-Playwright 拥有每个 profile 的 Chromium 进程，但外部自动化（Selenium、Puppeteer、自定义脚本）希望每个 profile 拥有一个 CDP endpoint。`CDPProxy`（`src/core/cdp.py`）实现了以下 multiplexer：
+Playwright ж‹Ґжњ‰жЇЏдёЄ profile зљ„ Chromium иї›зЁ‹пјЊдЅ†е¤–йѓЁи‡ЄеЉЁеЊ–пј€SeleniumгЂЃPuppeteerгЂЃи‡Єе®љд№‰и„љжњ¬пј‰еёЊжњ›жЇЏдёЄ profile ж‹Ґжњ‰дёЂдёЄ CDP endpointгЂ‚`CDPProxy`пј€`src/core/cdp.py`пј‰е®ћзЋ°дє†д»Ґдё‹ multiplexerпјљ
 
-- `GET /json/version` —— 返回一个伪 version payload，指向 `ws://127.0.0.1:5555/devtools/browser`
-- `GET /json/list?user_id=<id>` —— 列出某个 profile 的页面
-- `WS /devtools/page/{user_id}/{target_id}` —— 将 websocket 代理到正确的 Playwright 页面
+- `GET /json/version` вЂ”вЂ” иї”е›ћдёЂдёЄдјЄ version payloadпјЊжЊ‡еђ‘ `ws://127.0.0.1:5555/devtools/browser`
+- `GET /json/list?user_id=<id>` вЂ”вЂ” е€—е‡єжџђдёЄ profile зљ„йЎµйќў
+- `WS /devtools/page/{user_id}/{target_id}` вЂ”вЂ” е°† websocket д»Јзђ†е€°ж­ЈзЎ®зљ„ Playwright йЎµйќў
 
-注意：WS endpoint 是 **模拟** 的 —— 真实的 CDP 流量走 Playwright 的 context，而不是一个真正的 Chrome debug port。对于不需要底层协议特性的「附加到浏览器」式自动化来说这已经够用。
+жіЁж„ЏпјљWS endpoint жЇ **жЁЎж‹џ** зљ„ вЂ”вЂ” зњџе®ћзљ„ CDP жµЃй‡Џиµ° Playwright зљ„ contextпјЊиЂЊдёЌжЇдёЂдёЄзњџж­Јзљ„ Chrome debug portгЂ‚еЇ№дєЋдёЌйњЂи¦Ѓеє•е±‚еЌЏи®®з‰№жЂ§зљ„гЂЊй™„еЉ е€°жµЏи§€е™ЁгЂЌејЏи‡ЄеЉЁеЊ–жќҐиЇґиї™е·Із»Џе¤џз”ЁгЂ‚
 
-如果需要真正的 CDP，请将自动化指向 `POST /user/start` 返回的 per-profile websocket：
+е¦‚жћњйњЂи¦Ѓзњџж­Јзљ„ CDPпјЊиЇ·е°†и‡ЄеЉЁеЊ–жЊ‡еђ‘ `POST /user/start` иї”е›ћзљ„ per-profile websocketпјљ
 
 ```json
 {"ws_endpoint": "ws://127.0.0.1:50321/devtools/browser", "debug_port": 50321}
@@ -737,30 +738,30 @@ Playwright 拥有每个 profile 的 Chromium 进程，但外部自动化（Selen
 
 ---
 
-## 13. 数据目录布局
+## 13. ж•°жЌ®з›®еЅ•еёѓе±Ђ
 
 ```
 data/
-├── antique.db                 ← SQLite (profiles, sessions, tags, groups, backup_scheduler.py)
-└── profiles/
-    ├── <user_id>/                ← 该 profile 的 Playwright user_data_dir
-    │   ├── Default/
-    │   │   ├── Cookies
-    │   │   ├── Local Storage/leveldb/...
-    │   │   ├── IndexedDB/...
-    │   │   └── (all Chromium user-data files)
-    │   └── ...
-    └── imports/
-        └── <user_id>/            ← 解压后的 .adb bundle（完整 profile 导入）
-            ├── Default/...
-            └── ...
+в”њв”Ђв”Ђ antique.db                 в†ђ SQLite (profiles, sessions, tags, groups, backup_scheduler.py)
+в””в”Ђв”Ђ profiles/
+    в”њв”Ђв”Ђ <user_id>/                в†ђ иЇҐ profile зљ„ Playwright user_data_dir
+    в”‚   в”њв”Ђв”Ђ Default/
+    в”‚   в”‚   в”њв”Ђв”Ђ Cookies
+    в”‚   в”‚   в”њв”Ђв”Ђ Local Storage/leveldb/...
+    в”‚   в”‚   в”њв”Ђв”Ђ IndexedDB/...
+    в”‚   в”‚   в””в”Ђв”Ђ (all Chromium user-data files)
+    в”‚   в””в”Ђв”Ђ ...
+    в””в”Ђв”Ђ imports/
+        в””в”Ђв”Ђ <user_id>/            в†ђ и§ЈеЋ‹еђЋзљ„ .adb bundleпј€е®Њж•ґ profile еЇје…Ґпј‰
+            в”њв”Ђв”Ђ Default/...
+            в””в”Ђв”Ђ ...
 ```
 
-可通过环境变量 `ANTIQUE_DATA_DIR=/some/path` 覆盖。
+еЏЇйЂљиї‡зЋЇеўѓеЏй‡Џ `ANTIQUE_DATA_DIR=/some/path` и¦†з›–гЂ‚
 
 ---
 
-## 14. 测试
+## 14. жµ‹иЇ•
 
 ```bash
 python -m pytest                    # all tests
@@ -768,32 +769,32 @@ python -m pytest tests/test_cookie.py -v
 python -m pytest -k adb             # only .adb-related tests
 ```
 
-**300+ 个测试**（目前共 310 个）：
+**300+ дёЄжµ‹иЇ•**пј€з›®е‰Ќе…± 310 дёЄпј‰пјљ
 
-- `test_storage.py` —— SQLite engine、tables
-- `test_profile.py` —— ProfileStore CRUD、完整 profile 字段、session 记录
-- `test_fingerprint.py` —— Fingerprint 生成 + init script 注入
-- `test_proxy.py` —— ProxyConfig 校验 + Playwright 格式互转
-- `test_cookie.py` —— Cookie 解析（Netscape/JSON/.adb）、LocalStorage/IndexedDB 抽取
-- `test_profile_import.py` —— 完整 profile 导入流程
-- `test_webgpu_fonts.py` —— WebGPU adapter 伪装 + font 白名单生成与注入
-- `test_automation.py` —— Cookie Robot / flow 语法解析、构建与执行
-- `test_portable.py` —— 便携式 `.antq` 导出与导入验证
-- `test_geo.py` —— 国家/出口代理与时区/语言/地理位置自动对齐
-- `test_proxy_pool.py` —— 代理池轮换策略及健康度容灾测试
-- `test_detect.py` —— 指纹防关联自检机制
-- `test_console.py` —— Windows 终端 UTF-8 输出重构与 ASCII 回退验证
-- `test_api_endpoints.py` —— HTTP 级别 API 测试 (TestClient)：扩展组件回归、地理匹配、代理池、便携式导入导出、检测评分
-- `test_auth.py` —— API 鉴权 + 来源保护 (DNS-rebinding、Bearer 令牌、隧道允许列表)
-- `test_engines.py` —— 浏览器引擎注册表：规格、能力、别名解析、优先决议、启动器对接
-- `test_sync.py` —— 跨 profile 同步自动化流程测试 (并发控制、异常隔离)
-- `test_status_liveview.py` —— 账号状态、Live View 截图、CDP 连接检测与截图异常路径测试
-- `test_import_launch_and_randomize.py` —— 导入后启动回归、本地带密 SOCKS5 代理桥接、批量指纹智能随机化 (0.4.0 新增)
-- `test_ui_release_040.py` —— 对发布版 0.4.0 UI 核心元素的静态与行为集成测试 (0.4.0 新增)
-- `test_sort_clone_features.py` —— profile 排序选择、复制克隆及批量账号状态更新测试
-- `test_operations_release.py` —— 模板批量创建、AES-GCM 加密快照、操作审计日志（支持过滤与 JSON 导出）、本地/远程代理源测试（包含 HTTP-JSON）、分组 CRUD、本地加密备份计划管理、扩展目录及 MCP 状态监测测试 (0.9.0 新增)
+- `test_storage.py` вЂ”вЂ” SQLite engineгЂЃtables
+- `test_profile.py` вЂ”вЂ” ProfileStore CRUDгЂЃе®Њж•ґ profile е­—ж®µгЂЃsession и®°еЅ•
+- `test_fingerprint.py` вЂ”вЂ” Fingerprint з”џж€ђ + init script жіЁе…Ґ
+- `test_proxy.py` вЂ”вЂ” ProxyConfig ж ЎйЄЊ + Playwright ж јејЏдє’иЅ¬
+- `test_cookie.py` вЂ”вЂ” Cookie и§Јжћђпј€Netscape/JSON/.adbпј‰гЂЃLocalStorage/IndexedDB жЉЅеЏ–
+- `test_profile_import.py` вЂ”вЂ” е®Њж•ґ profile еЇје…ҐжµЃзЁ‹
+- `test_webgpu_fonts.py` вЂ”вЂ” WebGPU adapter дјЄиЈ… + font з™ЅеђЌеЌ•з”џж€ђдёЋжіЁе…Ґ
+- `test_automation.py` вЂ”вЂ” Cookie Robot / flow иЇ­жі•и§ЈжћђгЂЃжћ„е»єдёЋж‰§иЎЊ
+- `test_portable.py` вЂ”вЂ” дѕїжђєејЏ `.antq` еЇје‡єдёЋеЇје…ҐйЄЊиЇЃ
+- `test_geo.py` вЂ”вЂ” е›Ѕе®¶/е‡єеЏЈд»Јзђ†дёЋж—¶еЊє/иЇ­иЁЂ/ењ°зђ†дЅЌзЅ®и‡ЄеЉЁеЇ№йЅђ
+- `test_proxy_pool.py` вЂ”вЂ” д»Јзђ†ж± иЅ®жЌўз­–з•ҐеЏЉеЃҐеє·еє¦е®№зЃѕжµ‹иЇ•
+- `test_detect.py` вЂ”вЂ” жЊ‡зє№йІе…іиЃ”и‡ЄжЈЂжњєе€¶
+- `test_console.py` вЂ”вЂ” Windows з»€з«Ї UTF-8 иѕ“е‡єй‡Ќжћ„дёЋ ASCII е›ћйЂЂйЄЊиЇЃ
+- `test_api_endpoints.py` вЂ”вЂ” HTTP зє§е€« API жµ‹иЇ• (TestClient)пјљж‰©е±•з»„д»¶е›ћеЅ’гЂЃењ°зђ†еЊ№й…ЌгЂЃд»Јзђ†ж± гЂЃдѕїжђєејЏеЇје…ҐеЇје‡єгЂЃжЈЂжµ‹иЇ„е€†
+- `test_auth.py` вЂ”вЂ” API й‰ґжќѓ + жќҐжєђдїќжЉ¤ (DNS-rebindingгЂЃBearer д»¤з‰ЊгЂЃйљ§йЃ“е…Ѓи®ёе€—иЎЁ)
+- `test_engines.py` вЂ”вЂ” жµЏи§€е™Ёеј•ж“ЋжіЁе†ЊиЎЁпјљи§„ж јгЂЃиѓЅеЉ›гЂЃе€«еђЌи§ЈжћђгЂЃдје…€е†іи®®гЂЃеђЇеЉЁе™ЁеЇ№жЋҐ
+- `test_sync.py` вЂ”вЂ” и·Ё profile еђЊж­Ґи‡ЄеЉЁеЊ–жµЃзЁ‹жµ‹иЇ• (е№¶еЏ‘жЋ§е€¶гЂЃеј‚еёёйљ”з¦»)
+- `test_status_liveview.py` вЂ”вЂ” иґ¦еЏ·зЉ¶жЂЃгЂЃLive View ж€Єе›ѕгЂЃCDP иїћжЋҐжЈЂжµ‹дёЋж€Єе›ѕеј‚еёёи·Їеѕ„жµ‹иЇ•
+- `test_import_launch_and_randomize.py` вЂ”вЂ” еЇје…ҐеђЋеђЇеЉЁе›ћеЅ’гЂЃжњ¬ењ°её¦еЇ† SOCKS5 д»Јзђ†жЎҐжЋҐгЂЃж‰№й‡ЏжЊ‡зє№ж™єиѓЅйљЏжњєеЊ– (0.4.0 ж–°еўћ)
+- `test_ui_release_040.py` вЂ”вЂ” еЇ№еЏ‘еёѓз‰€ 0.4.0 UI ж ёеїѓе…ѓзґ зљ„йќ™жЂЃдёЋиЎЊдёєй›†ж€ђжµ‹иЇ• (0.4.0 ж–°еўћ)
+- `test_sort_clone_features.py` вЂ”вЂ” profile жЋ’еєЏйЂ‰ж‹©гЂЃе¤Ќе€¶е…‹йљ†еЏЉж‰№й‡Џиґ¦еЏ·зЉ¶жЂЃж›ґж–°жµ‹иЇ•
+- `test_operations_release.py` вЂ”вЂ” жЁЎжќїж‰№й‡Џе€›е»єгЂЃAES-GCM еЉ еЇ†еї«з…§гЂЃж“ЌдЅње®Ўи®Ўж—Ґеї—пј€ж”ЇжЊЃиї‡ж»¤дёЋ JSON еЇје‡єпј‰гЂЃжњ¬ењ°/иїњзЁ‹д»Јзђ†жєђжµ‹иЇ•пј€еЊ…еђ« HTTP-JSONпј‰гЂЃе€†з»„ CRUDгЂЃжњ¬ењ°еЉ еЇ†е¤‡д»Ѕи®Ўе€’з®Ўзђ†гЂЃж‰©е±•з›®еЅ•еЏЉ MCP зЉ¶жЂЃз›‘жµ‹жµ‹иЇ• (0.9.0 ж–°еўћ)
 
-仅运行最新的测试套件：
+д»…иїђиЎЊжњЂж–°зљ„жµ‹иЇ•еҐ—д»¶пјљ
 
 ```bash
 python -m pytest tests/test_operations_release.py tests/test_sort_clone_features.py tests/test_import_launch_and_randomize.py tests/test_ui_release_040.py -v
@@ -801,118 +802,118 @@ python -m pytest tests/test_operations_release.py tests/test_sort_clone_features
 
 ---
 
-## 15. 0.6.0 版本功能发布
+## 15. 0.6.0 з‰€жњ¬еЉџиѓЅеЏ‘еёѓ
 
-新增了与 AdsPower 的功能对齐：AdsPower 备份 data 无导入预览 (dry-run)、配置模板与批量创建、AES-GCM 加密快照备份导出/导入、操作历史审计日志、本地文件/JSON代理源轮换提取、自定义分组的 CRUD 增删改查、系统资源占用和 MCP 监控端点，以及网页端 Dashboard 的 Tools 工具箱控制面板。新测试套件位于 `tests/test_operations_release.py`。
+ж–°еўћдє†дёЋ AdsPower зљ„еЉџиѓЅеЇ№йЅђпјљAdsPower е¤‡д»Ѕ data ж— еЇје…Ґйў„и§€ (dry-run)гЂЃй…ЌзЅ®жЁЎжќїдёЋж‰№й‡Џе€›е»єгЂЃAES-GCM еЉ еЇ†еї«з…§е¤‡д»ЅеЇје‡є/еЇје…ҐгЂЃж“ЌдЅњеЋ†еЏІе®Ўи®Ўж—Ґеї—гЂЃжњ¬ењ°ж–‡д»¶/JSONд»Јзђ†жєђиЅ®жЌўжЏђеЏ–гЂЃи‡Єе®љд№‰е€†з»„зљ„ CRUD еўће€ ж”№жџҐгЂЃзі»з»џиµ„жєђеЌ з”Ёе’Њ MCP з›‘жЋ§з«Їз‚№пјЊд»ҐеЏЉзЅ‘йЎµз«Ї Dashboard зљ„ Tools е·Ґе…·з®±жЋ§е€¶йќўжќїгЂ‚ж–°жµ‹иЇ•еҐ—д»¶дЅЌдєЋ `tests/test_operations_release.py`гЂ‚
 
-## 16. 0.7.0 版本功能发布
+## 16. 0.7.0 з‰€жњ¬еЉџиѓЅеЏ‘еёѓ
 
-新增了扩展的 AdsPower 功能对齐：支持完整的系统操作历史审计（在创建、修改、启动、停止、删除、导入备份及批量更新状态时自动记录详细 audit 日志）、本地加密备份计划管理器（支持 AES-GCM 快照备份及定期任务注册，无需驻留守护进程，可通过 Windows 任务计划程序 or cron 定期调用）、HTTP JSON 远程代理源提取器（支持从动态 API 获取代理池），以及更精细的 CPU 与 RSS 内存性能指标统计统计，在 Windows 下提供安全的回退机制。
+ж–°еўћдє†ж‰©е±•зљ„ AdsPower еЉџиѓЅеЇ№йЅђпјљж”ЇжЊЃе®Њж•ґзљ„зі»з»џж“ЌдЅњеЋ†еЏІе®Ўи®Ўпј€ењЁе€›е»єгЂЃдї®ж”№гЂЃеђЇеЉЁгЂЃеЃњж­ўгЂЃе€ й™¤гЂЃеЇје…Ґе¤‡д»ЅеЏЉж‰№й‡Џж›ґж–°зЉ¶жЂЃж—¶и‡ЄеЉЁи®°еЅ•иЇ¦з»† audit ж—Ґеї—пј‰гЂЃжњ¬ењ°еЉ еЇ†е¤‡д»Ѕи®Ўе€’з®Ўзђ†е™Ёпј€ж”ЇжЊЃ AES-GCM еї«з…§е¤‡д»ЅеЏЉе®љжњџд»»еЉЎжіЁе†ЊпјЊж— йњЂй©»з•™е®€жЉ¤иї›зЁ‹пјЊеЏЇйЂљиї‡ Windows д»»еЉЎи®Ўе€’зЁ‹еєЏ or cron е®љжњџи°ѓз”Ёпј‰гЂЃHTTP JSON иїњзЁ‹д»Јзђ†жєђжЏђеЏ–е™Ёпј€ж”ЇжЊЃд»ЋеЉЁжЂЃ API иЋ·еЏ–д»Јзђ†ж± пј‰пјЊд»ҐеЏЉж›ґзІѕз»†зљ„ CPU дёЋ RSS е†…е­жЂ§иѓЅжЊ‡ж ‡з»џи®Ўз»џи®ЎпјЊењЁ Windows дё‹жЏђдѕ›е®‰е…Ёзљ„е›ћйЂЂжњєе€¶гЂ‚
 
-## 17. 0.8.0 版本功能发布
+## 17. 0.8.0 з‰€жњ¬еЉџиѓЅеЏ‘еёѓ
 
-新增了嵌套文件夹/嵌套分组（在 `groups` 表中通过 `parent_id` 实现文件夹层级管理功能）、网页端大工具箱面板（Tools Workspace）的完整集成（可直接在 UI 交互界面浏览操作审计、系统物理资源、快照备份计划以及 AdsPower 备份干跑预览），并提供了在 `docs/OWNER-FULL-TEST-CHECKLIST.md` 中的系统全面功能验收测试方案（A 至 H 章节）。
+ж–°еўћдє†еµЊеҐ—ж–‡д»¶е¤№/еµЊеҐ—е€†з»„пј€ењЁ `groups` иЎЁдё­йЂљиї‡ `parent_id` е®ћзЋ°ж–‡д»¶е¤№е±‚зє§з®Ўзђ†еЉџиѓЅпј‰гЂЃзЅ‘йЎµз«Їе¤§е·Ґе…·з®±йќўжќїпј€Tools Workspaceпј‰зљ„е®Њж•ґй›†ж€ђпј€еЏЇз›ґжЋҐењЁ UI дє¤дє’з•ЊйќўжµЏи§€ж“ЌдЅње®Ўи®ЎгЂЃзі»з»џз‰©зђ†иµ„жєђгЂЃеї«з…§е¤‡д»Ѕи®Ўе€’д»ҐеЏЉ AdsPower е¤‡д»Ѕе№Іи·‘йў„и§€пј‰пјЊе№¶жЏђдѕ›дє†ењЁ `docs/OWNER-FULL-TEST-CHECKLIST.md` дё­зљ„зі»з»џе…ЁйќўеЉџиѓЅйЄЊж”¶жµ‹иЇ•ж–№жЎ€пј€A и‡і H з« иЉ‚пј‰гЂ‚
 
-## 18. 0.9.0 版本功能发布
+## 18. 0.9.0 з‰€жњ¬еЉџиѓЅеЏ‘еёѓ
 
-新增了以下功能：支持按 Profile 和操作类型对活动日志（Activity Log）进行过滤；支持通过 API 和 UI 将活动日志导出为 JSON 格式；在 Tools 中新增了扩展程序目录（Extension Catalog）功能，支持查看已安装的扩展程序并能通过解压目录或 Chrome Web Store ID 进行安装；集成了 MCP 服务的状态显示及 stdio 状态；完善了在 `docs/OWNER-FULL-TEST-CHECKLIST.md` 和 `docs/RELEASE-0.9.0-REPORT.md` 中的自动化与操作验收用例。
+ж–°еўћдє†д»Ґдё‹еЉџиѓЅпјљж”ЇжЊЃжЊ‰ Profile е’Њж“ЌдЅњз±»ећ‹еЇ№жґ»еЉЁж—Ґеї—пј€Activity Logпј‰иї›иЎЊиї‡ж»¤пј›ж”ЇжЊЃйЂљиї‡ API е’Њ UI е°†жґ»еЉЁж—Ґеї—еЇје‡єдёє JSON ж јејЏпј›ењЁ Tools дё­ж–°еўћдє†ж‰©е±•зЁ‹еєЏз›®еЅ•пј€Extension Catalogпј‰еЉџиѓЅпјЊж”ЇжЊЃжџҐзњ‹е·Іе®‰иЈ…зљ„ж‰©е±•зЁ‹еєЏе№¶иѓЅйЂљиї‡и§ЈеЋ‹з›®еЅ•ж€– Chrome Web Store ID иї›иЎЊе®‰иЈ…пј›й›†ж€ђдє† MCP жњЌеЉЎзљ„зЉ¶жЂЃжѕз¤єеЏЉ stdio зЉ¶жЂЃпј›е®Ње–„дє†ењЁ `docs/OWNER-FULL-TEST-CHECKLIST.md` е’Њ `docs/RELEASE-0.9.0-REPORT.md` дё­зљ„и‡ЄеЉЁеЊ–дёЋж“ЌдЅњйЄЊж”¶з”Ёдѕ‹гЂ‚
 
-## 19. 1.0.0 版本功能发布
+## 19. 1.0.0 з‰€жњ¬еЉџиѓЅеЏ‘еёѓ
 
-新增了以下功能：完整的 `GET /group/tree` API 以层级树形式获取嵌套分组结构；安全删除父组逻辑（删除父组时自动将子组提升至上一层）以及防止 default 分组被删除的保护机制；在 Tools 面板支持直接更新和删除文件夹（分组）；在 Extension Catalog 中新增卸载按鈕；扩展了 `docs/OWNER-FULL-TEST-CHECKLIST.md`（包含组层级和扩展目录验证步骤）并更新了 `docs/RELEASE-1.0.0-REPORT.md` 和功能对照矩阵。
+ж–°еўћдє†д»Ґдё‹еЉџиѓЅпјље®Њж•ґзљ„ `GET /group/tree` API д»Ґе±‚зє§ж ‘еЅўејЏиЋ·еЏ–еµЊеҐ—е€†з»„з»“жћ„пј›е®‰е…Ёе€ й™¤з€¶з»„йЂ»иѕ‘пј€е€ й™¤з€¶з»„ж—¶и‡ЄеЉЁе°†е­ђз»„жЏђеЌ‡и‡ідёЉдёЂе±‚пј‰д»ҐеЏЉйІж­ў default е€†з»„иў«е€ й™¤зљ„дїќжЉ¤жњєе€¶пј›ењЁ Tools йќўжќїж”ЇжЊЃз›ґжЋҐж›ґж–°е’Ње€ й™¤ж–‡д»¶е¤№пј€е€†з»„пј‰пј›ењЁ Extension Catalog дё­ж–°еўћеЌёиЅЅжЊ‰й€•пј›ж‰©е±•дє† `docs/OWNER-FULL-TEST-CHECKLIST.md`пј€еЊ…еђ«з»„е±‚зє§е’Њж‰©е±•з›®еЅ•йЄЊиЇЃж­ҐйЄ¤пј‰е№¶ж›ґж–°дє† `docs/RELEASE-1.0.0-REPORT.md` е’ЊеЉџиѓЅеЇ№з…§зџ©йµгЂ‚
 
-## 20. 已知限制与 roadmap
+## 20. е·ІзџҐй™ђе€¶дёЋ roadmap
 
-### 已完成（本次构建）
+### е·Іе®Њж€ђпј€жњ¬ж¬Ўжћ„е»єпј‰
 
-- [x] 多 profile 隔离 of Chromium context
-- [x] Fingerprint 生成 + JS 注入
+- [x] е¤љ profile йљ”з¦» of Chromium context
+- [x] Fingerprint з”џж€ђ + JS жіЁе…Ґ
 - [x] HTTP/HTTPS/SOCKS5 proxy
-- [x] Cookie 导入（Netscape、JSON、.adb bundle）
-- [x] Cookie 导出（Netscape、JSON）
-- [x] 完整 .adb profile 导入（cookies + LocalStorage + IndexedDB）
-- [x] 重新导入流程（`cli reimport`、`POST /user/{id}/reimport`）
-- [x] AdsPower 兼容的 REST API
-- [x] CDP multiplexer（模拟）
-- [x] 单页 dashboard
-- [x] **扩展管理器**（支持从解压目录、.crx、Chrome Web Store 安装；支持 profile 分配）
-- [x] **MCP 服务端**（基于 stdio 的 JSON-RPC 2.0，提供 12 个工具：list/open/close/navigate/screenshot/execute_script/cookies/proxy_check 等）
-- [x] **多浏览器引擎支持**（Chromium、Firefox、Camoufox/ShardX；支持按 profile 或环境变量指定）
-- [x] **Client Hints**（通过自定义浏览器启动参数伪装 Sec-CH-UA 请求头，基于 fingerprint 自动生成）
-- [x] **Profile 级扩展加载**（启动时加载 `--load-extension` 与 `--disable-extensions-except`）
-- [x] **WebGPU fingerprint 伪装**（与 WebGL GPU 一致）
-- [x] **字体 fingerprint 伪装**（每个 OS 独立的字体白名单）
-- [x] **Cookie Robot / 无代码自动化流程**（支持 `warm` 预热、`run-flow` 执行，提供 JSON 语法步骤）
-- [x] **便携式 profile 导出/导入**（使用 `.antq` 压缩包迁移 fingerprint + proxy + cookies + tags）
-- [x] **地理位置匹配 (Geo matching)**（自动根据国家/出口代理 IP 对齐时区、语言和经纬度，`src/core/geo.py`）
-- [x] **地理定位伪装**（`navigator.geolocation` 的坐标与精度和地理配置保持一致）
-- [x] **代理轮换与健康容灾**（提供 sticky/round_robin/random 策略的代理池，`src/core/proxy_pool.py`）
-- [x] **Headless 隐身 (Headless stealth)**（支持 `window.chrome`/`chrome.runtime` 接口仿真与 `permissions.query` 接口一致性）
-- [x] **防关联检测评估**（`detect-test` 工具，提供 0-100 综合评分与 A-F 评级报告，`src/core/detect.py`）
-- [x] **可更换浏览器引擎** (Chromium/Chrome/Edge/Firefox/Camoufox/WebKit 注册表, `src/core/engines.py`, `/engine/list`, `create --engine`)
-- [x] **Camoufox 深度隐身引擎** (Gecko 级指纹伪装；若未安装，则回退至捆绑 Firefox)
-- [x] **一键 AdsPower 备份导入** (支持导入整文件夹或单 profile; CLI `import-backup` + `/user/import/backup` + 网页端)
-- [x] **账号状态标识** (`new`/`warming`/`active`/`limited`/`banned`/`retired`) 及过滤机制
-- [x] **Live View** (在 Dashboard 直观预览正在运行的 profile 实时截图)
-- [x] **真实的 CDP 服务** (为每个 Chromium profile 提供独占的 CDP 调试端口)
-- [x] **跨 profile 同步控制** (并发同步执行相同步骤, `src/core/sync.py`)
-- [x] **Docker 容器部署支持**
-- [x] **多字段排序机制** (Dashboard、REST API 与 CLI 支持 13 种属性排序及升降序)
-- [x] **Profile 克隆复制** (支持一键完整复制指纹、代理、Cookie 与标签)
-- [x] **批量状态修改** (支持在 Dashboard 界面、API 和 CLI 批量更新账号状态)
-- [x] **智能批量随机化指纹** (可锁定部分字段或跨 profile 共享相同的指纹特征字段)
-- [x] **带密 SOCKS5 代理桥** (利用 loopback 管道透明代理解决原生 Chromium 对 socks 账号密码的校验缺陷)
-- [x] **AdsPower 备份预览 (dry-run)** (支持在网页/API/CLI预览AdsPower备份数据而不实际写入库)
-- [x] **模板批量创建** (支持使用 JSON 模板进行 profile 批量创建与指纹随机生成)
-- [x] **AES-GCM 加密快照** (支持导出和导入经过密码保护的 profile 压缩备份快照)
-- [x] **操作历史审计** (后台自动记录操作日志，支持 API 及 CLI 查询历史记录，支持核心操作的 audit 事件)
-- [x] **本地代理源提取** (支持文件/JSON/HTTP-JSON形式的代理源轮换提取)
-- [x] **CRUD分组管理** (支持在后台与 API 进行自定义分组的创建、修改和删除)
-- [x] **资源状态与 MCP 监控** (支持查询 PID、活动浏览器进程数以及 MCP tools 映射，支持 CPU/RSS 资源消耗详细指标)
-- [x] **本地加密备份计划管理器** (API `/backup/schedules`，支持 AES-GCM 备份自动跑任务，无需守护进程)
-- [x] **网页端工具箱面板 (Tools Workspace)** (操作审计、过滤与导出、系统资源、备份计划、扩展目录及 MCP 状态已全部集成)
-- [x] **扩展目录** (Extension Catalog，支持本地 unpacked 目录、Web Store ID 安装与卸载，及 profile 分配)
-- [x] **分组层级结构** (`GET /group/tree`，安全删除父组，保护 default 分组，UI update/delete 文件夹 — 1.0.0)
-- [x] 313+ 个 pytest 测试通过
+- [x] Cookie еЇје…Ґпј€NetscapeгЂЃJSONгЂЃ.adb bundleпј‰
+- [x] Cookie еЇје‡єпј€NetscapeгЂЃJSONпј‰
+- [x] е®Њж•ґ .adb profile еЇје…Ґпј€cookies + LocalStorage + IndexedDBпј‰
+- [x] й‡Ќж–°еЇје…ҐжµЃзЁ‹пј€`cli reimport`гЂЃ`POST /user/{id}/reimport`пј‰
+- [x] AdsPower е…је®№зљ„ REST API
+- [x] CDP multiplexerпј€жЁЎж‹џпј‰
+- [x] еЌ•йЎµ dashboard
+- [x] **ж‰©е±•з®Ўзђ†е™Ё**пј€ж”ЇжЊЃд»Ћи§ЈеЋ‹з›®еЅ•гЂЃ.crxгЂЃChrome Web Store е®‰иЈ…пј›ж”ЇжЊЃ profile е€†й…Ќпј‰
+- [x] **MCP жњЌеЉЎз«Ї**пј€еџєдєЋ stdio зљ„ JSON-RPC 2.0пјЊжЏђдѕ› 12 дёЄе·Ґе…·пјљlist/open/close/navigate/screenshot/execute_script/cookies/proxy_check з­‰пј‰
+- [x] **е¤љжµЏи§€е™Ёеј•ж“Ћж”ЇжЊЃ**пј€ChromiumгЂЃFirefoxгЂЃCamoufox/ShardXпј›ж”ЇжЊЃжЊ‰ profile ж€–зЋЇеўѓеЏй‡ЏжЊ‡е®љпј‰
+- [x] **Client Hints**пј€йЂљиї‡и‡Єе®љд№‰жµЏи§€е™ЁеђЇеЉЁеЏ‚ж•°дјЄиЈ… Sec-CH-UA иЇ·ж±‚е¤ґпјЊеџєдєЋ fingerprint и‡ЄеЉЁз”џж€ђпј‰
+- [x] **Profile зє§ж‰©е±•еЉ иЅЅ**пј€еђЇеЉЁж—¶еЉ иЅЅ `--load-extension` дёЋ `--disable-extensions-except`пј‰
+- [x] **WebGPU fingerprint дјЄиЈ…**пј€дёЋ WebGL GPU дёЂи‡ґпј‰
+- [x] **е­—дЅ“ fingerprint дјЄиЈ…**пј€жЇЏдёЄ OS з‹¬з«‹зљ„е­—дЅ“з™ЅеђЌеЌ•пј‰
+- [x] **Cookie Robot / ж— д»Јз Ѓи‡ЄеЉЁеЊ–жµЃзЁ‹**пј€ж”ЇжЊЃ `warm` йў„зѓ­гЂЃ`run-flow` ж‰§иЎЊпјЊжЏђдѕ› JSON иЇ­жі•ж­ҐйЄ¤пј‰
+- [x] **дѕїжђєејЏ profile еЇје‡є/еЇје…Ґ**пј€дЅїз”Ё `.antq` еЋ‹зј©еЊ…иїЃз§» fingerprint + proxy + cookies + tagsпј‰
+- [x] **ењ°зђ†дЅЌзЅ®еЊ№й…Ќ (Geo matching)**пј€и‡ЄеЉЁж №жЌ®е›Ѕе®¶/е‡єеЏЈд»Јзђ† IP еЇ№йЅђж—¶еЊєгЂЃиЇ­иЁЂе’Њз»Џзє¬еє¦пјЊ`src/core/geo.py`пј‰
+- [x] **ењ°зђ†е®љдЅЌдјЄиЈ…**пј€`navigator.geolocation` зљ„еќђж ‡дёЋзІѕеє¦е’Њењ°зђ†й…ЌзЅ®дїќжЊЃдёЂи‡ґпј‰
+- [x] **д»Јзђ†иЅ®жЌўдёЋеЃҐеє·е®№зЃѕ**пј€жЏђдѕ› sticky/round_robin/random з­–з•Ґзљ„д»Јзђ†ж± пјЊ`src/core/proxy_pool.py`пј‰
+- [x] **Headless йљђиє« (Headless stealth)**пј€ж”ЇжЊЃ `window.chrome`/`chrome.runtime` жЋҐеЏЈд»їзњџдёЋ `permissions.query` жЋҐеЏЈдёЂи‡ґжЂ§пј‰
+- [x] **йІе…іиЃ”жЈЂжµ‹иЇ„дј°**пј€`detect-test` е·Ґе…·пјЊжЏђдѕ› 0-100 з»јеђ€иЇ„е€†дёЋ A-F иЇ„зє§жЉҐе‘ЉпјЊ`src/core/detect.py`пј‰
+- [x] **еЏЇж›ґжЌўжµЏи§€е™Ёеј•ж“Ћ** (Chromium/Chrome/Edge/Firefox/Camoufox/WebKit жіЁе†ЊиЎЁ, `src/core/engines.py`, `/engine/list`, `create --engine`)
+- [x] **Camoufox ж·±еє¦йљђиє«еј•ж“Ћ** (Gecko зє§жЊ‡зє№дјЄиЈ…пј›и‹ҐжњЄе®‰иЈ…пјЊе€™е›ћйЂЂи‡іжЌ†з»‘ Firefox)
+- [x] **дёЂй”® AdsPower е¤‡д»ЅеЇје…Ґ** (ж”ЇжЊЃеЇје…Ґж•ґж–‡д»¶е¤№ж€–еЌ• profile; CLI `import-backup` + `/user/import/backup` + зЅ‘йЎµз«Ї)
+- [x] **иґ¦еЏ·зЉ¶жЂЃж ‡иЇ†** (`new`/`warming`/`active`/`limited`/`banned`/`retired`) еЏЉиї‡ж»¤жњєе€¶
+- [x] **Live View** (ењЁ Dashboard з›ґи§‚йў„и§€ж­ЈењЁиїђиЎЊзљ„ profile е®ћж—¶ж€Єе›ѕ)
+- [x] **зњџе®ћзљ„ CDP жњЌеЉЎ** (дёєжЇЏдёЄ Chromium profile жЏђдѕ›з‹¬еЌ зљ„ CDP и°ѓиЇ•з«ЇеЏЈ)
+- [x] **и·Ё profile еђЊж­ҐжЋ§е€¶** (е№¶еЏ‘еђЊж­Ґж‰§иЎЊз›ёеђЊж­ҐйЄ¤, `src/core/sync.py`)
+- [x] **Docker е®№е™ЁйѓЁзЅІж”ЇжЊЃ**
+- [x] **е¤ље­—ж®µжЋ’еєЏжњєе€¶** (DashboardгЂЃREST API дёЋ CLI ж”ЇжЊЃ 13 з§Ќе±ћжЂ§жЋ’еєЏеЏЉеЌ‡й™ЌеєЏ)
+- [x] **Profile е…‹йљ†е¤Ќе€¶** (ж”ЇжЊЃдёЂй”®е®Њж•ґе¤Ќе€¶жЊ‡зє№гЂЃд»Јзђ†гЂЃCookie дёЋж ‡з­ѕ)
+- [x] **ж‰№й‡ЏзЉ¶жЂЃдї®ж”№** (ж”ЇжЊЃењЁ Dashboard з•ЊйќўгЂЃAPI е’Њ CLI ж‰№й‡Џж›ґж–°иґ¦еЏ·зЉ¶жЂЃ)
+- [x] **ж™єиѓЅж‰№й‡ЏйљЏжњєеЊ–жЊ‡зє№** (еЏЇй”Ѓе®љйѓЁе€†е­—ж®µж€–и·Ё profile е…±дє«з›ёеђЊзљ„жЊ‡зє№з‰№еѕЃе­—ж®µ)
+- [x] **её¦еЇ† SOCKS5 д»Јзђ†жЎҐ** (е€©з”Ё loopback з®ЎйЃ“йЂЏжЋд»Јзђ†и§Је†іеЋџз”џ Chromium еЇ№ socks иґ¦еЏ·еЇ†з Ѓзљ„ж ЎйЄЊзјєй™·)
+- [x] **AdsPower е¤‡д»Ѕйў„и§€ (dry-run)** (ж”ЇжЊЃењЁзЅ‘йЎµ/API/CLIйў„и§€AdsPowerе¤‡д»Ѕж•°жЌ®иЂЊдёЌе®ћй™…е†™е…Ґеє“)
+- [x] **жЁЎжќїж‰№й‡Џе€›е»є** (ж”ЇжЊЃдЅїз”Ё JSON жЁЎжќїиї›иЎЊ profile ж‰№й‡Џе€›е»єдёЋжЊ‡зє№йљЏжњєз”џж€ђ)
+- [x] **AES-GCM еЉ еЇ†еї«з…§** (ж”ЇжЊЃеЇје‡єе’ЊеЇје…Ґз»Џиї‡еЇ†з ЃдїќжЉ¤зљ„ profile еЋ‹зј©е¤‡д»Ѕеї«з…§)
+- [x] **ж“ЌдЅњеЋ†еЏІе®Ўи®Ў** (еђЋеЏ°и‡ЄеЉЁи®°еЅ•ж“ЌдЅњж—Ґеї—пјЊж”ЇжЊЃ API еЏЉ CLI жџҐиЇўеЋ†еЏІи®°еЅ•пјЊж”ЇжЊЃж ёеїѓж“ЌдЅњзљ„ audit дє‹д»¶)
+- [x] **жњ¬ењ°д»Јзђ†жєђжЏђеЏ–** (ж”ЇжЊЃж–‡д»¶/JSON/HTTP-JSONеЅўејЏзљ„д»Јзђ†жєђиЅ®жЌўжЏђеЏ–)
+- [x] **CRUDе€†з»„з®Ўзђ†** (ж”ЇжЊЃењЁеђЋеЏ°дёЋ API иї›иЎЊи‡Єе®љд№‰е€†з»„зљ„е€›е»єгЂЃдї®ж”№е’Ње€ й™¤)
+- [x] **иµ„жєђзЉ¶жЂЃдёЋ MCP з›‘жЋ§** (ж”ЇжЊЃжџҐиЇў PIDгЂЃжґ»еЉЁжµЏи§€е™Ёиї›зЁ‹ж•°д»ҐеЏЉ MCP tools ж е°„пјЊж”ЇжЊЃ CPU/RSS иµ„жєђж¶€иЂ—иЇ¦з»†жЊ‡ж ‡)
+- [x] **жњ¬ењ°еЉ еЇ†е¤‡д»Ѕи®Ўе€’з®Ўзђ†е™Ё** (API `/backup/schedules`пјЊж”ЇжЊЃ AES-GCM е¤‡д»Ѕи‡ЄеЉЁи·‘д»»еЉЎпјЊж— йњЂе®€жЉ¤иї›зЁ‹)
+- [x] **зЅ‘йЎµз«Їе·Ґе…·з®±йќўжќї (Tools Workspace)** (ж“ЌдЅње®Ўи®ЎгЂЃиї‡ж»¤дёЋеЇје‡єгЂЃзі»з»џиµ„жєђгЂЃе¤‡д»Ѕи®Ўе€’гЂЃж‰©е±•з›®еЅ•еЏЉ MCP зЉ¶жЂЃе·Іе…ЁйѓЁй›†ж€ђ)
+- [x] **ж‰©е±•з›®еЅ•** (Extension CatalogпјЊж”ЇжЊЃжњ¬ењ° unpacked з›®еЅ•гЂЃWeb Store ID е®‰иЈ…дёЋеЌёиЅЅпјЊеЏЉ profile е€†й…Ќ)
+- [x] **е€†з»„е±‚зє§з»“жћ„** (`GET /group/tree`пјЊе®‰е…Ёе€ й™¤з€¶з»„пјЊдїќжЉ¤ default е€†з»„пјЊUI update/delete ж–‡д»¶е¤№ вЂ” 1.0.0)
+- [x] 313+ дёЄ pytest жµ‹иЇ•йЂљиї‡
 
-### 已知限制
+### е·ІзџҐй™ђе€¶
 
-- **模拟的 CDP multiplexer。** `/json/list` + `/devtools/page/...` 端点并没有暴露真正的 Chrome debug port 供外部自动化使用 —— 请改用 `POST /user/start` 返回的 per-profile websocket。
-- **API 鉴权为可选机制。** 设置 `ANTIQUE_API_TOKEN` 环境变量后方要求提供 Bearer 令牌；如未设置，则默认对 `127.0.0.1` 开放（但仍受跨域 Cross-Origin 策略保护）。单进程，暂不支持多用户角色。
-- **没有 proxy provider 直连集成。** 代理需要由您以代理池方式提供；我们支持对已有的代理池进行自动轮换与故障切换。
-- **Headless 隐深为尽力而为（Best-effort）。** 已伪装 permissions 和 `window.chrome` 指标，但极其底层的渲染时序（paint timing）以及特定的 GPU 硬件指纹目前尚未完全涵盖。
-- **WebRTC 有三种模式**（`webrtc_mode`）：`block`（默认 —— 抑制候选收集，本地 IP 不会泄漏）、`real`（不做改动）、`proxy`（将 host 候选重写为 `webrtc_public_ip`）。`proxy` 需要在配置文件中设置公网 IP；未设置时会直接拒绝，而不是静默降级。
-- **Camoufox 需要额外安装。** `pip install camoufox && python -m camoufox fetch`。若未安装，`camoufox` 引擎会自动回退至捆绑的 Firefox（标准防关联而非深度）。
-- **Chrome/Edge 引擎需要本地安装了对应的真实浏览器。** 否则建议使用默认的 `chromium`。
-- **Firefox/Camoufox/WebKit 引擎不支持 per-profile CDP 以及加载 .crx 扩展。** 这些能力仅限 Chromium。
+- **жЁЎж‹џзљ„ CDP multiplexerгЂ‚** `/json/list` + `/devtools/page/...` з«Їз‚№е№¶жІЎжњ‰жљґйњІзњџж­Јзљ„ Chrome debug port дѕ›е¤–йѓЁи‡ЄеЉЁеЊ–дЅїз”Ё вЂ”вЂ” иЇ·ж”№з”Ё `POST /user/start` иї”е›ћзљ„ per-profile websocketгЂ‚
+- **API й‰ґжќѓдёєеЏЇйЂ‰жњєе€¶гЂ‚** и®ѕзЅ® `ANTIQUE_API_TOKEN` зЋЇеўѓеЏй‡ЏеђЋж–№и¦Ѓж±‚жЏђдѕ› Bearer д»¤з‰Њпј›е¦‚жњЄи®ѕзЅ®пјЊе€™й»и®¤еЇ№ `127.0.0.1` ејЂж”ѕпј€дЅ†д»ЌеЏ—и·Ёеџџ Cross-Origin з­–з•ҐдїќжЉ¤пј‰гЂ‚еЌ•иї›зЁ‹пјЊжљ‚дёЌж”ЇжЊЃе¤љз”Ёж€·и§’и‰ІгЂ‚
+- **жІЎжњ‰ proxy provider з›ґиїћй›†ж€ђгЂ‚** д»Јзђ†йњЂи¦Ѓз”±ж‚Ёд»Ґд»Јзђ†ж± ж–№ејЏжЏђдѕ›пј›ж€‘д»¬ж”ЇжЊЃеЇ№е·Іжњ‰зљ„д»Јзђ†ж± иї›иЎЊи‡ЄеЉЁиЅ®жЌўдёЋж•…йљње€‡жЌўгЂ‚
+- **Headless йљђж·±дёєе°ЅеЉ›иЂЊдёєпј€Best-effortпј‰гЂ‚** е·ІдјЄиЈ… permissions е’Њ `window.chrome` жЊ‡ж ‡пјЊдЅ†жћЃе…¶еє•е±‚зљ„жёІжџ“ж—¶еєЏпј€paint timingпј‰д»ҐеЏЉз‰№е®љзљ„ GPU зЎ¬д»¶жЊ‡зє№з›®е‰Ќе°љжњЄе®Ње…Ёж¶µз›–гЂ‚
+- **WebRTC жњ‰дё‰з§ЌжЁЎејЏ**пј€`webrtc_mode`пј‰пјљ`block`пј€й»и®¤ вЂ”вЂ” жЉ‘е€¶еЂ™йЂ‰ж”¶й›†пјЊжњ¬ењ° IP дёЌдјљжі„жјЏпј‰гЂЃ`real`пј€дёЌеЃљж”№еЉЁпј‰гЂЃ`proxy`пј€е°† host еЂ™йЂ‰й‡Ќе†™дёє `webrtc_public_ip`пј‰гЂ‚`proxy` йњЂи¦ЃењЁй…ЌзЅ®ж–‡д»¶дё­и®ѕзЅ®е…¬зЅ‘ IPпј›жњЄи®ѕзЅ®ж—¶дјљз›ґжЋҐж‹’з»ќпјЊиЂЊдёЌжЇйќ™й»й™Ќзє§гЂ‚
+- **Camoufox йњЂи¦Ѓйўќе¤–е®‰иЈ…гЂ‚** `pip install camoufox && python -m camoufox fetch`гЂ‚и‹ҐжњЄе®‰иЈ…пјЊ`camoufox` еј•ж“Ћдјљи‡ЄеЉЁе›ћйЂЂи‡іжЌ†з»‘зљ„ Firefoxпј€ж ‡е‡†йІе…іиЃ”иЂЊйќћж·±еє¦пј‰гЂ‚
+- **Chrome/Edge еј•ж“ЋйњЂи¦Ѓжњ¬ењ°е®‰иЈ…дє†еЇ№еє”зљ„зњџе®ћжµЏи§€е™ЁгЂ‚** еђ¦е€™е»єи®®дЅїз”Ёй»и®¤зљ„ `chromium`гЂ‚
+- **Firefox/Camoufox/WebKit еј•ж“ЋдёЌж”ЇжЊЃ per-profile CDP д»ҐеЏЉеЉ иЅЅ .crx ж‰©е±•гЂ‚** иї™дє›иѓЅеЉ›д»…й™ђ ChromiumгЂ‚
 
 ### Roadmap
 
-- [x] **每个 profile 的真实 CDP** — 为每个 profile 分配一个唯一的 `--remote-debugging-port`。
-- [x] **WebRTC 代理外网 IP 重写** — `webrtc_mode: proxy` 将 host 候选重写为配置文件的 `webrtc_public_ip`。
-- [x] **MCP 服务的 UI 集成** — 支持从 dashboard Tools 面板查看 stdio 运行状态 (0.9.0)。
-- [x] **扩展 Web Store 浏览器** — 扩展目录功能（支持 unpacked 目录与 Web Store ID）已在 Tools 中集成 (0.9.0)。
-- [x] **分组层级 `/group/tree`** — 层级树形分组、安全删除、UI update/delete 文件夹 (1.0.0)。
-- [ ] **FingerprintJS 验证集成** — 引入 fingerprintjs/fingerprintjs 检测套件以进行防关联效果检验。
+- [x] **жЇЏдёЄ profile зљ„зњџе®ћ CDP** вЂ” дёєжЇЏдёЄ profile е€†й…ЌдёЂдёЄе”ЇдёЂзљ„ `--remote-debugging-port`гЂ‚
+- [x] **WebRTC д»Јзђ†е¤–зЅ‘ IP й‡Ќе†™** вЂ” `webrtc_mode: proxy` е°† host еЂ™йЂ‰й‡Ќе†™дёєй…ЌзЅ®ж–‡д»¶зљ„ `webrtc_public_ip`гЂ‚
+- [x] **MCP жњЌеЉЎзљ„ UI й›†ж€ђ** вЂ” ж”ЇжЊЃд»Ћ dashboard Tools йќўжќїжџҐзњ‹ stdio иїђиЎЊзЉ¶жЂЃ (0.9.0)гЂ‚
+- [x] **ж‰©е±• Web Store жµЏи§€е™Ё** вЂ” ж‰©е±•з›®еЅ•еЉџиѓЅпј€ж”ЇжЊЃ unpacked з›®еЅ•дёЋ Web Store IDпј‰е·ІењЁ Tools дё­й›†ж€ђ (0.9.0)гЂ‚
+- [x] **е€†з»„е±‚зє§ `/group/tree`** вЂ” е±‚зє§ж ‘еЅўе€†з»„гЂЃе®‰е…Ёе€ й™¤гЂЃUI update/delete ж–‡д»¶е¤№ (1.0.0)гЂ‚
+- [ ] **FingerprintJS йЄЊиЇЃй›†ж€ђ** вЂ” еј•е…Ґ fingerprintjs/fingerprintjs жЈЂжµ‹еҐ—д»¶д»Ґиї›иЎЊйІе…іиЃ”ж•€жћњжЈЂйЄЊгЂ‚
 
 ---
 
-## 20. 环境变量
+## 20. зЋЇеўѓеЏй‡Џ
 
-| 变量 | 默认值 | 用途 |
+| еЏй‡Џ | й»и®¤еЂј | з”ЁйЂ” |
 |---|---|---|
-| `ANTIQUE_DATA_DIR` | `./data` | `antique.db` + profile user data dir 的根目录 |
-| `ANTIQUE_DB` | `<data_dir>/antique.db` | SQLite 路径覆盖 |
-| `ANTIQUE_BROWSER_CHANNEL` | （未设置，使用打包 of Chromium） | Playwright browser channel：`chrome`、`msedge`、`chromium-beta` |
-| `ANTIQUE_API_TOKEN` | （未设置，公开） | 如果设置，所有 REST API 将校验 `Authorization: Bearer <token>` 请求头 |
-| `ANTIQUE_ALLOWED_ORIGINS` | （未设置） | 允许进行远程/隧道访问的额外的信任 Origin 字符串子串的逗号分隔列表（如 `ngrok-free.app`）。Localhost 始终受信任。如果通过外部隧道（如 ngrok）打开 dashboard 必须配置此项，否则 Origin-guard 将返回 403 错误。 |
-| `ANTIDETECT_ENGINE` | `chromium` | 默认浏览器引擎：`chromium`、`firefox`、`camoufox` |
-| `PYTHONIOENCODING` | （自动 UTF-8） | CLI 内部会自动接管编码处理并强制进行 UTF-8 打印输出，除非该功能被停用否则无需设置 |
-| `HOST`（仅 CLI） | `127.0.0.1` | `serve` 的绑定地址 |
-| `UI_PORT`（仅 CLI） | `8080` | `serve` 的端口 |
+| `ANTIQUE_DATA_DIR` | `./data` | `antique.db` + profile user data dir зљ„ж №з›®еЅ• |
+| `ANTIQUE_DB` | `<data_dir>/antique.db` | SQLite и·Їеѕ„и¦†з›– |
+| `ANTIQUE_BROWSER_CHANNEL` | пј€жњЄи®ѕзЅ®пјЊдЅїз”Ёж‰“еЊ… of Chromiumпј‰ | Playwright browser channelпјљ`chrome`гЂЃ`msedge`гЂЃ`chromium-beta` |
+| `ANTIQUE_API_TOKEN` | пј€жњЄи®ѕзЅ®пјЊе…¬ејЂпј‰ | е¦‚жћњи®ѕзЅ®пјЊж‰Ђжњ‰ REST API е°†ж ЎйЄЊ `Authorization: Bearer <token>` иЇ·ж±‚е¤ґ |
+| `ANTIQUE_ALLOWED_ORIGINS` | пј€жњЄи®ѕзЅ®пј‰ | е…Ѓи®ёиї›иЎЊиїњзЁ‹/йљ§йЃ“и®їй—®зљ„йўќе¤–зљ„дїЎд»» Origin е­—з¬¦дёІе­ђдёІзљ„йЂ—еЏ·е€†йљ”е€—иЎЁпј€е¦‚ `ngrok-free.app`пј‰гЂ‚Localhost е§‹з»€еЏ—дїЎд»»гЂ‚е¦‚жћњйЂљиї‡е¤–йѓЁйљ§йЃ“пј€е¦‚ ngrokпј‰ж‰“ејЂ dashboard еї…йЎ»й…ЌзЅ®ж­¤йЎ№пјЊеђ¦е€™ Origin-guard е°†иї”е›ћ 403 й”™иЇЇгЂ‚ |
+| `ANTIDETECT_ENGINE` | `chromium` | й»и®¤жµЏи§€е™Ёеј•ж“Ћпјљ`chromium`гЂЃ`firefox`гЂЃ`camoufox` |
+| `PYTHONIOENCODING` | пј€и‡ЄеЉЁ UTF-8пј‰ | CLI е†…йѓЁдјљи‡ЄеЉЁжЋҐз®Ўзј–з Ѓе¤„зђ†е№¶ејєе€¶иї›иЎЊ UTF-8 ж‰“еЌ°иѕ“е‡єпјЊй™¤йќћиЇҐеЉџиѓЅиў«еЃњз”Ёеђ¦е€™ж— йњЂи®ѕзЅ® |
+| `HOST`пј€д»… CLIпј‰ | `127.0.0.1` | `serve` зљ„з»‘е®љењ°еќЂ |
+| `UI_PORT`пј€д»… CLIпј‰ | `8080` | `serve` зљ„з«ЇеЏЈ |
 
 ---
 
 ## 21. License
 
-MIT —— 参见 `LICENSE`。
+MIT вЂ”вЂ” еЏ‚и§Ѓ `LICENSE`гЂ‚
