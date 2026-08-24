@@ -513,8 +513,15 @@ def generate_fingerprint(
     fp.hardware_concurrency = rng.choice([2, 4, 4, 8, 8, 8, 12, 16])
     fp.device_memory = rng.choice([4.0, 8.0, 8.0, 16.0, 32.0])
 
-    # GPU
-    fp.webgl_vendor, fp.webgl_renderer = rng.choice(_GPU_PROFILES)
+    # GPU — must be coherent with the OS family (Apple GPUs only under macOS;
+    # llvmpipe only under Linux). See webgl_os_coherence audit check.
+    _gpu_family_ok = {
+        "windows": lambda v, r: "Apple" not in v and "llvmpipe" not in r,
+        "macos": lambda v, r: "Apple" in v,
+        "linux": lambda v, r: "Mozilla" in v,
+    }[os_family]
+    _gpu_choices = [g for g in _GPU_PROFILES if _gpu_family_ok(g[0], g[1])]
+    fp.webgl_vendor, fp.webgl_renderer = rng.choice(_gpu_choices)
 
     # WebGPU adapter — keep it coherent with the chosen WebGL GPU vendor.
     _webgpu_matches = [
