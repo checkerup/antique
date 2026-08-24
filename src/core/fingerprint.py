@@ -599,7 +599,9 @@ def to_playwright_launch_options(fp: Fingerprint, proxy: Optional[Dict[str, Any]
             "--disable-dev-shm-usage",
             # DevTools stealth: never auto-open DevTools — a docked panel shifts
             # outerHeight/outerWidth, which is a classic automation tell.
-            "--auto-open-devtools-for-tabs=false",
+            # NOTE: Chromium switch is a boolean flag WITHOUT a value; passing
+            # "=false" makes Chrome parse it as truthy and OPEN DevTools.
+            # Omit entirely (default is closed).
             # Don't disable GPU — anti-detect checks for WebGL availability
         ],
         "viewport": {"width": fp.inner_width, "height": fp.inner_height},
