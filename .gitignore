@@ -17,7 +17,8 @@ htmlcov/
 .ruff_cache/
 
 # Data / runtime — never commit user profiles
-data/
+data/*
+!data/fingerprint_corpus/
 *.db
 *.db-journal
 *.sqlite
