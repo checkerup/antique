@@ -2,6 +2,8 @@
 
 # antique
 
+[![CI](https://github.com/checkerup/antique/actions/workflows/ci.yml/badge.svg)](https://github.com/checkerup/antique/actions/workflows/ci.yml)
+
 **A self-hosted, open-source replacement for AdsPower — multi-profile browser farm with fingerprint spoofing, proxy rotation, .adb bundle import, and an AdsPower-compatible REST API.**
 
 > Built autonomously to replace a paid AdsPower subscription with the same UX and API surface, no licensing, fully local.
