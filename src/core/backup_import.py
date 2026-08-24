@@ -27,7 +27,12 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from .cookie import import_adspower_profile, import_cookies_json
+from .cookie import (
+    import_adspower_profile,
+    import_cookies_json,
+    parse_extension_info_from_secure_prefs,
+    find_profile_default_dir,
+)
 from .profile import ProfileStore
 
 
@@ -147,6 +152,19 @@ def prepare_backup_profile_payload(root: Path, meta: Dict[str, Any]) -> Dict[str
 
     import_source_path = str(profile_dir) if profile_dir.exists() else ""
 
+    # Parse extension info from Secure Preferences
+    extensions_info: List[Dict[str, Any]] = []
+    has_extension_state = False
+    has_extension_cookies = False
+    has_local_ext_settings = False
+    if profile_dir.exists():
+        default_dir = find_profile_default_dir(profile_dir)
+        if default_dir is not None:
+            extensions_info = parse_extension_info_from_secure_prefs(default_dir)
+            has_extension_state = (default_dir / "Extension State").is_dir()
+            has_extension_cookies = (default_dir / "Extension Cookies").is_file()
+            has_local_ext_settings = (default_dir / "Local Extension Settings").is_dir()
+
     return {
         "user_id": user_id,
         "name": _profile_name(meta),
@@ -159,6 +177,10 @@ def prepare_backup_profile_payload(root: Path, meta: Dict[str, Any]) -> Dict[str
         "cookie_source": cookie_source,
         "has_full_state": bool(import_source_path),
         "ip_country": str(meta.get("ip_country") or "").upper(),
+        "extensions_info": extensions_info,
+        "has_extension_state": has_extension_state,
+        "has_extension_cookies": has_extension_cookies,
+        "has_local_ext_settings": has_local_ext_settings,
     }
 
 
@@ -168,14 +190,48 @@ def import_adspower_backup_root(
     *,
     overwrite: bool = False,
     limit: Optional[int] = None,
+    ext_store: Optional["ExtensionStore"] = None,
+    adspower_root: Optional[Path] = None,
 ) -> Dict[str, Any]:
     """Import an entire AdsPower backup root into ``ProfileStore``.
 
     ``overwrite=False`` skips profiles that already exist.
     ``limit`` can be used for dry-runs / staged imports.
+    ``ext_store``: if provided, user extensions are installed from the
+    AdsPower global store and their IDs stored in the profile fingerprint.
+    ``adspower_root``: path to ``C:\\.ADSPOWER_GLOBAL`` (auto-detected if
+    not provided).
     """
     root = Path(root)
-    profiles = load_adspower_profiles_index(root)
+
+    # Load all profiles from the backup index once — used both for extension
+    # scanning (when ext_store is provided) and for the main import loop.
+    all_profiles = load_adspower_profiles_index(root)
+
+    # Lazy import to avoid circular dependency
+    installed_extensions: Dict[str, str] = {}  # chrome_ext_id -> antique_ext_id
+    if ext_store is not None:
+        # Install all unique extensions from ANY profile that has them.
+        # Extensions are global — installed once, shared by all profiles.
+        # Scan ALL profiles (not just up to limit) for extension code.
+        seen_ext_ids: set = set()
+        for meta in all_profiles:
+            user_id = str(meta.get("user_id") or "").strip()
+            if not user_id:
+                continue
+            profile_dir = _profile_dir(root, user_id)
+            if not profile_dir.exists():
+                continue
+            default_dir = find_profile_default_dir(profile_dir)
+            if default_dir is None:
+                continue
+            results = ext_store.install_extensions_from_secure_prefs(
+                default_dir, adspower_root=adspower_root,
+            )
+            for r in results:
+                if r.get("installed") and r.get("antique_ext_id"):
+                    installed_extensions[r["ext_id"]] = r["antique_ext_id"]
+                    seen_ext_ids.add(r["ext_id"])
 
     imported: List[str] = []
     updated: List[str] = []
@@ -183,8 +239,9 @@ def import_adspower_backup_root(
     errors: List[Dict[str, str]] = []
     cookie_sources = {"json": 0, "profile_dir": 0, "none": 0}
     full_state_profiles = 0
+    extensions_installed_count = len(installed_extensions)
 
-    for idx, meta in enumerate(profiles):
+    for idx, meta in enumerate(all_profiles):
         if limit is not None and idx >= limit:
             break
         try:
@@ -192,6 +249,13 @@ def import_adspower_backup_root(
             cookie_sources[payload["cookie_source"]] = cookie_sources.get(payload["cookie_source"], 0) + 1
             if payload["has_full_state"]:
                 full_state_profiles += 1
+
+            # Determine which Chrome extension IDs this profile has enabled
+            profile_ext_ids: List[str] = []
+            for ext_info in payload.get("extensions_info", []):
+                if ext_info.get("enabled", False) and ext_info.get("ext_id"):
+                    profile_ext_ids.append(ext_info["ext_id"])
+
             existing = store.get(payload["user_id"])
             if existing and not overwrite:
                 skipped.append(payload["user_id"])
@@ -206,6 +270,11 @@ def import_adspower_backup_root(
                         apply_geo_to_fingerprint(fp, geo_for_country(payload["ip_country"]))
                     except ValueError:
                         fp = None
+                # Store extension IDs in fingerprint
+                if fp is not None and profile_ext_ids:
+                    fp_dict = fp.canonical() if hasattr(fp, "canonical") else fp.__dict__
+                    fp_dict["extensions"] = profile_ext_ids
+                    fp = fingerprint_from_dict(fp_dict) if fp else None
                 store.update(
                     payload["user_id"],
                     name=payload["name"],
@@ -230,6 +299,12 @@ def import_adspower_backup_root(
                     apply_geo_to_fingerprint(fp, geo_for_country(payload["ip_country"]))
                 except ValueError:
                     fp = None
+            # Store extension IDs in fingerprint
+            if fp is not None and profile_ext_ids:
+                fp_dict = fp.canonical() if hasattr(fp, "canonical") else fp.__dict__
+                fp_dict["extensions"] = profile_ext_ids
+                from .fingerprint_ops import fingerprint_from_dict
+                fp = fingerprint_from_dict(fp_dict)
             store.create(
                 name=payload["name"],
                 group_id=payload["group_id"],
@@ -249,7 +324,7 @@ def import_adspower_backup_root(
                 "error": str(exc),
             })
 
-    processed = min(len(profiles), limit) if limit is not None else len(profiles)
+    processed = min(len(all_profiles), limit) if limit is not None else len(all_profiles)
     return {
         "source_path": str(root),
         "processed": processed,
@@ -259,6 +334,7 @@ def import_adspower_backup_root(
         "error_count": len(errors),
         "full_state_profiles": full_state_profiles,
         "cookie_sources": cookie_sources,
+        "extensions_installed": extensions_installed_count,
         "imported_user_ids": imported,
         "updated_user_ids": updated,
         "skipped_user_ids": skipped,

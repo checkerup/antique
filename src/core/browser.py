@@ -1,4 +1,4 @@
-﻿"""Browser launcher: spawn a Chromium with the profile's fingerprint.
+"""Browser launcher: spawn a Chromium with the profile's fingerprint.
 
 Uses Playwright's ``launch_persistent_context`` so each profile lives in
 its own user data dir (the same isolation Chrome gives to multi-account
@@ -192,7 +192,16 @@ class BrowserLauncher:
             existing = self._live.get(profile.user_id)
             if existing is not None:
                 return existing
-            handle = await self._launch(profile, debug_port=debug_port)
+            # Use subprocess launch when extensions are present — Playwright
+            # hardcodes --disable-extensions which prevents loading unpacked
+            # extensions. Subprocess gives full control over Chrome args.
+            ext_ids = []
+            if profile.fingerprint:
+                ext_ids = profile.fingerprint.get("extensions", [])
+            if ext_ids and self.ext_store:
+                handle = await self._launch_subprocess(profile, debug_port=debug_port)
+            else:
+                handle = await self._launch(profile, debug_port=debug_port)
             self._live[profile.user_id] = handle
             return handle
 
@@ -329,7 +338,12 @@ class BrowserLauncher:
         ls_copied = (target_default / "Local Storage" / "leveldb").exists()
         idb_copied = (target_default / "IndexedDB").exists()
         webstorage_copied = (target_default / "WebStorage").exists()
-        if ls_copied or idb_copied or webstorage_copied:
+        ext_data_copied = (
+            (target_default / "Local Extension Settings").exists()
+            or (target_default / "Extension State").exists()
+            or (target_default / "Extension Cookies").exists()
+        )
+        if ls_copied or idb_copied or webstorage_copied or ext_data_copied:
             self.store.mark_initial_state_applied(profile.user_id)
 
     def _resolve_engine_spec(self, profile: Profile) -> EngineSpec:
@@ -351,6 +365,193 @@ class BrowserLauncher:
         if not ext_ids:
             return []
         return self.ext_store.get_extensions_for_profile(ext_ids)
+
+    async def _launch_subprocess(
+        self, profile: Profile, *, debug_port: Optional[int]
+    ) -> BrowserHandle:
+        """Launch Chromium via subprocess (bypasses Playwright's
+        --disable-extensions restriction).
+
+        Builds the full Chrome command line manually, starts the process,
+        waits for CDP, then connects via Playwright's connect_over_cdp for
+        automation. This is the only reliable way to load extensions with
+        Playwright-managed Chromium.
+        """
+        from playwright.async_api import async_playwright
+
+        fp = self._resolve_fingerprint(profile)
+        proxy_cfg = parse_proxy(profile.proxy or None)
+        proxy_bridge: Optional[Socks5AuthBridge] = None
+
+        if proxy_cfg.type == "ssh":
+            tunnel = self.ssh_tunnels.ensure(profile.user_id, proxy_cfg, wait=0.6)
+            proxy_url = tunnel.proxy.to_playwright().get("server", "")
+        elif proxy_cfg.type == "socks5" and (proxy_cfg.username or proxy_cfg.password):
+            proxy_bridge = await Socks5AuthBridge(
+                proxy_cfg.host, proxy_cfg.port, proxy_cfg.username, proxy_cfg.password
+            ).start()
+            proxy_url = proxy_bridge.server_url
+        else:
+            pw_proxy = proxy_cfg.to_playwright()
+            proxy_url = pw_proxy.get("server", "") if pw_proxy else ""
+
+        user_dir = self._profile_user_dir(profile.user_id)
+        user_dir = Path(user_dir).resolve()
+        await self._maybe_apply_imported_state(profile, user_dir)
+
+        port = _find_free_port(debug_port if debug_port and debug_port > 0 else None)
+        spec = self._resolve_engine_spec(profile)
+
+        # Find Chrome binary
+        import glob
+        chrome_paths = [
+            os.environ.get("ANTIQUE_BROWSER_PATH", ""),
+            str(Path(os.environ.get("LOCALAPPDATA", "")) / "ms-playwright" / "chromium-1223" / "chrome-win64" / "chrome.exe"),
+        ]
+        chrome_bin = next((p for p in chrome_paths if p and Path(p).exists()), None)
+        if not chrome_bin:
+            # Try glob
+            for pattern in [
+                "C:/Users/*/AppData/Local/ms-playwright/chromium-*/chrome-win64/chrome.exe",
+                "C:/Program Files/Google/Chrome/Application/chrome.exe",
+                "C:/Program Files (x86)/Google/Chrome/Application/chrome.exe",
+            ]:
+                matches = glob.glob(pattern)
+                if matches:
+                    chrome_bin = matches[0]
+                    break
+        if not chrome_bin:
+            raise RuntimeError("Chrome binary not found")
+
+        # Build command line
+        args = [
+            chrome_bin,
+            f"--user-data-dir={user_dir}",
+            f"--remote-debugging-port={port}",
+            "--remote-debugging-address=127.0.0.1",
+            "--no-first-run",
+            "--no-default-browser-check",
+            "--disable-infobars",
+            "--disable-dev-shm-usage",
+            "--no-sandbox",
+            f"--lang={fp.locale}",
+            f"--window-size={fp.screen_width},{fp.screen_height}",
+            "--disable-blink-features=AutomationControlled",
+        ]
+
+        if proxy_url:
+            args.append(f"--proxy-server={proxy_url}")
+            args.append("--proxy-bypass-list=<-loopback>")
+            # Ensure CDP endpoint on 127.0.0.1 is NOT proxied
+            args.append("--host-resolver-rules=MAP 127.0.0.1 127.0.0.1")
+
+        # Client hints
+        args.extend(_build_client_hints_args(fp))
+
+        # Extensions — full control, no --disable-extensions
+        ext_paths = self._get_extension_paths(profile)
+        # Convert to absolute paths — Chrome needs them relative to its CWD,
+        # not the antique server's CWD.
+        ext_paths = [str(Path(p).resolve()) for p in ext_paths]
+        if ext_paths and spec.supports_extensions:
+            args.append(f"--load-extension={','.join(ext_paths)}")
+            args.append("--enable-extensions")
+
+        # Disable unnecessary features
+        args.extend([
+            "--disable-background-networking",
+            "--disable-component-update",
+            "--disable-default-apps",
+            "--disable-sync",
+            "--disable-features=Translate,HttpsUpgrades,OptimizationHints",
+            "--disable-popup-blocking",
+            "--disable-prompt-on-repost",
+            "--disable-renderer-backgrounding",
+            "--disable-hang-monitor",
+            "--disable-ipc-flooding-protection",
+            "--force-color-profile=srgb",
+            "--metrics-recording-only",
+            "--password-store=basic",
+            "--use-mock-keychain",
+            "--enable-unsafe-swiftshader",
+            "--disable-site-isolation-trials",
+            "--disable-web-security",
+        ])
+
+        log.info("antique: launching via subprocess: %s", " ".join(args[:5]))
+        proc = subprocess.Popen(
+            args,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+        )
+
+        # Wait for CDP
+        ws_endpoint = await _wait_for_cdp_ws(port, attempts=60)
+        if not ws_endpoint:
+            # Read stderr for debugging
+            try:
+                proc.terminate()
+                stderr = proc.stderr.read().decode("utf-8", errors="replace")[:500]
+                log.error("antique: Chrome failed to start. stderr: %s", stderr)
+            except Exception:
+                pass
+            proc.kill()
+            raise RuntimeError("Chrome CDP endpoint did not come up")
+
+        # Connect via Playwright over CDP
+        playwright = await async_playwright().start()
+        try:
+            browser = await playwright.chromium.connect_over_cdp(ws_endpoint)
+            context = browser.contexts[0] if browser.contexts else await browser.new_context()
+        except Exception:
+            await playwright.stop()
+            if proxy_bridge is not None:
+                await proxy_bridge.close()
+            proc.kill()
+            raise
+
+        # Inject fingerprint init script
+        init_js = build_init_script(fp)
+        await context.add_init_script(init_js)
+
+        # Add cookies
+        if profile.cookies:
+            cookies = [
+                Cookie(
+                    name=c.get("name", ""),
+                    value=c.get("value", ""),
+                    domain=c.get("domain", ""),
+                    path=c.get("path", "/"),
+                    expires=float(c.get("expires", -1)),
+                    http_only=bool(c.get("httpOnly", False)),
+                    secure=bool(c.get("secure", False)),
+                    same_site=c.get("sameSite", "Lax"),
+                ).to_playwright()
+                for c in profile.cookies
+            ]
+            try:
+                await context.add_cookies(cookies)
+            except Exception:
+                pass
+
+        session_id = f"{profile.user_id}-{int(time.time())}"
+        self.store.record_session(
+            profile.user_id,
+            session_id=session_id,
+            debug_port=port,
+            ws_endpoint=ws_endpoint,
+            pid=proc.pid,
+        )
+        return BrowserHandle(
+            user_id=profile.user_id,
+            session_id=session_id,
+            debug_port=port,
+            ws_endpoint=ws_endpoint,
+            pid=proc.pid,
+            context=context,
+            playwright=playwright,
+            proxy_bridge=proxy_bridge,
+        )
 
     async def _launch(self, profile: Profile, *, debug_port: Optional[int]) -> BrowserHandle:
         from playwright.async_api import async_playwright
@@ -394,9 +595,13 @@ class BrowserLauncher:
         if ext_paths and spec.supports_extensions:
             ext_arg = f"--load-extension={','.join(ext_paths)}"
             launch_opts.setdefault("args", []).append(ext_arg)
-            # Disable extension security to allow loading unpacked
-            launch_opts["args"].append("--enable-extensions")
-            launch_opts["args"].append("--disable-extensions-except=" + ",".join(ext_paths))
+            # Remove Playwright's default --disable-extensions flag so our
+            # extensions actually load. Playwright adds it by default to
+            # prevent unexpected extension behaviour during automation.
+            args_list = launch_opts.setdefault("args", [])
+            args_list[:] = [a for a in args_list if a != "--disable-extensions"]
+            args_list.append("--enable-extensions")
+            args_list.append("--disable-extensions-except=" + ",".join(ext_paths))
 
         playwright = await async_playwright().start()
         # An explicit channel on the engine (chrome/msedge) wins; otherwise fall

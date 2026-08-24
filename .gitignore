@@ -41,7 +41,11 @@ logs/
 # Editor backups
 *.swp
 *.bak
-*.tmp# Sensitive data
+*.tmp
+
+# Smoke test artifacts
+smoke.antq
+# Sensitive data
 *.env
 .env.*
 auth.json

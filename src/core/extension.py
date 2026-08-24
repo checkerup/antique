@@ -1,4 +1,4 @@
-﻿"""Extension manager: install, store, and assign extensions to profiles.
+"""Extension manager: install, store, and assign extensions to profiles.
 
 Supports:
 - Unpacked directories
@@ -105,8 +105,19 @@ class ExtensionStore:
     def get(self, ext_id: str) -> Optional[Extension]:
         return self._extensions.get(ext_id)
 
-    def install_from_unpacked(self, source_dir: Path, name: Optional[str] = None) -> Extension:
-        """Install an extension from an unpacked directory."""
+    def install_from_unpacked(
+        self, source_dir: Path, name: Optional[str] = None,
+        chrome_ext_id: Optional[str] = None,
+    ) -> Extension:
+        """Install an extension from an unpacked directory.
+
+        Args:
+            source_dir: Path to the unpacked extension directory.
+            name: Override the extension name (defaults to manifest ``name``).
+            chrome_ext_id: The original Chrome Web Store extension ID
+                (32-char lowercase). When provided, stored in manifest as
+                ``_chrome_ext_id`` for later lookups.
+        """
         source_dir = Path(source_dir)
         if not source_dir.is_dir():
             raise ValueError(f"Not a directory: {source_dir}")
@@ -119,6 +130,10 @@ class ExtensionStore:
         if dest.exists():
             shutil.rmtree(dest)
         shutil.copytree(source_dir, dest)
+
+        # Store chrome_ext_id in manifest for reverse lookup
+        if chrome_ext_id:
+            manifest["_chrome_ext_id"] = chrome_ext_id
 
         ext = Extension(
             ext_id=ext_id,
@@ -244,11 +259,184 @@ class ExtensionStore:
         self._save_index()
         return True
 
+    def install_from_adspower_env(
+        self,
+        chrome_ext_id: str,
+        name: Optional[str] = None,
+        adspower_root: Optional[Path] = None,
+    ) -> Optional[Extension]:
+        """Install an extension from the AdsPower global extension store.
+
+        AdsPower stores extension code under::
+
+            C:\\.ADSPOWER_GLOBAL\\ext_env\\<serial>\\      (by serial number)
+            C:\\.ADSPOWER_GLOBAL\\ext\\<chrome_ext_id>\\   (by Chrome ext ID)
+
+        The ``record`` JSON file in ``ext_env/`` maps serial → Chrome ID.
+
+        This method looks up ``ext/<chrome_ext_id>/`` first (direct),
+        then scans ``ext_env/record`` for a matching ``unique_id``.
+
+        Returns ``None`` if the extension is not found on disk.
+        """
+        adspower_root = Path(adspower_root or os.environ.get(
+            "ADSPOWER_GLOBAL", r"C:\.ADSPOWER_GLOBAL"
+        ))
+
+        # 1. Try direct path: ext/<chrome_ext_id>/
+        direct = adspower_root / "ext" / chrome_ext_id
+        if direct.is_dir() and (direct / "manifest.json").exists():
+            return self.install_from_unpacked(direct, name=name, chrome_ext_id=chrome_ext_id)
+
+        # 2. Try ext_env/record mapping
+        record_path = adspower_root / "ext_env" / "record"
+        if record_path.exists():
+            try:
+                record = json.loads(record_path.read_text(encoding="utf-8"))
+                for serial, info in record.items():
+                    if info.get("unique_id", "") == chrome_ext_id:
+                        env_dir = adspower_root / "ext_env" / serial
+                        if env_dir.is_dir() and (env_dir / "manifest.json").exists():
+                            ext_name = name or info.get("name", chrome_ext_id)
+                            return self.install_from_unpacked(
+                                env_dir, name=ext_name, chrome_ext_id=chrome_ext_id,
+                            )
+            except (json.JSONDecodeError, OSError):
+                pass
+
+        log.warning(
+            "AdsPower extension %s not found in %s",
+            chrome_ext_id, adspower_root,
+        )
+        return None
+
+    def install_extensions_from_secure_prefs(
+        self,
+        default_dir: Path,
+        adspower_root: Optional[Path] = None,
+    ) -> List[Dict[str, Any]]:
+        """Install all user extensions found in a profile's Secure Preferences.
+
+        Reads the ``extensions.settings`` section of ``Secure Preferences``
+        (or ``Preferences``), filters to user-installed extensions
+        (location 8 = user, location 4 = external_registry), and installs
+        each one from the AdsPower global store.
+
+        System/component extensions (location 5: PDF viewer, Web Store,
+        network speech, etc.) are skipped — they ship with Chromium.
+
+        Returns a list of dicts::
+
+            {
+                "ext_id": "<chrome_ext_id>",
+                "name": "MetaMask",
+                "version": "12.10.2",
+                "enabled": True,
+                "installed": True,
+                "antique_ext_id": "<internal_id>",
+                "path": "<installed_path>",
+            }
+        """
+        from .cookie import parse_extension_info_from_secure_prefs
+
+        default_dir = Path(default_dir)
+        exts = parse_extension_info_from_secure_prefs(default_dir)
+        results: List[Dict[str, Any]] = []
+
+        for ext_info in exts:
+            # Skip system/component extensions (location 5)
+            if ext_info["location"] in (5,):
+                results.append({
+                    "ext_id": ext_info["ext_id"],
+                    "name": ext_info["name"],
+                    "version": ext_info["version"],
+                    "enabled": ext_info["enabled"],
+                    "installed": False,
+                    "reason": "system_extension",
+                })
+                continue
+
+            # Skip if location indicates an internal AdsPower extension
+            # with no manifest data at all (loc=0 and no path)
+            if not ext_info["path"] and not ext_info.get("manifest"):
+                # These extensions only have data in Local Extension Settings
+                # but no code in Secure Preferences. Try AdsPower env by ID.
+                pass  # fall through to install_from_adspower_env
+
+            # Install from AdsPower env
+            installed = self.install_from_adspower_env(
+                ext_info["ext_id"],
+                name=ext_info["name"],
+                adspower_root=adspower_root,
+            )
+
+            if installed is not None:
+                # Apply enabled/disabled state
+                if not ext_info["enabled"]:
+                    installed.enabled = False
+                    self._extensions[installed.ext_id] = installed
+                    self._save_index()
+
+                results.append({
+                    "ext_id": ext_info["ext_id"],
+                    "name": ext_info["name"],
+                    "version": ext_info["version"],
+                    "enabled": ext_info["enabled"],
+                    "installed": True,
+                    "antique_ext_id": installed.ext_id,
+                    "path": installed.path,
+                })
+            else:
+                # Fallback: try installing directly from the path in prefs
+                prefs_path = Path(ext_info["path"])
+                if prefs_path.is_dir() and (prefs_path / "manifest.json").exists():
+                    installed = self.install_from_unpacked(
+                        prefs_path, name=ext_info["name"],
+                        chrome_ext_id=ext_info["ext_id"],
+                    )
+                    if not ext_info["enabled"]:
+                        installed.enabled = False
+                        self._extensions[installed.ext_id] = installed
+                        self._save_index()
+                    results.append({
+                        "ext_id": ext_info["ext_id"],
+                        "name": ext_info["name"],
+                        "version": ext_info["version"],
+                        "enabled": ext_info["enabled"],
+                        "installed": True,
+                        "antique_ext_id": installed.ext_id,
+                        "path": installed.path,
+                    })
+                else:
+                    results.append({
+                        "ext_id": ext_info["ext_id"],
+                        "name": ext_info["name"],
+                        "version": ext_info["version"],
+                        "enabled": ext_info["enabled"],
+                        "installed": False,
+                        "reason": "not_found_on_disk",
+                    })
+
+        return results
+
     def get_extensions_for_profile(self, extension_ids: List[str]) -> List[str]:
-        """Return list of paths for given extension IDs (for --load-extension)."""
+        """Return list of paths for given extension IDs (for --load-extension).
+
+        ``extension_ids`` can contain either antique internal IDs or Chrome
+        extension IDs (32-char strings from AdsPower).  When a Chrome ID is
+        passed, we look it up in the ``chrome_ext_id`` field of the stored
+        Extension metadata.
+        """
         paths = []
         for eid in extension_ids:
+            # Direct lookup by antique internal ID
             ext = self._extensions.get(eid)
+            # Try Chrome ext ID lookup
+            if ext is None:
+                for stored in self._extensions.values():
+                    if stored.manifest.get("_chrome_ext_id") == eid:
+                        ext = stored
+                        break
             if ext and ext.enabled and Path(ext.path).exists():
                 paths.append(ext.path)
         return paths

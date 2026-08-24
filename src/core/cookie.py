@@ -385,33 +385,142 @@ def extract_adspower_bundle(src: Union[str, Path], dest_dir: Union[str, Path]) -
     return dest
 
 
+def _compute_chrome_ext_id(key_b64: str) -> str:
+    """Compute Chrome extension ID from manifest 'key' field (base64 DER).
+
+    Chrome uses: SHA256(DER_public_key)[:32] → map each hex digit to a-p.
+    """
+    import hashlib
+    import base64
+
+    key_bytes = base64.b64decode(key_b64)
+    digest = hashlib.sha256(key_bytes).hexdigest()[:32]
+    return "".join(chr(ord("a") + int(c, 16)) for c in digest)
+
+
+def _build_adspower_to_chrome_ext_id_map() -> Dict[str, str]:
+    """Build a mapping from AdsPower extension IDs → Chrome key-derived IDs.
+
+    Scans:
+    1. Antique's installed extensions (data/extensions/_index.json)
+    2. AdsPower's ext_env/record file
+
+    Returns dict like:
+        {"acmacodkjbdgmoleebolmdjonilkdbch": "lllkjoacmomdkpancjekaljcaggbnjcl", ...}
+    """
+    import json
+    import os
+    from pathlib import Path
+
+    mapping: Dict[str, str] = {}
+
+    # 1. Antique installed extensions
+    index_path = Path(
+        os.environ.get("ANTIQUE_DATA_DIR", "data")
+    ) / "extensions" / "_index.json"
+    if index_path.exists():
+        try:
+            index = json.loads(index_path.read_text(encoding="utf-8"))
+            for ext in index:
+                stored_chrome_id = ext.get("manifest", {}).get("_chrome_ext_id", "")
+                ext_path = Path(ext.get("path", ""))
+                mf = ext_path / "manifest.json"
+                if mf.exists():
+                    m = json.loads(mf.read_text(encoding="utf-8"))
+                    key = m.get("key", "")
+                    if key and stored_chrome_id:
+                        chrome_id = _compute_chrome_ext_id(key)
+                        if chrome_id != stored_chrome_id:
+                            mapping[stored_chrome_id] = chrome_id
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    # 2. AdsPower ext_env/record
+    adspower_root = Path(os.environ.get("ADSPOWER_GLOBAL", r"C:\.ADSPOWER_GLOBAL"))
+    record_path = adspower_root / "ext_env" / "record"
+    if record_path.exists():
+        try:
+            record = json.loads(record_path.read_text(encoding="utf-8"))
+            for serial, info in record.items():
+                unique_id = info.get("unique_id", "")
+                if not unique_id:
+                    continue
+                # Check ext_env/<serial>/manifest.json
+                mf = adspower_root / "ext_env" / serial / "manifest.json"
+                if not mf.exists():
+                    # Check ext/<unique_id>/manifest.json
+                    mf = adspower_root / "ext" / unique_id / "manifest.json"
+                if mf.exists():
+                    m = json.loads(mf.read_text(encoding="utf-8"))
+                    key = m.get("key", "")
+                    if key:
+                        chrome_id = _compute_chrome_ext_id(key)
+                        if chrome_id != unique_id:
+                            mapping[unique_id] = chrome_id
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    return mapping
+
+
+def _rename_extension_dirs(les_dir: Path, ext_id_map: Dict[str, str]) -> None:
+    """Rename extension data directories from AdsPower IDs to Chrome IDs.
+
+    Args:
+        les_dir: Path to ``Local Extension Settings/`` directory.
+        ext_id_map: Mapping from AdsPower ID → Chrome key-derived ID.
+    """
+    if not les_dir.is_dir():
+        return
+    for d in list(les_dir.iterdir()):
+        if not d.is_dir():
+            continue
+        old_id = d.name
+        new_id = ext_id_map.get(old_id)
+        if new_id and new_id != old_id:
+            new_path = les_dir / new_id
+            if new_path.exists():
+                # Merge: if target exists, remove old (data already there)
+                import shutil
+                shutil.rmtree(d, ignore_errors=True)
+            else:
+                d.rename(new_path)
+
+
 def apply_initial_state_to_user_data(
     source_default: Union[str, Path],
     target_user_data: Union[str, Path],
     *,
     force: bool = False,
 ) -> Dict[str, str]:
-    """Copy ``Local Storage/leveldb`` and ``IndexedDB`` from a source Chrome
-    profile directory into Playwright's ``user_data_dir``.
+    """Copy ``Local Storage/leveldb``, ``IndexedDB``, ``WebStorage`` **and
+    extension data** from a source Chrome profile directory into
+    Playwright's ``user_data_dir``.
 
     Chrome reads its own LevelDB format natively, so copying the directories
     verbatim works without needing a LevelDB parser.
+
+    The following extension-related items are also copied (when present in
+    the source ``Default/`` dir):
+
+    - ``Local Extension Settings/`` — per-extension leveldb state (wallet
+      state, extension configs, etc.)
+    - ``Extension State/`` — shared leveldb for all extensions
+    - ``Extension Cookies`` — SQLite DB with extension cookies
+    - ``Extensions/`` — unpacked extension code (if present in the backup)
 
     Args:
         source_default: Path to the source ``Default/`` folder inside an
             extracted .adb bundle (see ``find_profile_default_dir``).
         target_user_data: Path to the Playwright ``user_data_dir``. The
             function creates a ``Default/`` subfolder inside it if missing
-            and copies the two subdirs there.
-        force: If True, overwrite existing ``Local Storage/leveldb`` /
-            ``IndexedDB`` folders inside the target. Default False — skip
-            if already present so user-accumulated state isn't lost.
+            and copies the subdirs there.
+        force: If True, overwrite existing folders inside the target.
+            Default False — skip if already present so user-accumulated
+            state isn't lost.
 
     Returns:
-        Dict mapping ``"local_storage"`` / ``"indexeddb"`` / ``"webstorage"``
-        to the destination path, for each directory that was actually copied.
-        Missing source dirs are silently skipped (some profiles have no
-        IndexedDB, etc.).
+        Dict mapping copied-item names to destination paths.
     """
     import shutil
 
@@ -422,6 +531,7 @@ def apply_initial_state_to_user_data(
 
     copied: Dict[str, str] = {}
 
+    # --- Local Storage / leveldb ---
     ls_src = find_local_storage_dir(source_default)
     if ls_src is not None and ls_src.exists():
         ls_dst = target_default / "Local Storage" / "leveldb"
@@ -432,6 +542,7 @@ def apply_initial_state_to_user_data(
             shutil.copytree(ls_src, ls_dst)
             copied["local_storage"] = str(ls_dst)
 
+    # --- IndexedDB ---
     idb_src = find_indexeddb_dir(source_default)
     if idb_src is not None and idb_src.exists():
         idb_dst = target_default / "IndexedDB"
@@ -441,6 +552,7 @@ def apply_initial_state_to_user_data(
             shutil.copytree(idb_src, idb_dst)
             copied["indexeddb"] = str(idb_dst)
 
+    # --- WebStorage ---
     webstorage_src = find_webstorage_dir(source_default)
     if webstorage_src is not None and webstorage_src.exists():
         webstorage_dst = target_default / "WebStorage"
@@ -450,7 +562,130 @@ def apply_initial_state_to_user_data(
             shutil.copytree(webstorage_src, webstorage_dst)
             copied["webstorage"] = str(webstorage_dst)
 
+    # --- Local Extension Settings (per-extension leveldb) ---
+    les_src = source_default / "Local Extension Settings"
+    if les_src.is_dir():
+        les_dst = target_default / "Local Extension Settings"
+        if not les_dst.exists() or force:
+            if les_dst.exists() and force:
+                shutil.rmtree(les_dst)
+            shutil.copytree(les_src, les_dst)
+            copied["local_extension_settings"] = str(les_dst)
+
+            # Rename AdsPower extension IDs → Chrome key-derived IDs.
+            # AdsPower stored extension data under its own unique_id scheme,
+            # but Chrome derives the extension ID from the manifest 'key' field.
+            # Without renaming, Chrome can't find the copied data.
+            ext_id_map = _build_adspower_to_chrome_ext_id_map()
+            if ext_id_map:
+                _rename_extension_dirs(les_dst, ext_id_map)
+
+    # --- Extension State (shared leveldb) ---
+    es_src = source_default / "Extension State"
+    if es_src.is_dir():
+        es_dst = target_default / "Extension State"
+        if not es_dst.exists() or force:
+            if es_dst.exists() and force:
+                shutil.rmtree(es_dst)
+            shutil.copytree(es_src, es_dst)
+            copied["extension_state"] = str(es_dst)
+
+    # --- Extension Cookies (SQLite DB) ---
+    ec_src = source_default / "Extension Cookies"
+    if ec_src.is_file():
+        ec_dst = target_default / "Extension Cookies"
+        if not ec_dst.exists() or force:
+            shutil.copy2(ec_src, ec_dst)
+            copied["extension_cookies"] = str(ec_dst)
+
+    # --- Extensions (unpacked code, if present in the backup) ---
+    ext_code_src = source_default / "Extensions"
+    if ext_code_src.is_dir() and any(ext_code_src.iterdir()):
+        ext_code_dst = target_default / "Extensions"
+        if not ext_code_dst.exists() or force:
+            if ext_code_dst.exists() and force:
+                shutil.rmtree(ext_code_dst)
+            shutil.copytree(ext_code_src, ext_code_dst)
+            copied["extensions_code"] = str(ext_code_dst)
+
     return copied
+
+
+def parse_extension_info_from_secure_prefs(
+    default_dir: Path,
+) -> List[Dict[str, Any]]:
+    """Parse ``Secure Preferences`` (or ``Preferences``) inside a Chrome
+    profile ``Default/`` dir and return a list of extension descriptors.
+
+    Each descriptor has::
+
+        {
+            "ext_id": "<32-char chrome ext id>",
+            "name": "MetaMask",
+            "version": "12.10.2",
+            "enabled": True,            # True unless disable_reasons non-empty
+            "path": "C:\\...\\ext_env\\270526",
+            "location": 8,             # 8=user, 5=component
+            "manifest": { ... }         # full manifest dict if available
+        }
+
+    Returns an empty list if the Preferences file is missing or has no
+    extensions section.
+    """
+    import json
+
+    prefs_path = default_dir / "Secure Preferences"
+    if not prefs_path.exists():
+        prefs_path = default_dir / "Preferences"
+    if not prefs_path.exists():
+        return []
+
+    try:
+        prefs = json.loads(prefs_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return []
+
+    ext_settings = prefs.get("extensions", {}).get("settings", {})
+    result: List[Dict[str, Any]] = []
+    for ext_id, settings in ext_settings.items():
+        manifest = settings.get("manifest", {})
+        name = manifest.get("name", "")
+        # AdsPower uses __MSG_*__ for i18n names — skip those, they need
+        # locale resolution. Keep the raw value for reference.
+        if name.startswith("__MSG_"):
+            name = ext_id  # fall back to ID
+        disable_reasons = settings.get("disable_reasons", [])
+        result.append({
+            "ext_id": ext_id,
+            "name": name,
+            "version": manifest.get("version", ""),
+            "enabled": not disable_reasons,  # enabled if no disable reasons
+            "path": settings.get("path", ""),
+            "location": settings.get("location", 0),
+            "manifest": manifest,
+        })
+    # If Secure Preferences had no extensions, try Local Extension Settings
+    # — the directory names ARE the Chrome extension IDs.
+    if not result:
+        les_dir = default_dir / "Local Extension Settings"
+        if les_dir.is_dir():
+            for ext_dir in les_dir.iterdir():
+                if not ext_dir.is_dir():
+                    continue
+                ext_id = ext_dir.name
+                # Skip if it doesn't look like a Chrome extension ID (32 chars)
+                if len(ext_id) != 32:
+                    continue
+                result.append({
+                    "ext_id": ext_id,
+                    "name": ext_id,  # unknown — will be resolved from manifest
+                    "version": "",
+                    "enabled": True,  # assume enabled if data exists
+                    "path": "",  # will be looked up in AdsPower env
+                    "location": 8,  # user extension
+                    "manifest": {},
+                })
+    return result
 
 
 def prepare_adspower_import(
