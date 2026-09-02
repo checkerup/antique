@@ -29,6 +29,8 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
+from .safe_archive import safe_extract_zip, safe_extract_tar, UnsafeArchiveError
+
 
 @dataclass
 class Cookie:
@@ -167,19 +169,20 @@ def import_adspower_profile(adb_path: Union[str, Path]) -> List[Cookie]:
 
     try:
         if p.is_file() and p.suffix.lower() == ".zip":
-            # Extract to a temp dir (kept alive until we're done reading)
+            # Extract to a temp dir (kept alive until we're done reading).
+            # Use safe_extract_zip to prevent ZIP-slip / path traversal.
             import tempfile
             tmp = tempfile.mkdtemp(prefix="adshield_adb_")
             extracted_to = Path(tmp)
             with zipfile.ZipFile(p, "r") as zf:
-                zf.extractall(tmp)
+                safe_extract_zip(zf, tmp)
             cookies_db = _find_cookies_db(Path(tmp))
         elif p.is_file() and (p.suffix.lower() in (".tar", ".tgz") or p.name.endswith(".tar.gz")):
             import tempfile
             tmp = tempfile.mkdtemp(prefix="adshield_adb_")
             extracted_to = Path(tmp)
             with tarfile.open(p, "r:*") as tf:
-                tf.extractall(tmp)
+                safe_extract_tar(tf, tmp)
             cookies_db = _find_cookies_db(Path(tmp))
         elif p.is_dir():
             cookies_db = _find_cookies_db(p)
@@ -187,6 +190,9 @@ def import_adspower_profile(adb_path: Union[str, Path]) -> List[Cookie]:
             # Single Cookies sqlite file?
             if p.suffix.lower() in (".db", ".sqlite", ""):
                 cookies_db = p
+    except UnsafeArchiveError:
+        # Re-raise security errors — do not swallow path-traversal rejections.
+        raise
     except Exception:
         # If extraction or locating failed, leave cookies_db None
         cookies_db = None
@@ -372,11 +378,11 @@ def extract_adspower_bundle(src: Union[str, Path], dest_dir: Union[str, Path]) -
     elif src.suffix.lower() == ".zip":
         dest.mkdir(parents=True, exist_ok=True)
         with zipfile.ZipFile(src, "r") as zf:
-            zf.extractall(dest)
+            safe_extract_zip(zf, dest)
     elif src.suffix.lower() in (".tar", ".tgz") or src.name.endswith(".tar.gz"):
         dest.mkdir(parents=True, exist_ok=True)
         with tarfile.open(src, "r:*") as tf:
-            tf.extractall(dest)
+            safe_extract_tar(tf, dest)
     else:
         raise ValueError(
             f"Unsupported AdsPower bundle format: {src!s} "

@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Optional
 
 from sqlmodel import Field, SQLModel, create_engine, Session, select
+from sqlalchemy import event as sa_event
 
 
 # ---------------------------------------------------------------------------
@@ -137,14 +138,42 @@ def _default_db_path() -> Path:
     return base / "antique.db"
 
 
+def _configure_sqlite_pragmas(dbapi_conn, connection_record):
+    """Set WAL journal mode, busy_timeout, and synchronous=NORMAL on every
+    new SQLite connection.
+
+    - **WAL** (Write-Ahead Logging): allows concurrent readers during writes,
+      eliminating ``database is locked`` errors under mixed read/write load.
+    - **busy_timeout=5000ms**: when a write lock is held by another writer,
+      SQLite retries for 5 seconds instead of failing immediately.
+    - **synchronous=NORMAL**: safe with WAL and much faster than FULL.
+    """
+    cursor = dbapi_conn.cursor()
+    cursor.execute("PRAGMA journal_mode=WAL")
+    cursor.execute("PRAGMA busy_timeout=5000")
+    cursor.execute("PRAGMA synchronous=NORMAL")
+    cursor.close()
+
+
 def make_engine(db_path: Optional[Path] = None, echo: bool = False):
-    """Build a SQLAlchemy engine for SQLite."""
+    """Build a SQLAlchemy engine for SQLite.
+
+    Configures WAL journal mode, busy_timeout (5s), and synchronous=NORMAL
+    on every connection via a ``connect`` event listener.  This makes the
+    engine safe for concurrent access from FastAPI request handlers and
+    Playwright sessions running on multiple threads.
+    """
     path = db_path or _default_db_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     url = f"sqlite:///{path}"
     # check_same_thread=False because FastAPI/Playwright may use the engine
     # from multiple threads; SQLModel/SQLAlchemy serialises writes for us.
-    return create_engine(url, echo=echo, connect_args={"check_same_thread": False})
+    engine = create_engine(url, echo=echo, connect_args={"check_same_thread": False})
+    # Apply PRAGMAs on every new raw DBAPI connection.  This is the
+    # SQLAlchemy-recommended pattern for SQLite pragmas (they are
+    # per-connection, so they must be set at connect time).
+    sa_event.listen(engine, "connect", _configure_sqlite_pragmas)
+    return engine
 
 
 def init_db(engine=None) -> None:

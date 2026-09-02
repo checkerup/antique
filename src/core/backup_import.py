@@ -117,11 +117,34 @@ def _profile_remark(meta: Dict[str, Any]) -> str:
     return " | ".join(parts)
 
 
+def _validate_user_id(user_id: str) -> str:
+    """Ensure ``user_id`` is a safe path component (no traversal, no absolute).
+
+    AdsPower ``user_id`` values are short alphanumeric strings. A malicious
+    or malformed ``user_id`` like ``../../etc/passwd`` must never be used
+    to escape the backup root directory.
+    """
+    if not user_id:
+        raise ValueError("user_id must not be empty")
+    # Reject if it contains path separators or traversal segments
+    if "/" in user_id or "\\" in user_id:
+        raise ValueError(f"unsafe user_id (contains path separator): {user_id!r}")
+    parts = user_id.split("/")
+    if any(p in ("", ".", "..") for p in parts):
+        raise ValueError(f"unsafe user_id (traversal): {user_id!r}")
+    # Reject absolute-like patterns (drive letter on Windows, leading /)
+    if user_id.startswith("/") or (len(user_id) > 1 and user_id[1] == ":"):
+        raise ValueError(f"unsafe user_id (absolute): {user_id!r}")
+    return user_id
+
+
 def _cookie_json_path(root: Path, user_id: str) -> Path:
+    _validate_user_id(user_id)
     return Path(root) / "json_cookies" / f"{user_id}_cookies.json"
 
 
 def _profile_dir(root: Path, user_id: str) -> Path:
+    _validate_user_id(user_id)
     return Path(root) / user_id
 
 
@@ -272,9 +295,9 @@ def import_adspower_backup_root(
                 skipped.append(payload["user_id"])
                 continue
 
-            # Create or reset migration record (discovered state).
-            # Done after the skip check so skipped profiles keep their state.
-            mgr.create_or_reset(payload["user_id"], source_path=payload.get("import_source_path", ""))
+            # NOTE: migration record is created/re-reset AFTER the profile
+            # is created/updated (not before) to prevent orphan migration
+            # records when profile creation fails mid-import.
             if existing:
                 fp = None
                 if payload["ip_country"]:
@@ -302,7 +325,9 @@ def import_adspower_backup_root(
                 )
                 if payload["import_source_path"]:
                     store.set_import_source(payload["user_id"], payload["import_source_path"], reset_applied=True)
-                # Advance migration to metadata_imported
+                # Profile updated successfully — create/reset migration record
+                # and advance to metadata_imported.
+                mgr.create_or_reset(payload["user_id"], source_path=payload.get("import_source_path", ""))
                 mgr.transition(
                     payload["user_id"],
                     MigrationStatus.METADATA_IMPORTED,
@@ -343,7 +368,9 @@ def import_adspower_backup_root(
             )
             if payload["import_source_path"]:
                 store.set_import_source(payload["user_id"], payload["import_source_path"], reset_applied=True)
-            # Advance migration to metadata_imported
+            # Profile created successfully — create migration record and
+            # advance to metadata_imported.
+            mgr.create_or_reset(payload["user_id"], source_path=payload.get("import_source_path", ""))
             mgr.transition(
                 payload["user_id"],
                 MigrationStatus.METADATA_IMPORTED,
@@ -360,14 +387,18 @@ def import_adspower_backup_root(
                 "user_id": uid,
                 "error": str(exc),
             })
-            # Mark migration as failed if we have a record
+            # If a migration record was created but profile creation failed,
+            # mark it failed. The record may not exist if the failure happened
+            # before create_or_reset was called.
             if uid:
                 try:
-                    mgr.transition(
-                        uid,
-                        MigrationStatus.FAILED,
-                        detail={"error": str(exc), "step": "metadata_imported"},
-                    )
+                    rec = mgr.get(uid)
+                    if rec is not None and rec.status != MigrationStatus.FAILED.value:
+                        mgr.transition(
+                            uid,
+                            MigrationStatus.FAILED,
+                            detail={"error": str(exc), "step": "metadata_imported"},
+                        )
                 except Exception:
                     pass  # Transition may fail if record wasn't created yet
 

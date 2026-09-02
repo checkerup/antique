@@ -153,9 +153,9 @@ class TestMigrationStatusEnum:
         # site_verified is the success terminal — no transitions out
         assert VALID_TRANSITIONS.get("site_verified", set()) == set()
 
-    def test_invalid_transition_raises(self):
+    def test_invalid_transition_raises(self, tmp_path):
         from src.core.migration import MigrationError
-        store = ProfileStore()
+        store = ProfileStore(tmp_path / "test.db")
         mgr = MigrationManager(store)
         mgr.create_or_reset("test123", source_path="/tmp/fake")
         with pytest.raises(MigrationError):

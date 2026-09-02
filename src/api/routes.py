@@ -21,6 +21,7 @@ WS   /devtools/page/{user_id}/{target_id}
 """
 from __future__ import annotations
 
+import hmac
 import json
 import logging
 import os
@@ -283,13 +284,18 @@ def _is_overdue(due_date, now: Optional[Any] = None) -> bool:
 
 def _profile_to_adspower_shape(p) -> Dict[str, Any]:
     due = getattr(p, "due_date", None)
-    # Mask proxy password to prevent credential leakage in API responses
+    # Mask proxy credentials to prevent credential leakage in API responses.
+    # Both proxy_user and proxy_password are replaced with "****" when set,
+    # or "" when absent — so the shape is preserved but secrets are hidden.
     proxy_safe = None
     if p.proxy:
         proxy_safe = dict(p.proxy) if isinstance(p.proxy, dict) else p.proxy
-        if isinstance(proxy_safe, dict) and "proxy_password" in proxy_safe:
+        if isinstance(proxy_safe, dict):
             proxy_safe = dict(proxy_safe)  # Ensure we don't mutate original
-            proxy_safe["proxy_password"] = "****" if proxy_safe.get("proxy_password") else ""
+            if "proxy_password" in proxy_safe:
+                proxy_safe["proxy_password"] = "****" if proxy_safe.get("proxy_password") else ""
+            if "proxy_user" in proxy_safe:
+                proxy_safe["proxy_user"] = "****" if proxy_safe.get("proxy_user") else ""
     return {
         "user_id": p.user_id,
         "name": p.name,
@@ -1607,11 +1613,16 @@ def proxy_pool_next(body: ProxyPoolNext) -> Dict[str, Any]:
     if chosen is None:
         raise HTTPException(status_code=400, detail="no live proxy in the pool")
     proxy_dict = adspower_shape(chosen)
+    # Mask credentials in the response — never echo proxy_user/password.
+    if proxy_dict.get("proxy_user"):
+        proxy_dict["proxy_user"] = "****"
+    if proxy_dict.get("proxy_password"):
+        proxy_dict["proxy_password"] = "****"
     assigned = False
     if body.user_id:
         assert _store is not None
         try:
-            _store.update(body.user_id, proxy=proxy_dict)
+            _store.update(body.user_id, proxy=adspower_shape(chosen))
             assigned = True
         except KeyError:
             raise HTTPException(status_code=404, detail="user_id not found")
@@ -2056,6 +2067,31 @@ async def cdp_new(user_id: str, url: str = "about:blank") -> Dict[str, Any]:
 @router.websocket("/devtools/page/{user_id}/{target_id}")
 async def cdp_ws(ws: WebSocket, user_id: str, target_id: str):
     assert _cdp is not None
+    # WebSocket endpoints bypass the HTTP auth middleware, so we enforce
+    # auth here directly. In remote mode with a token set, the client must
+    # provide a valid Bearer token; otherwise we close with 4401.
+    # In local/LAN mode, the WS is exempt (consistent with /json and /devtools).
+    from .server import auth_check
+    from ..core.security import DeploymentMode, is_origin_allowed
+
+    deploy_mode: DeploymentMode = getattr(ws.app.state, "deploy_mode", DeploymentMode.LOCAL)
+    api_token: str = getattr(ws.app.state, "api_token", "")
+    allowed_origins: list = getattr(ws.app.state, "allowed_origins", [])
+
+    # Check origin (WS Origin header or Host header)
+    origin = ws.headers.get("origin", "") or ws.headers.get("referer", "")
+    if not is_origin_allowed(origin, allowed_origins):
+        await ws.close(code=4403)
+        return
+
+    # In remote mode, CDP paths require auth
+    if deploy_mode == DeploymentMode.REMOTE and api_token:
+        auth_header = ws.headers.get("authorization", "")
+        expected = f"Bearer {api_token}"
+        if not hmac.compare_digest(auth_header, expected):
+            await ws.close(code=4401)
+            return
+
     sessions = _cdp._pages.get(user_id, [])
     target = next((s for s in sessions if s.target_id == target_id), None)
     if target is None:

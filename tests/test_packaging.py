@@ -151,6 +151,12 @@ class TestRequirements:
 # ---------------------------------------------------------------------------
 
 class TestDockerfile:
+    def test_default_container_configuration_can_boot_without_secret(self):
+        """Loopback-published Compose must have a usable secure default."""
+        dockerfile = (PROJECT_ROOT / "Dockerfile").read_text()
+        assert "ENV ANTIQUE_DEPLOY_MODE=lan" in dockerfile
+        assert '"--deploy-mode", "remote"' not in dockerfile
+
     def test_dockerfile_has_non_root_user(self):
         """Dockerfile must define and switch to a non-root USER."""
         dockerfile = (PROJECT_ROOT / "Dockerfile").read_text()
@@ -277,6 +283,17 @@ class TestSystemdUnit:
 # ---------------------------------------------------------------------------
 
 class TestPyInstallerSpec:
+    def test_production_modules_are_explicit_hidden_imports(self):
+        spec = (PACKAGING_DIR / "antique.spec").read_text()
+        for module in (
+            "src.core.security",
+            "src.core.launch_policy",
+            "src.core.migration",
+            "src.core.diagnostics",
+            "src.api.v1_router",
+        ):
+            assert f'"{module}"' in spec
+
     def test_spec_file_exists(self):
         assert (PACKAGING_DIR / "antique.spec").exists()
 

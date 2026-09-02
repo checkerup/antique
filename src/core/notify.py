@@ -16,6 +16,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
+from src.core.outbound_guard import SSRFError, safe_urlopen, validate_outbound_url
+
 KINDS = ("discord", "telegram", "generic")
 EVENTS = ("profile_start", "profile_stop", "profile_crash", "proxy_fail", "detect_fail")
 
@@ -116,7 +118,7 @@ def _post(url: str, payload: Dict[str, Any], timeout: float = 5.0) -> int:
     body = json.dumps(payload).encode("utf-8")
     request = urllib.request.Request(url, data=body, method="POST")
     request.add_header("Content-Type", "application/json")
-    with urllib.request.urlopen(request, timeout=timeout) as response:
+    with safe_urlopen(request, timeout=timeout) as response:
         return int(getattr(response, "status", 200) or 200)
 
 
@@ -137,6 +139,13 @@ def send_event(
         return {"sent": False, "reason": "event not subscribed", "event": event}
     if not cfg.url:
         return {"sent": False, "reason": "no url", "event": event}
+    # Validate literals for injected transports; resolve DNS at the real
+    # network boundary. This preserves deterministic/offline sender injection
+    # without weakening production delivery.
+    try:
+        validate_outbound_url(cfg.url, resolve_dns=sender is None)
+    except SSRFError as exc:
+        return {"sent": False, "reason": f"SSRF blocked: {exc}", "event": event}
     payload = build_payload(cfg.kind, event, payload_data)
     post = sender or _post
     try:

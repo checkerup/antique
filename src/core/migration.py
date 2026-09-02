@@ -374,13 +374,20 @@ class MigrationManager:
             source_valid = validation["source"]["source_valid"]
 
             if not source_valid:
-                if rec.status != MigrationStatus.FAILED.value:
+                # Mark as failed — but only if the current state allows it.
+                # site_verified is terminal (no transitions out), so we skip
+                # the transition and just report the failure without crashing.
+                if rec.status == MigrationStatus.SITE_VERIFIED.value:
+                    results[uid] = {"repaired": False, "reason": "source invalid (terminal state preserved)", "validation": validation}
+                elif rec.status != MigrationStatus.FAILED.value:
                     self.transition(
                         uid,
                         MigrationStatus.FAILED,
                         detail={"error": "source path missing during repair", "validation": validation},
                     )
-                results[uid] = {"repaired": False, "reason": "source invalid", "validation": validation}
+                    results[uid] = {"repaired": False, "reason": "source invalid", "validation": validation}
+                else:
+                    results[uid] = {"repaired": False, "reason": "source invalid", "validation": validation}
             else:
                 # If was failed, reset to discovered for re-processing
                 if rec.status == MigrationStatus.FAILED.value:
