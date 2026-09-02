@@ -38,6 +38,20 @@
 
 ### Остаётся в бэклоге
 
+- [x] **AdsPower cookie decryption** — DPAPI + AES-GCM (v10) + XOR prefix detection.
+  Расшифровывает cookies из живого AdsPower cache (`C:\.ADSPOWER_GLOBAL\cache`).
+  `src/core/adspower_crypto.py`, интегрировано в `backup_import.py`.
+  13,846 cookies из 72 профилей, 100% success rate.
+- [x] **AdsPower fingerprint extraction** — UA, languages, screen resolution из Preferences + HTTP cache.
+  `extract_fingerprint()` в `adspower_crypto.py`, применяется при импорте.
+- [x] **AdsPower extensions/state copy** — Extensions, LocalStorage, IndexedDB, History
+  копируются в Antique user-data-dir при импорте. `copy_profile_state()`.
+- [x] **Window title labeling** — `[ProfileName]` prefix в `document.title` с MutationObserver.
+  `src/core/window_title.py`, 16 тестов. Работает в обоих launch-путях.
+- [ ] **Google auth with imported cookies** — Google привязывает cookies к fingerprint
+  (Canvas/WebGL/AudioContext). Простого совпадения UA недостаточно. Нужен глубокий
+  fingerprint matching или запуск через AdsPower SunBrowser binary.
+  Twitter/X и Discord работают с импортированными cookies.
 - [ ] **Реальный CDP на профиль (P0.1)** — `--remote-debugging-port`, пока симуляция.
 - [ ] **WebRTC proxy-IP rewriting** — отдавать public IP прокси в ICE, а не только блокировать.
 - [ ] **Интеграции провайдеров прокси**, **MCP UI**, **Web Store расширений**.

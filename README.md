@@ -847,6 +847,18 @@ Added operational parity features: AdsPower backup dry-run preview, profile temp
 - [x] **Proxy rotation** — done (`src/core/proxy_pool.py`, `proxy-rotate` CLI).
 - [x] **Headless stealth** — done (`window.chrome` + permissions patches).
 - [x] **Detection self-test** — done (`detect-test`, `src/core/detect.py`).
+- [x] **AdsPower live cookie decryption** — DPAPI + AES-GCM + XOR prefix detection.
+  Decrypts cookies from `C:\.ADSPOWER_GLOBAL\cache` when importing. 100% success rate
+  across 72 profiles / 13,846 cookies. `src/core/adspower_crypto.py`.
+- [x] **AdsPower fingerprint extraction** — UA, languages, screen resolution extracted
+  from Chromium Preferences + HTTP cache and applied to Antique profiles on import.
+- [x] **AdsPower extensions + state copy** — Extensions, LocalStorage, IndexedDB,
+  History copied to Antique user-data-dir on import. `copy_profile_state()`.
+- [x] **Window title labeling** — `[ProfileName]` prefix in `document.title` with
+  MutationObserver; survives SPA navigation. `src/core/window_title.py`, 16 tests.
+- [ ] **Google auth with imported cookies** — Google device-binds cookies to
+  Canvas/WebGL/Audio fingerprint. Twitter/X and Discord work; Google needs deeper
+  fingerprint matching or SunBrowser binary passthrough.
 
 ---
 

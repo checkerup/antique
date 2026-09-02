@@ -36,6 +36,7 @@ from .profile import Profile, ProfileStore
 from .proxy import ProxyConfig, parse_proxy
 from .socks_bridge import Socks5AuthBridge
 from .ssh_tunnel import SSHTunnelManager
+from .window_title import build_title_init_script
 
 
 log = logging.getLogger("antique.browser")
@@ -515,6 +516,17 @@ class BrowserLauncher:
         init_js = build_init_script(fp)
         await context.add_init_script(init_js)
 
+        # Inject per-profile window-title labeling (AdsPower-style taskbar
+        # identification). Added as a separate init script so it runs on every
+        # future document, and also applied to already-open pages.
+        title_js = build_title_init_script(profile.name)
+        await context.add_init_script(title_js)
+        for page in context.pages:
+            try:
+                await page.evaluate(title_js)
+            except Exception:
+                pass
+
         # Add cookies
         if profile.cookies:
             cookies = [
@@ -674,6 +686,18 @@ class BrowserLauncher:
             raise
 
         await context.add_init_script(init_js)
+
+        # Per-profile window-title labeling (AdsPower-style taskbar
+        # identification). Applied to future documents via init script and
+        # to any already-open pages (e.g. the initial about:blank tab).
+        title_js = build_title_init_script(profile.name)
+        await context.add_init_script(title_js)
+        for page in context.pages:
+            try:
+                await page.evaluate(title_js)
+            except Exception:
+                pass
+
         if profile.cookies:
             cookies = [
                 Cookie(

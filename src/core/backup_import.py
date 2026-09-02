@@ -188,6 +188,35 @@ def prepare_backup_profile_payload(root: Path, meta: Dict[str, Any]) -> Dict[str
             has_extension_cookies = (default_dir / "Extension Cookies").is_file()
             has_local_ext_settings = (default_dir / "Local Extension Settings").is_dir()
 
+    # ── Live AdsPower cache decryption ──────────────────────────────
+    # If the live AdsPower cache is available, decrypt cookies from the
+    # Chromium Cookies DB (AES-GCM + DPAPI + XOR prefix detection).
+    # This produces clean, usable cookie values that the JSON export
+    # (which contains AdsPower-obfuscated values) cannot provide.
+    live_cache_dir: Optional[Path] = None
+    try:
+        from .adspower_crypto import find_adspower_cache, is_crypto_available
+        if is_crypto_available():
+            live_cache_dir = find_adspower_cache()
+    except Exception:
+        pass
+
+    if live_cache_dir is not None:
+        # Try to find the live cache directory for this profile.
+        # AdsPower stores profiles as <user_id>_hgk0lp in the cache.
+        for suffix in ("_hgk0lp", "_hgk0lp_0"):
+            candidate = live_cache_dir / f"{user_id}{suffix}"
+            if candidate.is_dir():
+                try:
+                    from .adspower_crypto import decrypt_profile_cookies
+                    live_cookies = decrypt_profile_cookies(candidate)
+                    if live_cookies:
+                        cookies = live_cookies
+                        cookie_source = "live_cache"
+                except Exception:
+                    pass
+                break
+
     return {
         "user_id": user_id,
         "name": _profile_name(meta),
@@ -270,7 +299,7 @@ def import_adspower_backup_root(
     updated: List[str] = []
     skipped: List[str] = []
     errors: List[Dict[str, str]] = []
-    cookie_sources = {"json": 0, "profile_dir": 0, "none": 0}
+    cookie_sources = {"json": 0, "profile_dir": 0, "live_cache": 0, "none": 0}
     full_state_profiles = 0
     extensions_installed_count = len(installed_extensions)
 
@@ -368,6 +397,8 @@ def import_adspower_backup_root(
             )
             if payload["import_source_path"]:
                 store.set_import_source(payload["user_id"], payload["import_source_path"], reset_applied=True)
+            # Apply AdsPower fingerprint overrides (UA, languages, screen)
+            _apply_adspower_fingerprint_overrides(store, payload["user_id"], payload["import_source_path"])
             # Profile created successfully — create migration record and
             # advance to metadata_imported.
             mgr.create_or_reset(payload["user_id"], source_path=payload.get("import_source_path", ""))
@@ -418,3 +449,96 @@ def import_adspower_backup_root(
         "skipped_user_ids": skipped,
         "errors": errors,
     }
+
+
+def _apply_adspower_fingerprint_overrides(
+    store: ProfileStore,
+    user_id: str,
+    import_source_path: str,
+) -> None:
+    """Extract fingerprint from live AdsPower cache and override Antique's.
+
+    If the AdsPower cache is available on this machine, extract the real
+    User-Agent, languages, screen resolution, and extension list from the
+    AdsPower profile directory and apply them to the Antique profile.
+
+    Also copies LocalStorage, IndexedDB, History, and Extensions to the
+    Antique user-data-dir so they are available on first launch.
+    """
+    try:
+        from .adspower_crypto import (
+            find_adspower_cache,
+            extract_fingerprint,
+            copy_profile_state,
+            is_crypto_available,
+        )
+    except Exception:
+        return
+
+    if not is_crypto_available():
+        return
+
+    cache = find_adspower_cache()
+    if cache is None:
+        return
+
+    # Find the live cache directory for this profile
+    # AdsPower uses <user_id>_hgk0lp as the directory name
+    # Extract the AdsPower user_id from import_source_path (last component)
+    from pathlib import Path as _Path
+    src = _Path(import_source_path) if import_source_path else None
+    if src is None:
+        return
+    adspower_uid = src.name
+
+    for suffix in ("_hgk0lp", "_hgk0lp_0"):
+        candidate = cache / f"{adspower_uid}{suffix}"
+        if candidate.is_dir():
+            fp_overrides = extract_fingerprint(candidate)
+            break
+    else:
+        return
+
+    # Read current fingerprint from DB
+    profile = store.get(user_id)
+    if profile is None or not profile.fingerprint:
+        return
+
+    import json as _json
+    fp_dict = (
+        profile.fingerprint.canonical()
+        if hasattr(profile.fingerprint, "canonical")
+        else _json.loads(_json.dumps(profile.fingerprint, default=str))
+    )
+
+    # Apply overrides
+    if fp_overrides.get("user_agent"):
+        fp_dict["user_agent"] = fp_overrides["user_agent"]
+    if fp_overrides.get("accept_language"):
+        fp_dict["accept_language"] = fp_overrides["accept_language"]
+    if fp_overrides.get("languages"):
+        fp_dict["languages"] = fp_overrides["languages"]
+    if fp_overrides.get("locale"):
+        fp_dict["locale"] = fp_overrides["locale"]
+    if fp_overrides.get("screen_width"):
+        fp_dict["screen_width"] = fp_overrides["screen_width"]
+        fp_dict["screen_height"] = fp_overrides["screen_height"]
+        fp_dict["avail_screen_width"] = fp_overrides["avail_screen_width"]
+        fp_dict["avail_screen_height"] = fp_overrides["avail_screen_height"]
+        fp_dict["inner_width"] = fp_overrides["screen_width"]
+        fp_dict["inner_height"] = fp_overrides["avail_screen_height"]
+
+    # Override extensions with IDs (Antique expects list of ID strings)
+    if fp_overrides.get("extensions"):
+        fp_dict["extensions"] = [e["id"] for e in fp_overrides["extensions"]]
+
+    # Write back to DB
+    from .fingerprint_ops import fingerprint_from_dict
+    new_fp = fingerprint_from_dict(fp_dict)
+    store.update(user_id, fingerprint=new_fp)
+
+    # Copy profile state (LocalStorage, IndexedDB, History, Extensions)
+    user_data_dir = _Path(f"data/profiles/{user_id}")
+    if not user_data_dir.exists():
+        user_data_dir.mkdir(parents=True, exist_ok=True)
+    copy_profile_state(candidate, user_data_dir)
