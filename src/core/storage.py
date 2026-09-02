@@ -102,6 +102,26 @@ class ActivityEventRecord(SQLModel, table=True):
     created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
 
 
+class MigrationRecord(SQLModel, table=True):
+    """Per-profile migration state — tracks progress through the migration
+    pipeline from AdsPower backup import to full launch/site verification.
+
+    Lifecycle: discovered → metadata_imported → storage_copied →
+    extensions_remapped → launch_verified → site_verified.
+    Any step may transition to ``failed``; from ``failed`` you can retry
+    back to any prior state.
+    """
+
+    __tablename__ = "migration_state"
+
+    user_id: str = Field(primary_key=True, index=True)
+    status: str = Field(default="discovered", index=True)
+    source_path: str = Field(default="")
+    detail: str = Field(default="{}")  # JSON of validation/error info
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
 # ---------------------------------------------------------------------------
 # Engine / session factory
 # ---------------------------------------------------------------------------

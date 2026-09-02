@@ -28,6 +28,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Body, File, HTTPException, Query, UploadFile, WebSocket
+
+from .. import __version__
 from pydantic import BaseModel, Field
 
 from ..core.backup_import import import_adspower_backup_root
@@ -349,7 +351,7 @@ def _fingerprint_with_patch(raw: Optional[Dict[str, Any]], base: Optional[Dict[s
 
 @router.get("/health")
 def health() -> Dict[str, Any]:
-    return {"status": "ok", "service": "antique", "version": "1.0.0"}
+    return {"status": "ok", "service": "antique", "version": __version__}
 
 
 # ---------------------------------------------------------------------------
@@ -970,6 +972,103 @@ def get_profile(user_id: str) -> Dict[str, Any]:
     if p is None:
         raise HTTPException(status_code=404, detail="user_id not found")
     return _ads_response(True, **_profile_to_adspower_shape(p))
+
+
+# ---------------------------------------------------------------------------
+# Migration center — per-profile migration state machine
+# ---------------------------------------------------------------------------
+
+
+class MigrationValidateRequest(BaseModel):
+    source_path: str
+    user_ids: Optional[List[str]] = None
+    launch_sites: bool = False  # Ignored by default; never launches external sites
+
+
+class MigrationRetryRequest(BaseModel):
+    user_ids: List[str]
+
+
+class MigrationRepairRequest(BaseModel):
+    source_path: str
+    user_ids: Optional[List[str]] = None
+
+
+def _migration_mgr() -> "MigrationManager":
+    assert _store is not None
+    from ..core.migration import MigrationManager
+    return MigrationManager(_store)
+
+
+@router.get("/migration/status")
+def migration_status(status: Optional[str] = Query(None)) -> Dict[str, Any]:
+    """List migration state for all profiles, optionally filtered by status."""
+    mgr = _migration_mgr()
+    if status:
+        from ..core.migration import MigrationStatus
+        try:
+            st = MigrationStatus(status)
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"unknown status: {status}")
+        records = mgr.list_by_status(st)
+        items = [
+            {
+                "user_id": r.user_id,
+                "status": r.status,
+                "source_path": r.source_path,
+                "detail": json.loads(r.detail) if r.detail else {},
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+                "updated_at": r.updated_at.isoformat() if r.updated_at else None,
+            }
+            for r in records
+        ]
+    else:
+        items = mgr.batch_status()
+    return _ads_response(True, total=len(items), list=items)
+
+
+@router.post("/migration/validate")
+def migration_validate(body: MigrationValidateRequest) -> Dict[str, Any]:
+    """Batch-validate source/cookie/storage/extension for profiles.
+
+    Does **not** launch external sites by default. The ``launch_sites``
+    parameter is accepted but site verification is never performed here.
+    """
+    mgr = _migration_mgr()
+    results = mgr.batch_validate(Path(body.source_path), user_ids=body.user_ids)
+    return _ads_response(True, results=results)
+
+
+@router.post("/migration/retry")
+def migration_retry(body: MigrationRetryRequest) -> Dict[str, Any]:
+    """Retry migrations by resetting profiles to ``discovered``.
+
+    Works on any non-terminal status (not just ``failed``). Profiles in
+    ``site_verified`` (terminal success) are not retried.
+    """
+    mgr = _migration_mgr()
+    from ..core.migration import MigrationStatus
+    results = {}
+    for uid in body.user_ids:
+        rec = mgr.get(uid)
+        if rec is None:
+            results[uid] = {"retried": False, "reason": "no migration record"}
+            continue
+        if rec.status == MigrationStatus.SITE_VERIFIED.value:
+            results[uid] = {"retried": False, "reason": "already site_verified (terminal)"}
+            continue
+        # Reset to discovered for retry
+        mgr.create_or_reset(uid, source_path=rec.source_path)
+        results[uid] = {"retried": True}
+    return _ads_response(True, results=results)
+
+
+@router.post("/migration/repair")
+def migration_repair(body: MigrationRepairRequest) -> Dict[str, Any]:
+    """Re-validate and repair migration state for profiles."""
+    mgr = _migration_mgr()
+    results = mgr.batch_repair(Path(body.source_path), user_ids=body.user_ids)
+    return _ads_response(True, results=results)
 
 
 # ---------------------------------------------------------------------------
@@ -1999,7 +2098,7 @@ def info() -> Dict[str, Any]:
     running = _launcher.list_running()
     return {
         "service": "antique",
-        "version": "1.0.0",
+        "version": __version__,
         "profile_count": len(profiles),
         "running_count": len(running),
         "running": [h.user_id for h in running],

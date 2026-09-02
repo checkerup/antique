@@ -1,5 +1,7 @@
 .git
 .venv
+venv
+env
 data
 **/__pycache__
 *.egg-info
@@ -7,3 +9,8 @@ data
 *.antq
 docs/design/*.png
 README.zh.md
+dist
+build
+.antique-backups
+*.exe
+*.msi

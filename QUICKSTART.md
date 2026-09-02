@@ -6,12 +6,25 @@ proxies, multi-engine, AdsPower import, dashboard + REST API + MCP.
 ## 1. What you need
 
 - **Python 3.10+** on PATH (`python --version`).
-- Windows / macOS / Linux. (Batch launcher below is Windows.)
+- Windows / macOS / Linux. (Batch launchers below are Windows.)
 - Everything else (browser engine, deps) is installed automatically on first run.
 
 ## 2. Start it (Windows, one click)
 
-Double-click **`start.bat`** in the project root.
+Double-click **`start.bat`** in the project root, or use the enhanced launcher:
+
+```bat
+scripts\antique-launcher.bat serve
+```
+
+The enhanced launcher (`scripts/antique-launcher.bat`) also supports:
+
+| command | action |
+|---|---|
+| `install` | Fresh install or repair (uses pinned deps from `packaging/requirements-lock.txt`) |
+| `update` | Update dependencies + reinstall antique (records pre-update version for rollback) |
+| `rollback` | Show previous version + rollback instructions |
+| `serve` | Start the server (default) |
 
 - First run: creates `.venv`, installs antique, downloads the Chromium engine.
 - Later runs: just boots the server.
@@ -27,8 +40,8 @@ Then open:
 ```bash
 python -m venv .venv
 . .venv/bin/activate        # Windows: .venv\Scripts\activate
-pip install -e .
-python -m playwright install chromium firefox webkit
+pip install -c packaging/requirements-lock.txt -e .
+python -m playwright install chromium
 python -m src.cli serve --ui-port 8080
 ```
 
@@ -111,8 +124,22 @@ python -m camoufox fetch
 ```bash
 docker compose up          # dashboard on http://127.0.0.1:8080/
 ```
-Profiles + DB persist in the `antique-data` volume. Runs headless in the
-container. Set `ANTIQUE_API_TOKEN` in `docker-compose.yml` if you expose the port.
+
+The container runs as a non-root user with a read-only filesystem, all
+Linux capabilities dropped, and `no-new-privileges` enforced. Profiles + DB
+persist in the `antique-data` volume. Runs headless in the container. Set
+`ANTIQUE_API_TOKEN` in `docker-compose.yml` if you expose the port.
+
+### Linux systemd (production server)
+
+```bash
+sudo bash packaging/install-systemd.sh
+sudo systemctl enable --now antique
+```
+
+The service runs as a dedicated `antique` system user with hardened systemd
+directives (`ProtectSystem=strict`, `NoNewPrivileges`, capability bounding
+set empty, etc.). See `packaging/antique.service` for the full hardening.
 
 ## 9. New in 0.6.0
 

@@ -87,12 +87,52 @@ def serve(
     cdp_port: int = typer.Option(5555, "--cdp-port", help="CDP multiplexer port"),
     host: str = typer.Option("127.0.0.1", "--host"),
     headless: bool = typer.Option(False, "--headless"),
+    deploy_mode: str = typer.Option(
+        None,
+        "--deploy-mode",
+        help="Security mode: local (default), lan, or remote",
+    ),
+    generate_token: bool = typer.Option(
+        False,
+        "--generate-token",
+        help="Generate a secure API token for this session",
+    ),
 ):
-    """Run the API + UI server."""
-    from .api.server import create_app
+    """Run the API + UI server.
+
+    Deployment modes (``--deploy-mode``):
+
+    - **local** (default): loopback only, no auth, permissive CORS.
+      Preserves the existing developer-friendly behavior.
+    - **lan**: binds 0.0.0.0 for trusted-network access.  CORS
+      restricted to ANTIQUE_ALLOWED_ORIGINS.  Token optional.
+    - **remote**: for tunnel/remote exposure.  Token MANDATORY
+      (use ``--generate-token`` or set ANTIQUE_API_TOKEN).  /json
+      and /devtools require auth.  Restrictive CORS.
+    """
+    from .api.server import create_app, validate_startup
+    from .core.security import validate_deployment_mode, generate_api_token as _gen_token
     import uvicorn
-    app = create_app(api_port=api_port, cdp_port=cdp_port, headless=headless)
-    console.print(f"[green]antique[/green] starting on http://{host}:{ui_port}")
+
+    mode = validate_deployment_mode(deploy_mode)
+    api_token = os.environ.get("ANTIQUE_API_TOKEN", "")
+
+    if generate_token:
+        api_token = _gen_token()
+        console.print(f"[bold green]Generated API token:[/bold green] [cyan]{api_token}[/cyan]")
+        console.print("[dim]  Set ANTIQUE_API_TOKEN=<token> to persist across restarts.[/dim]")
+
+    # Fail-closed: refuse to start in an insecure configuration.
+    validate_startup(mode=mode, host=host, api_token=api_token)
+
+    app = create_app(
+        api_port=api_port,
+        cdp_port=cdp_port,
+        headless=headless,
+        deploy_mode=mode,
+        api_token=api_token,
+    )
+    console.print(f"[green]antique[/green] starting on http://{host}:{ui_port}  [dim](mode: {mode.value})[/dim]")
     console.print(f"  Dashboard:    http://{host}:{ui_port}/")
     console.print(f"  API docs:     http://{host}:{ui_port}/docs")
     console.print(f"  AdsPower API: http://{host}:{ui_port}/user/list")

@@ -65,7 +65,12 @@ def test_to_playwright_launch_options_contains_args():
     fp = generate_fingerprint(seed="x")
     opts = to_playwright_launch_options(fp)
     assert "args" in opts
-    assert any("--disable-blink-features=AutomationControlled" in a for a in opts["args"])
+    # Google treats automation/security-disabling switches as an insecure
+    # browser signal. Stealth is implemented by the init script instead.
+    assert not any("--disable-blink-features=AutomationControlled" in a for a in opts["args"])
+    assert not any("--disable-web-security" in a for a in opts["args"])
+    assert "--enable-automation" in opts["ignore_default_args"]
+    assert "--no-sandbox" in opts["ignore_default_args"]
     assert any(f"--lang={fp.locale}" in a for a in opts["args"])
     assert opts["locale"] == fp.locale
     assert opts["timezone_id"] == fp.timezone

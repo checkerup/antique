@@ -1,20 +1,48 @@
 # antique — one-command run:  docker compose up
 # Dashboard: http://127.0.0.1:8080/   ·   API docs: http://127.0.0.1:8080/docs
+#
+# Security defaults:
+#   - read_only filesystem (writes go to /data volume only)
+#   - no-new-privileges
+#   - no capabilities, no host PID/IPC namespace
+#   - memory + CPU limits
 services:
   antique:
     build: .
     container_name: antique
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     volumes:
       - antique-data:/data          # persists profiles + SQLite across restarts
     environment:
-      # Require a token on the API (recommended when the port is exposed).
-      # - ANTIQUE_API_TOKEN=change-me
-      # Trust extra origins if you front this with a tunnel/reverse proxy.
-      # - ANTIQUE_ALLOWED_ORIGINS=example.ngrok-free.app
       - ANTIDETECT_ENGINE=chromium
+      # Deployment mode: local (default), lan, or remote.
+      # remote = strict auth: token required, /json & /devtools gated, restrictive CORS.
+      # - ANTIQUE_DEPLOY_MODE=remote
+      # Require a token on the API (required for remote mode).
+      # Generate one: python -m src.cli serve --generate-token
+      # - ANTIQUE_API_TOKEN=change-me
+      # Trust extra origins (full URL, comma-separated) for cross-origin access.
+      # - ANTIQUE_ALLOWED_ORIGINS=https://abc123.ngrok-free.app
     restart: unless-stopped
+    # --- Hardening ---
+    read_only: true
+    tmpfs:
+      - /tmp:size=64M
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pid: "service:none"
+    ipc: "private"
+    mem_limit: 2g
+    cpus: 2.0
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health')"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
 
 volumes:
   antique-data:

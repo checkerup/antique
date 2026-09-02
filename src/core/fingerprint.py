@@ -581,16 +581,12 @@ def to_playwright_launch_options(fp: Fingerprint, proxy: Optional[Dict[str, Any]
     UA, window size). Browser-internal patching (canvas/WebGL/audio) goes
     through ``to_init_scripts``.
     """
+    from .launch_policy import get_launch_policy
+
+    policy = get_launch_policy()
     opts: Dict[str, Any] = {
         "headless": False,  # most anti-detect use-cases need a real window
         "args": [
-            "--disable-blink-features=AutomationControlled",
-            # NOTE: Chromium honours only the LAST --disable-features flag, so
-            # every disabled feature must live in this single comma list.
-            # DevToolsConsole drops the console instrumentation sites probe for.
-            "--disable-features=IsolateOrigins,site-per-process,DevToolsConsole",
-            "--disable-site-isolation-trials",
-            "--disable-web-security",
             f"--lang={fp.locale}",
             f"--window-size={fp.screen_width},{fp.screen_height}",
             "--no-default-browser-check",
@@ -603,6 +599,7 @@ def to_playwright_launch_options(fp: Fingerprint, proxy: Optional[Dict[str, Any]
             # "=false" makes Chrome parse it as truthy and OPEN DevTools.
             # Omit entirely (default is closed).
             # Don't disable GPU — anti-detect checks for WebGL availability
+            *policy.chromium_args,
         ],
         "viewport": {"width": fp.inner_width, "height": fp.inner_height},
         "screen": {"width": fp.screen_width, "height": fp.screen_height},
@@ -612,6 +609,10 @@ def to_playwright_launch_options(fp: Fingerprint, proxy: Optional[Dict[str, Any]
         "user_agent": fp.user_agent,
         "accept_downloads": True,
         "ignore_https_errors": True,
+        # Playwright injects these switches by default. Google rejects sign-in
+        # when Chrome advertises --no-sandbox, and --enable-automation exposes
+        # an avoidable automation marker.
+        "ignore_default_args": list(policy.ignore_playwright_default_args),
         "bypass_csp": False,
     }
     # Color scheme & reduced motion are nice but not fingerprint-critical

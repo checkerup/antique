@@ -9,6 +9,8 @@ venv/
 env/
 build/
 dist/
+dist-test/
+dist-test2/
 *.egg-info/
 .pytest_cache/
 .coverage
@@ -46,6 +48,9 @@ logs/
 
 # Smoke test artifacts
 smoke.antq
+native-google-*.json
+native-google-*.png
+native-google-*.jpg
 # Sensitive data
 *.env
 .env.*

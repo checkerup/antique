@@ -1,0 +1,64 @@
+[Unit]
+Description=antique anti-detect browser manager
+Documentation=https://github.com/checkerup/antique
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+
+# --- Run as a non-root service user (created by install script) ---
+User=antique
+Group=antique
+
+# --- Working directory (repo checkout or installed location) ---
+WorkingDirectory=/opt/antique
+
+# --- Hardened environment ---
+Environment=PYTHONUNBUFFERED=1
+Environment=ANTIQUE_DATA_DIR=/var/lib/antique
+Environment=ANTIQUE_HEADLESS=1
+Environment=ANTIDETECT_ENGINE=chromium
+# Set ANTIQUE_API_TOKEN to require Bearer auth on the API
+# Environment=ANTIQUE_API_TOKEN=change-me-in-production
+# Set ANTIQUE_ALLOWED_ORIGINS if fronting with a reverse proxy
+# Environment=ANTIQUE_ALLOWED_ORIGINS=example.com
+
+# --- Execute the server via the venv python ---
+ExecStart=/opt/antique/.venv/bin/python -m src.cli serve \
+    --host 127.0.0.1 \
+    --ui-port 8080 \
+    --headless
+
+# --- Restart policy ---
+Restart=on-failure
+RestartSec=5
+StartLimitBurst=3
+StartLimitIntervalSec=60
+
+# --- Hardening: reduce process capabilities ---
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/antique
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=false
+RemoveIPC=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+# --- Resource limits ---
+LimitNOFILE=4096
+TasksMax=512
+
+[Install]
+WantedBy=multi-user.target
