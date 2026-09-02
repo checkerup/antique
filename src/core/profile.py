@@ -16,7 +16,7 @@ from typing import Any, Dict, List, Optional
 from sqlmodel import Session, select
 
 from .fingerprint import Fingerprint, generate_fingerprint
-from .storage import ProfileRecord, SessionRecord, make_engine, init_db, get_session
+from .storage import MigrationRecord, ProfileRecord, SessionRecord, make_engine, init_db, get_session
 
 
 # ---------------------------------------------------------------------------
@@ -293,6 +293,9 @@ class ProfileStore:
             ).all()
             for sess in sessions:
                 s.delete(sess)
+            migration = s.get(MigrationRecord, user_id)
+            if migration is not None:
+                s.delete(migration)
             s.delete(r)
             s.commit()
             return True

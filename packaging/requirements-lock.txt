@@ -1,4 +1,4 @@
-# Reproducible dependency lock for antique v1.1.0
+# Reproducible dependency lock for antique v1.1.1
 #
 # This file pins every transitive dependency to the exact versions that
 # captured from the known-good Python 3.11 Windows environment. CI validates

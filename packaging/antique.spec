@@ -64,6 +64,12 @@ hidden_imports = [
     "playwright",
     "playwright.sync_api",
     "playwright.async_api",
+    # Production-readiness modules include runtime/lazy imports.
+    "src.core.security",
+    "src.core.launch_policy",
+    "src.core.migration",
+    "src.core.diagnostics",
+    "src.api.v1_router",
 ]
 
 a = Analysis(

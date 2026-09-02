@@ -7,6 +7,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import hmac
 import logging
 import os
 from pathlib import Path
@@ -127,7 +128,8 @@ def auth_check(
     if token:
         auth = lower.get("authorization", "")
         expected = f"Bearer {token}"
-        if auth != expected:
+        # Constant-time comparison to prevent timing attacks.
+        if not hmac.compare_digest(auth, expected):
             return (False, 401, "missing or invalid API token")
 
     return (True, 200, "ok")
@@ -268,6 +270,7 @@ def create_app(
     app.state.cdp = cdp
     app.state.deploy_mode = deploy_mode
     app.state.api_token = api_token
+    app.state.allowed_origins = allowed_origins
 
     from contextlib import asynccontextmanager
 

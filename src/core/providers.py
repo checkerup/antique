@@ -9,6 +9,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from src.core.outbound_guard import safe_urlopen
+
 
 @dataclass
 class ProviderConfig:
@@ -72,7 +74,7 @@ class ProxyProvider:
         elif self.config.api_key:
             headers["Authorization"] = f"Bearer {self.config.api_key}"
         request = urllib.request.Request(url, headers=headers)
-        with urllib.request.urlopen(request, timeout=10) as response:
+        with safe_urlopen(request, timeout=10) as response:
             return json.loads(response.read().decode("utf-8"))
 
     @staticmethod

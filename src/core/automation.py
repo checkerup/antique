@@ -24,6 +24,7 @@ need a live Chromium in CI.
 from __future__ import annotations
 
 import asyncio
+import os
 import random
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional
@@ -88,6 +89,17 @@ def parse_step(raw: Dict[str, Any]) -> Step:
         raise FlowValidationError(
             f"action {action!r} is missing required params: {', '.join(sorted(missing))}"
         )
+
+    # Security guard: the 'eval' step executes arbitrary JavaScript in the
+    # profile's page. It is disabled by default and must be explicitly opted
+    # into via the ANTIQUE_ALLOW_EVAL=1 environment variable.
+    if action == "eval":
+        _allow_eval = os.environ.get("ANTIQUE_ALLOW_EVAL", "").strip().lower()
+        if _allow_eval not in ("1", "true", "yes", "on"):
+            raise FlowValidationError(
+                "eval step is disabled by default for security. "
+                "Set ANTIQUE_ALLOW_EVAL=1 to enable arbitrary JS execution."
+            )
 
     # Per-action semantic validation
     if action == "goto":

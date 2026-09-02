@@ -27,17 +27,15 @@ EXPOSE 8080
 # with an X server if you really need a visible window.
 ENV ANTIQUE_HEADLESS=1
 
-# Default: remote mode with fail-closed auth.
-# Set ANTIQUE_API_TOKEN (required for remote mode), or override DEPLOY_MODE
-# to "local" or "lan" for less strict security.
-ENV ANTIQUE_DEPLOY_MODE=remote
+# The image listens on all container interfaces, while Compose publishes it
+# only on host loopback.  LAN is therefore the usable no-token default.
+# Operators exposing the port beyond localhost should select remote mode and
+# provide ANTIQUE_API_TOKEN explicitly.
+ENV ANTIQUE_DEPLOY_MODE=lan
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
   CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=3).read()" || exit 1
 
 USER antique
 
-# Remote mode requires a token — fail-closed at startup without one.
-# Use `docker run -e ANTIQUE_API_TOKEN=<token>` or generate one with
-# `python -m src.cli serve --deploy-mode remote --generate-token`.
-CMD ["python", "-m", "src.cli", "serve", "--host", "0.0.0.0", "--ui-port", "8080", "--headless", "--deploy-mode", "remote"]
+CMD ["python", "-m", "src.cli", "serve", "--host", "0.0.0.0", "--ui-port", "8080", "--headless"]
