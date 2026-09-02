@@ -211,6 +211,84 @@ tbody tr.selected:hover { background: oklch(70% 0.146 250 / 0.2); }
   * { transition: none !important; }
   .btn:active { transform: none; }
 }
+
+/* ---- Health summary bar ---- */
+.health-bar {
+  display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+  padding: 12px 24px; border-bottom: 1px solid var(--border);
+  background: var(--panel); min-height: 52px;
+}
+.health-bar[aria-busy="true"] .health-status { opacity: .5; }
+.health-bar .health-status {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-weight: 600; font-size: 13px;
+}
+.health-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.health-dot.healthy { background: var(--green); }
+.health-dot.warning { background: var(--yellow); }
+.health-dot.critical { background: var(--red); }
+.health-dot.unknown { background: var(--muted); }
+.health-stat {
+  display: inline-flex; align-items: baseline; gap: 4px;
+  font-size: 12px; color: var(--muted);
+}
+.health-stat .v { font-size: 14px; font-weight: 600; color: var(--text); }
+.health-stat.alert .v { color: var(--red); }
+.health-stat.warn .v { color: var(--yellow); }
+.health-bar .health-link { margin-left: auto; font-size: 12px; color: var(--accent); cursor: pointer; }
+.health-bar .health-link:hover { color: var(--accent-strong); text-decoration: underline; }
+
+/* ---- Loading skeleton ---- */
+.skeleton { display: inline-block; width: 60px; height: 14px; border-radius: 3px;
+  background: linear-gradient(90deg, var(--panel-raised) 25%, var(--border) 50%, var(--panel-raised) 75%);
+  background-size: 200% 100%; animation: skel 1.2s infinite linear; }
+@keyframes skel { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+@media (prefers-reduced-motion: reduce) { .skeleton { animation: none; background: var(--panel-raised); } }
+
+/* ---- Toast / inline error ---- */
+.toast {
+  position: fixed; bottom: 24px; right: 24px; z-index: 200;
+  background: var(--panel); border: 1px solid var(--border-strong); border-radius: 8px;
+  padding: 12px 20px; max-width: 400px; box-shadow: 0 8px 24px rgba(0,0,0,.4);
+  font-size: 13px; display: none; gap: 8px; align-items: flex-start;
+}
+.toast.show { display: flex; }
+.toast.error { border-color: var(--red); }
+.toast.error .toast-icon { color: var(--red); }
+.toast.success { border-color: var(--green); }
+.toast.success .toast-icon { color: var(--green); }
+.toast .toast-msg { flex: 1; }
+.toast .toast-close { cursor: pointer; color: var(--muted); font-size: 16px; line-height: 1; }
+
+/* ---- Issues list ---- */
+.issues-list { display: flex; flex-direction: column; gap: 6px; max-height: 200px; overflow: auto; }
+.issue-row {
+  display: flex; align-items: flex-start; gap: 8px;
+  padding: 8px 10px; border-radius: 6px; background: var(--bg);
+  border: 1px solid var(--border); font-size: 12px;
+}
+.issue-row .issue-type {
+  display: inline-block; padding: 1px 6px; border-radius: 3px;
+  font-weight: 600; font-size: 10px; text-transform: uppercase; flex-shrink: 0;
+}
+.issue-row .issue-type.migration { background: var(--yellow-soft); color: var(--yellow); }
+.issue-row .issue-type.proxy { background: var(--red-soft); color: var(--red); }
+.issue-row .issue-type.account_status { background: var(--red-soft); color: var(--red); }
+.issue-row .issue-detail { color: var(--muted); flex: 1; }
+
+/* ---- Diagnose button in table ---- */
+.btn.diag { border-color: var(--accent); color: var(--accent); }
+.btn.diag:hover { background: var(--accent-soft); }
+
+/* ---- Create profile form: inline validation ---- */
+.field-error { color: var(--red); font-size: 11px; margin-top: 4px; display: none; }
+.field-error.show { display: block; }
+.field input.invalid { border-color: var(--red); }
+.field input.invalid:focus { outline-color: var(--red); }
+
+/* ---- Loading button state ---- */
+.btn.loading { pointer-events: none; opacity: .65; }
+.btn.loading::after { content: " …"; }
 </style>
 </head>
 <body>
@@ -228,6 +306,38 @@ tbody tr.selected:hover { background: oklch(70% 0.146 250 / 0.2); }
     <button class="btn primary" onclick="openCreate()">+ New profile</button>
   </div>
 </header>
+
+<!-- Health summary bar: one-glance status for operators -->
+<div class="health-bar" id="health-bar" role="status" aria-live="polite" aria-busy="true">
+  <span class="health-status">
+    <span class="health-dot unknown" id="health-dot" aria-hidden="true"></span>
+    <span id="health-label">Checking health…</span>
+  </span>
+  <!-- Legend: dot states referenced by loadHealth() — kept in DOM for screen-reader context -->
+  <span style="display:none" aria-hidden="true">
+    <span class="health-dot healthy"></span>
+    <span class="health-dot warning"></span>
+    <span class="health-dot critical"></span>
+  </span>
+  <span class="health-stat"><span class="v skeleton" id="hs-total">—</span> profiles</span>
+  <span class="health-stat"><span class="v skeleton" id="hs-running">—</span> running</span>
+  <span class="health-stat" id="hs-migration-wrap" style="display:none">
+    <span class="v" id="hs-migration">0</span> need migration
+  </span>
+  <span class="health-stat" id="hs-proxy-wrap" style="display:none">
+    <span class="v" id="hs-proxy">0</span> proxy failures
+  </span>
+  <span class="health-stat" id="hs-crashed-wrap" style="display:none">
+    <span class="v" id="hs-crashed">0</span> crashed
+  </span>
+  <span class="health-link" id="health-details-link" onclick="toggleHealthDetails()" role="button" tabindex="0"
+    onkeydown="if(event.key==='Enter')toggleHealthDetails()">Details</span>
+</div>
+<div id="health-details" style="display:none; padding: 12px 24px; background: var(--bg); border-bottom: 1px solid var(--border);">
+  <div id="issues-list" class="issues-list" aria-label="Profile issues">
+    <span class="card-sub">No issues.</span>
+  </div>
+</div>
 
 <main>
   <div class="toolbar">
@@ -635,7 +745,7 @@ tbody tr.selected:hover { background: oklch(70% 0.146 250 / 0.2); }
     </div>
     <div class="row">
       <button class="btn" onclick="closeCreate()">Cancel</button>
-      <button class="btn primary" onclick="submitCreate()">Create</button>
+      <button class="btn primary" onclick="submitCreate(this)">Create</button>
     </div>
   </div>
 </div>
@@ -832,6 +942,25 @@ tbody tr.selected:hover { background: oklch(70% 0.146 250 / 0.2); }
   </div>
 </div>
 
+<!-- Toast notification for inline errors/success -->
+<div class="toast" id="toast" role="alert" aria-live="assertive">
+  <span class="toast-icon">&#x26A0;</span>
+  <span class="toast-msg" id="toast-msg"></span>
+  <span class="toast-close" onclick="hideToast()" role="button" tabindex="0"
+    onkeydown="if(event.key==='Enter')hideToast()">&times;</span>
+</div>
+
+<!-- Diagnose profile modal -->
+<div class="modal" id="diagnoseModal">
+  <div class="panel">
+    <h2>Profile diagnostics <span id="diag-name" style="color:var(--muted)"></span></h2>
+    <div id="diag-body" class="card-sub">Loading…</div>
+    <div class="row" style="margin-top:20px">
+      <button class="btn" onclick="closeDiagnose()">Close</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const API = "";
 let profiles = [];
@@ -928,9 +1057,11 @@ function render() {
         <td>${p.launch_count || 0}${p.last_launched_at ? " \u00b7 " + new Date(p.last_launched_at).toLocaleString() : ""}</td>
         <td style="white-space:nowrap">
           ${isRunning
-            ? `<button class="btn sm danger" onclick="act('stop','${p.user_id}')">Stop</button>`
-            : `<button class="btn sm primary" onclick="act('start','${p.user_id}')">Start</button>`}
+            ? `<button class="btn sm danger" onclick="act('stop','${p.user_id}',this)" aria-label="Stop profile">Stop</button>
+               <button class="btn sm" onclick="openCdp('${p.user_id}')" aria-label="Attach to running profile">Attach</button>`
+            : `<button class="btn sm primary" onclick="act('start','${p.user_id}',this)" aria-label="Start profile">Start</button>`}
           <button class="btn sm" onclick="openFingerprintEdit('${p.user_id}')" title="Manage profile fingerprint">FP</button>
+          <button class="btn sm diag" onclick="diagnoseProfile('${p.user_id}')" aria-label="Diagnose profile">Diag</button>
           <button class="btn sm" onclick="auditProfile('${p.user_id}')" title="Stealth audit">Stealth</button>
           <button class="btn sm" onclick="checkOneProxy('${p.user_id}')">\u2714 Proxy</button>
           <button class="btn sm" onclick="exportProfile('${p.user_id}','json')">Export</button>
@@ -1032,7 +1163,8 @@ async function bulkProxyCheck() {
 }
 
 // --- Single actions ---
-async function act(verb, id) {
+async function act(verb, id, btn = null) {
+  if (btn) btn.classList.add("loading");
   try {
     const path = verb === "start" ? "/user/start" : "/user/stop";
     await fetchJSON(path, {
@@ -1040,7 +1172,11 @@ async function act(verb, id) {
       body: JSON.stringify({user_id: id}),
     });
     await refresh();
-  } catch (e) { alert(e.message); }
+  } catch (e) {
+    showToast(e.message, "error");
+  } finally {
+    if (btn) btn.classList.remove("loading");
+  }
 }
 
 async function del(id, name) {
@@ -1196,15 +1332,24 @@ function closeImport() { document.getElementById("importModal").classList.remove
 function openProxyImport() { document.getElementById("proxyImportModal").classList.add("open"); }
 function closeProxyImport() { document.getElementById("proxyImportModal").classList.remove("open"); }
 
-async function submitCreate() {
-  const name = document.getElementById("create-name").value.trim();
-  if (!name) { alert("Name required"); return; }
+async function submitCreate(btn = null) {
+  const nameEl = document.getElementById("create-name");
+  const name = nameEl.value.trim();
+  if (!name) {
+    nameEl.classList.add("invalid");
+    showToast("Name required", "error");
+    return;
+  }
+  nameEl.classList.remove("invalid");
   const group_id = document.getElementById("create-group").value.trim() || "0";
   const proxy_type = document.getElementById("create-proxy-type").value;
   let user_proxy_config = {proxy_type};
   if (proxy_type !== "direct") {
     const hp = document.getElementById("create-proxy-host").value.trim();
-    if (!hp.includes(":")) { alert("host:port required"); return; }
+    if (!hp.includes(":")) {
+      showToast("host:port required when proxy is not direct", "error");
+      return;
+    }
     const [host, ...rest] = hp.split(":");
     const port = rest.join(":");
     user_proxy_config.proxy_host = host;
@@ -1215,14 +1360,18 @@ async function submitCreate() {
     if (p) user_proxy_config.proxy_password = p;
   }
   const tags = document.getElementById("create-tags").value.split(",").map(s => s.trim()).filter(Boolean);
+
+  if (btn) btn.classList.add("loading");
   try {
     await fetchJSON("/user/create", {
       method: "POST", headers: {"Content-Type":"application/json"},
       body: JSON.stringify({ name, group_id, user_proxy_config, remark: document.getElementById("create-remark").value, tags }),
     });
     closeCreate();
+    showToast("Profile created", "success");
     await refresh();
-  } catch (e) { alert(e.message); }
+  } catch (e) { showToast(e.message, "error"); }
+  finally { if (btn) btn.classList.remove("loading"); }
 }
 
 async function submitImport() {
@@ -1782,6 +1931,142 @@ async function testProvider() {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Toast notifications
+// ---------------------------------------------------------------------------
+let _toastTimer = null;
+function showToast(msg, kind) {
+  const t = document.getElementById("toast");
+  const m = document.getElementById("toast-msg");
+  if (!t || !m) { alert(msg); return; }
+  m.textContent = msg;
+  t.className = "toast show" + (kind ? " " + kind : "");
+  if (_toastTimer) clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(hideToast, 6000);
+}
+function hideToast() {
+  const t = document.getElementById("toast");
+  if (t) t.classList.remove("show");
+}
+
+// ---------------------------------------------------------------------------
+// Health summary bar
+// ---------------------------------------------------------------------------
+async function loadHealth() {
+  const bar = document.getElementById("health-bar");
+  if (!bar) return;
+  bar.setAttribute("aria-busy", "true");
+  try {
+    const res = await fetchJSON("/diagnostics/summary");
+    const d = res.data || {};
+    bar.setAttribute("aria-busy", "false");
+    const dot = document.getElementById("health-dot");
+    const lbl = document.getElementById("health-label");
+    const cls = d.overall_status || "unknown";
+    dot.className = "health-dot " + cls;
+    lbl.textContent = cls.charAt(0).toUpperCase() + cls.slice(1);
+    document.getElementById("hs-total").textContent = d.profiles_total;
+    document.getElementById("hs-total").classList.remove("skeleton");
+    document.getElementById("hs-running").textContent = d.profiles_running;
+    document.getElementById("hs-running").classList.remove("skeleton");
+    const migWrap = document.getElementById("hs-migration-wrap");
+    migWrap.style.display = d.profiles_needing_migration > 0 ? "" : "none";
+    document.getElementById("hs-migration").textContent = d.profiles_needing_migration;
+    migWrap.className = "health-stat" + (d.profiles_needing_migration > 0 ? " warn" : "");
+    const pxWrap = document.getElementById("hs-proxy-wrap");
+    pxWrap.style.display = d.proxy_failures > 0 ? "" : "none";
+    document.getElementById("hs-proxy").textContent = d.proxy_failures;
+    pxWrap.className = "health-stat" + (d.proxy_failures > 0 ? " alert" : "");
+    const crWrap = document.getElementById("hs-crashed-wrap");
+    crWrap.style.display = d.crashed_sessions > 0 ? "" : "none";
+    document.getElementById("hs-crashed").textContent = d.crashed_sessions;
+    crWrap.className = "health-stat" + (d.crashed_sessions > 0 ? " alert" : "");
+    renderIssues(d.issues || []);
+  } catch (e) {
+    bar.setAttribute("aria-busy", "false");
+    const lbl = document.getElementById("health-label");
+    if (lbl) lbl.textContent = "Health unavailable";
+    const dot = document.getElementById("health-dot");
+    if (dot) dot.className = "health-dot unknown";
+  }
+}
+
+function renderIssues(issues) {
+  const box = document.getElementById("issues-list");
+  if (!box) return;
+  if (!issues.length) {
+    box.innerHTML = '<span class="card-sub">No issues.</span>';
+    return;
+  }
+  box.innerHTML = issues.map(i => `<div class="issue-row">
+    <span class="issue-type ${esc(i.type || "")}">${esc(i.type || "")}</span>
+    <span class="issue-detail">${esc(i.detail || "")}</span>
+  </div>`).join("");
+}
+
+function toggleHealthDetails() {
+  const box = document.getElementById("health-details");
+  if (box) box.style.display = box.style.display === "none" ? "" : "none";
+}
+
+// ---------------------------------------------------------------------------
+// Per-profile diagnostics modal
+// ---------------------------------------------------------------------------
+async function diagnoseProfile(uid) {
+  const box = document.getElementById("diag-body");
+  const nameEl = document.getElementById("diag-name");
+  document.getElementById("diagnoseModal").classList.add("open");
+  box.innerHTML = "Checking profile health…";
+  const p = profiles.find(x => x.user_id === uid);
+  if (p) nameEl.textContent = "(" + p.name + ")";
+  try {
+    const [info, health] = await Promise.all([
+      fetchJSON("/info"),
+      fetchJSON("/diagnostics/summary"),
+    ]);
+    const d = health.data || {};
+    const profileIssues = (d.issues || []).filter(i => i.user_id === uid);
+    const fp = p ? (p.fingerprint_config || {}) : {};
+    const proxyCfg = p ? (p.user_proxy_config || {}) : {};
+    const isRunning = p && running.has(p.user_id);
+    const sections = [];
+    sections.push(`<p><b>Status:</b> ${isRunning ? '<span class="status active">Running</span>' : '<span class="status inactive">Stopped</span>'}</p>`);
+    sections.push(`<p><b>Account status:</b> ${esc(p ? p.account_status : "unknown")}</p>`);
+    sections.push(`<p><b>Launches:</b> ${p ? (p.launch_count || 0) : 0}</p>`);
+    if (proxyCfg.proxy_type && proxyCfg.proxy_type !== "direct") {
+      sections.push(`<p><b>Proxy:</b> ${esc(proxyCfg.proxy_type)}://${esc(proxyCfg.proxy_host)}:${esc(proxyCfg.proxy_port)}</p>`);
+    } else {
+      sections.push(`<p><b>Proxy:</b> direct (no proxy)</p>`);
+    }
+    sections.push(`<p><b>User-Agent:</b> <code>${esc(fp.user_agent || "N/A")}</code></p>`);
+    sections.push(`<p><b>Platform:</b> ${esc(fp.platform || "N/A")}</p>`);
+    if (p && p.import_source_path && !p.initial_state_applied) {
+      sections.push(`<p><span class="issue-type migration">MIGRATION</span> Import source not yet applied.</p>`);
+    }
+    if (profileIssues.length) {
+      sections.push("<hr class=\"group-sep\"><b>Issues:</b>");
+      sections.push(profileIssues.map(i => `<div class="issue-row"><span class="issue-type ${esc(i.type)}">${esc(i.type)}</span><span class="issue-detail">${esc(i.detail)}</span></div>`).join(""));
+    } else {
+      sections.push("<hr class=\"group-sep\"><p><span class=\"status active\">No issues detected</span></p>");
+    }
+    box.innerHTML = sections.join("");
+  } catch (e) {
+    box.innerHTML = `<span style="color:var(--red)">Diagnostics failed: ${esc(e.message)}</span>`;
+  }
+}
+function closeDiagnose() { document.getElementById("diagnoseModal").classList.remove("open"); }
+
+// ---------------------------------------------------------------------------
+// CDP attach to running browser
+// ---------------------------------------------------------------------------
+function openCdp(uid) {
+  try {
+    window.open(`/json/new/${uid}?url=about:blank`, "_blank");
+  } catch (e) {
+    showToast("Cannot open CDP target: " + e.message, "error");
+  }
+}
+
 refresh();
 loadMcp();
 loadActivity();
@@ -1789,10 +2074,12 @@ loadResources();
 loadSchedules();
 loadExtensions();
 loadProviderKinds();
+loadHealth();
 setInterval(refresh, 5000);
 setInterval(loadMcp, 15000);
 setInterval(loadActivity, 20000);
 setInterval(loadResources, 10000);
+setInterval(loadHealth, 15000);
 
 // Progressive web app: register the service worker for the offline shell.
 if ("serviceWorker" in navigator) {

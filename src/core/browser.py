@@ -424,6 +424,8 @@ class BrowserLauncher:
             raise RuntimeError("Chrome binary not found")
 
         # Build command line
+        from .launch_policy import get_launch_policy
+        launch_policy = get_launch_policy()
         args = [
             chrome_bin,
             f"--user-data-dir={user_dir}",
@@ -433,11 +435,12 @@ class BrowserLauncher:
             "--no-default-browser-check",
             "--disable-infobars",
             "--disable-dev-shm-usage",
-            "--no-sandbox",
             f"--lang={fp.locale}",
             f"--window-size={fp.screen_width},{fp.screen_height}",
-            "--disable-blink-features=AutomationControlled",
+            *launch_policy.chromium_args,
         ]
+        if launch_policy.name == "standard":
+            args.append("--no-sandbox")
 
         if proxy_url:
             args.append(f"--proxy-server={proxy_url}")
@@ -474,8 +477,6 @@ class BrowserLauncher:
             "--password-store=basic",
             "--use-mock-keychain",
             "--enable-unsafe-swiftshader",
-            "--disable-site-isolation-trials",
-            "--disable-web-security",
         ])
 
         log.info("antique: launching via subprocess: %s", " ".join(args[:5]))
@@ -590,6 +591,7 @@ class BrowserLauncher:
             ch_args = _build_client_hints_args(fp)
             launch_opts.setdefault("args", []).extend(ch_args)
             launch_opts.setdefault("args", []).extend(build_debug_port_args(port))
+
 
         ext_paths = self._get_extension_paths(profile)
         if ext_paths and spec.supports_extensions:

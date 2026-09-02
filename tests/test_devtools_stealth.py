@@ -18,13 +18,14 @@ def test_init_script_includes_devtools_stealth():
 
 
 def test_launch_options_include_devtools_args():
-    """Chromium launch args include DevTools stealth switches."""
+    """Chromium launch args avoid flags Google treats as insecure."""
     fp = generate_fingerprint(seed="devtools-args")
     from src.core.fingerprint import to_playwright_launch_options
     opts = to_playwright_launch_options(fp)
     args = opts.get("args", [])
-    assert any("DevToolsConsole" in a for a in args)
-    assert any("auto-open-devtools" in a for a in args)
+    assert not any("AutomationControlled" in a for a in args)
+    assert not any("disable-web-security" in a for a in args)
+    assert not any("auto-open-devtools" in a for a in args)
 
 
 def test_devtools_stealth_does_not_break_webrtc():

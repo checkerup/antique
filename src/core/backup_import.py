@@ -201,8 +201,18 @@ def import_adspower_backup_root(
     AdsPower global store and their IDs stored in the profile fingerprint.
     ``adspower_root``: path to ``C:\\.ADSPOWER_GLOBAL`` (auto-detected if
     not provided).
+
+    Migration tracking: each imported profile gets a ``MigrationRecord``
+    created in ``discovered`` state, then advanced to ``metadata_imported``
+    on success or ``failed`` on error. Re-imports with ``overwrite=True``
+    reset the migration state; skipped profiles keep their existing state.
     """
     root = Path(root)
+
+    # Lazy import to avoid circular dependency
+    from .migration import MigrationManager, MigrationStatus
+
+    mgr = MigrationManager(store)
 
     # Load all profiles from the backup index once — used both for extension
     # scanning (when ext_store is provided) and for the main import loop.
@@ -244,6 +254,7 @@ def import_adspower_backup_root(
     for idx, meta in enumerate(all_profiles):
         if limit is not None and idx >= limit:
             break
+        uid = str(meta.get("user_id") or "").strip()
         try:
             payload = prepare_backup_profile_payload(root, meta)
             cookie_sources[payload["cookie_source"]] = cookie_sources.get(payload["cookie_source"], 0) + 1
@@ -260,6 +271,10 @@ def import_adspower_backup_root(
             if existing and not overwrite:
                 skipped.append(payload["user_id"])
                 continue
+
+            # Create or reset migration record (discovered state).
+            # Done after the skip check so skipped profiles keep their state.
+            mgr.create_or_reset(payload["user_id"], source_path=payload.get("import_source_path", ""))
             if existing:
                 fp = None
                 if payload["ip_country"]:
@@ -272,7 +287,7 @@ def import_adspower_backup_root(
                         fp = None
                 # Store extension IDs in fingerprint
                 if fp is not None and profile_ext_ids:
-                    fp_dict = fp.canonical() if hasattr(fp, "canonical") else fp.__dict__
+                    fp_dict = fp.canonical() if hasattr(fp, "canonical") else vars(fp).copy()
                     fp_dict["extensions"] = profile_ext_ids
                     fp = fingerprint_from_dict(fp_dict) if fp else None
                 store.update(
@@ -287,6 +302,17 @@ def import_adspower_backup_root(
                 )
                 if payload["import_source_path"]:
                     store.set_import_source(payload["user_id"], payload["import_source_path"], reset_applied=True)
+                # Advance migration to metadata_imported
+                mgr.transition(
+                    payload["user_id"],
+                    MigrationStatus.METADATA_IMPORTED,
+                    detail={
+                        "cookie_source": payload["cookie_source"],
+                        "cookie_count": len(payload["cookies"]),
+                        "has_full_state": payload["has_full_state"],
+                        "action": "updated",
+                    },
+                )
                 updated.append(payload["user_id"])
                 continue
 
@@ -301,7 +327,7 @@ def import_adspower_backup_root(
                     fp = None
             # Store extension IDs in fingerprint
             if fp is not None and profile_ext_ids:
-                fp_dict = fp.canonical() if hasattr(fp, "canonical") else fp.__dict__
+                fp_dict = fp.canonical() if hasattr(fp, "canonical") else vars(fp).copy()
                 fp_dict["extensions"] = profile_ext_ids
                 from .fingerprint_ops import fingerprint_from_dict
                 fp = fingerprint_from_dict(fp_dict)
@@ -317,12 +343,33 @@ def import_adspower_backup_root(
             )
             if payload["import_source_path"]:
                 store.set_import_source(payload["user_id"], payload["import_source_path"], reset_applied=True)
+            # Advance migration to metadata_imported
+            mgr.transition(
+                payload["user_id"],
+                MigrationStatus.METADATA_IMPORTED,
+                detail={
+                    "cookie_source": payload["cookie_source"],
+                    "cookie_count": len(payload["cookies"]),
+                    "has_full_state": payload["has_full_state"],
+                    "action": "imported",
+                },
+            )
             imported.append(payload["user_id"])
         except Exception as exc:
             errors.append({
-                "user_id": str(meta.get("user_id") or ""),
+                "user_id": uid,
                 "error": str(exc),
             })
+            # Mark migration as failed if we have a record
+            if uid:
+                try:
+                    mgr.transition(
+                        uid,
+                        MigrationStatus.FAILED,
+                        detail={"error": str(exc), "step": "metadata_imported"},
+                    )
+                except Exception:
+                    pass  # Transition may fail if record wasn't created yet
 
     processed = min(len(all_profiles), limit) if limit is not None else len(all_profiles)
     return {

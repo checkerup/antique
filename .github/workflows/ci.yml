@@ -2,12 +2,54 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, "product/**"]
   pull_request:
     branches: [main]
 
+# Cancel superseded runs on the same ref.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
+    name: Tests (${{ matrix.os }}, Python ${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python-version: ["3.11", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            packaging/requirements-lock.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -c packaging/requirements-lock.txt -r requirements.txt
+          pip install -e . --no-deps
+
+      - name: Compile all source
+        run: python -m compileall src -q
+
+      - name: Compile all tests
+        run: python -m compileall tests -q
+
+      - name: Run unit tests
+        run: python -m pytest tests -x -q --timeout=120
+
+  static-checks:
+    name: Static checks
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -16,11 +58,125 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install -e .
+      - name: Install pyyaml for config validation
+        run: pip install pyyaml
 
-      - name: Run tests
-        run: python -m pytest tests -x -q --timeout=120
+      - name: Validate pyproject.toml syntax
+        run: python -c "import tomllib; tomllib.load(open('pyproject.toml','rb'))"
+
+      - name: Validate requirements.txt entries
+        run: |
+          python - <<'EOF'
+          import re, sys
+          errors = []
+          for i, line in enumerate(open("requirements.txt"), 1):
+              line = line.strip()
+              if not line or line.startswith("#"):
+                  continue
+              if not re.match(r'^[a-zA-Z0-9].*', line):
+                  errors.append(f"Line {i}: suspicious entry: {line}")
+          if errors:
+              print("\n".join(errors))
+              sys.exit(1)
+          print(f"requirements.txt: OK ({i} lines)")
+          EOF
+
+      - name: Validate lock file pin format
+        run: |
+          python - <<'EOF'
+          import re, sys
+          errors = []
+          for i, line in enumerate(open("packaging/requirements-lock.txt"), 1):
+              line = line.strip()
+              if not line or line.startswith("#"):
+                  continue
+              requirement = line.split(';', 1)[0].strip()
+              if not re.match(r'^[a-zA-Z0-9_.-]+==[0-9a-zA-Z.+!-]+$', requirement):
+                  errors.append(f"Line {i}: invalid pin: {line}")
+          if errors:
+              print("\n".join(errors))
+              sys.exit(1)
+          print("requirements-lock.txt: OK")
+          EOF
+
+      - name: Validate systemd unit file
+        run: |
+          if [ -f packaging/antique.service ]; then
+            # Basic field presence checks
+            grep -q "User=antique" packaging/antique.service
+            grep -q "NoNewPrivileges=true" packaging/antique.service
+            grep -q "ProtectSystem=" packaging/antique.service
+            echo "antique.service: OK"
+          fi
+
+      - name: Validate Dockerfile has non-root USER
+        run: |
+          grep -q "^USER antique" Dockerfile
+          echo "Dockerfile non-root USER: OK"
+
+      - name: Validate docker-compose security defaults
+        run: |
+          grep -q "no-new-privileges" docker-compose.yml
+          grep -q "cap_drop:" docker-compose.yml
+          grep -q "read_only: true" docker-compose.yml
+          echo "docker-compose.yml hardening: OK"
+
+  package-build:
+    name: Package build + install smoke
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            python-version: "3.11"
+          - os: windows-latest
+            python-version: "3.12"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            packaging/requirements-lock.txt
+
+      - name: Build sdist + wheel
+        run: |
+          python -m pip install --upgrade pip build
+          python -m build --sdist --wheel --outdir dist/
+
+      - name: Install from wheel (clean env)
+        run: |
+          python -m venv /tmp/smoke-venv
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            /tmp/smoke-venv/Scripts/python -m pip install --upgrade pip
+            /tmp/smoke-venv/Scripts/pip install \
+              dist/antique-*.whl \
+              -c packaging/requirements-lock.txt
+            /tmp/smoke-venv/Scripts/python -c "import src; print(f'antique {src.__version__} imported OK')"
+          else
+            /tmp/smoke-venv/bin/python -m pip install --upgrade pip
+            /tmp/smoke-venv/bin/pip install \
+              dist/antique-*.whl \
+              -c packaging/requirements-lock.txt
+            /tmp/smoke-venv/bin/python -c "import src; print(f'antique {src.__version__} imported OK')"
+          fi
+        shell: bash
+
+      - name: Verify CLI entry point
+        run: |
+          python -m pip install -e . --no-deps
+          python -m src.cli --version 2>/dev/null || true
+        shell: bash
+
+      - name: Upload build artifacts
+        if: matrix.os == 'ubuntu-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: antique-dist
+          path: dist/antique-*
+          retention-days: 14

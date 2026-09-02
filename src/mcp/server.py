@@ -28,6 +28,8 @@ import json
 import logging
 import os
 import sys
+
+from .. import __version__
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -239,7 +241,7 @@ class MCPServer:
                 "capabilities": {"tools": {}},
                 "serverInfo": {
                     "name": "antidetect-local",
-                    "version": "0.2.0",
+                    "version": __version__,
                 },
             })
 
