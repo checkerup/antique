@@ -540,12 +540,25 @@ class TestMigrationAPI:
 
     def test_api_migration_retry(self, client, backup_root):
         client.post("/user/import/backup", json={"source_path": str(backup_root)})
+        # Retry is deliberately restricted to failed records; healthy
+        # in-progress migrations must not be reset accidentally.
+        from src.api import routes as routes_module
+        mgr = routes_module._migration_mgr()
+        mgr.transition("aaa11111", MigrationStatus.FAILED)
         r = client.post("/migration/retry", json={
             "user_ids": ["aaa11111"],
         })
         assert r.status_code == 200
         data = r.json()["data"]
         assert data["results"]["aaa11111"]["retried"] is True
+
+    def test_api_migration_retry_does_not_reset_in_progress(self, client, backup_root):
+        client.post("/user/import/backup", json={"source_path": str(backup_root)})
+        r = client.post("/migration/retry", json={"user_ids": ["aaa11111"]})
+        assert r.status_code == 200
+        result = r.json()["data"]["results"]["aaa11111"]
+        assert result["retried"] is False
+        assert "not failed" in result["reason"]
 
     def test_api_migration_repair(self, client, backup_root):
         client.post("/user/import/backup", json={"source_path": str(backup_root)})

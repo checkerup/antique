@@ -97,6 +97,11 @@ def serve(
         "--generate-token",
         help="Generate a secure API token for this session",
     ),
+    allowed_origins: str = typer.Option(
+        "",
+        "--allowed-origins",
+        help="Comma-separated exact CORS origins for LAN/remote mode",
+    ),
 ):
     """Run the API + UI server.
 
@@ -131,6 +136,11 @@ def serve(
         headless=headless,
         deploy_mode=mode,
         api_token=api_token,
+        allowed_origins=(
+            [origin.strip() for origin in allowed_origins.split(",") if origin.strip()]
+            if allowed_origins
+            else None
+        ),
     )
     console.print(f"[green]antique[/green] starting on http://{host}:{ui_port}  [dim](mode: {mode.value})[/dim]")
     console.print(f"  Dashboard:    http://{host}:{ui_port}/")

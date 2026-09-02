@@ -1041,25 +1041,9 @@ def migration_validate(body: MigrationValidateRequest) -> Dict[str, Any]:
 
 @router.post("/migration/retry")
 def migration_retry(body: MigrationRetryRequest) -> Dict[str, Any]:
-    """Retry migrations by resetting profiles to ``discovered``.
-
-    Works on any non-terminal status (not just ``failed``). Profiles in
-    ``site_verified`` (terminal success) are not retried.
-    """
+    """Retry failed migrations by resetting them to ``discovered``."""
     mgr = _migration_mgr()
-    from ..core.migration import MigrationStatus
-    results = {}
-    for uid in body.user_ids:
-        rec = mgr.get(uid)
-        if rec is None:
-            results[uid] = {"retried": False, "reason": "no migration record"}
-            continue
-        if rec.status == MigrationStatus.SITE_VERIFIED.value:
-            results[uid] = {"retried": False, "reason": "already site_verified (terminal)"}
-            continue
-        # Reset to discovered for retry
-        mgr.create_or_reset(uid, source_path=rec.source_path)
-        results[uid] = {"retried": True}
+    results = mgr.batch_retry(body.user_ids)
     return _ads_response(True, results=results)
 
 

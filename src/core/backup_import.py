@@ -287,7 +287,7 @@ def import_adspower_backup_root(
                         fp = None
                 # Store extension IDs in fingerprint
                 if fp is not None and profile_ext_ids:
-                    fp_dict = fp.canonical() if hasattr(fp, "canonical") else fp.__dict__
+                    fp_dict = fp.canonical() if hasattr(fp, "canonical") else vars(fp).copy()
                     fp_dict["extensions"] = profile_ext_ids
                     fp = fingerprint_from_dict(fp_dict) if fp else None
                 store.update(
@@ -327,7 +327,7 @@ def import_adspower_backup_root(
                     fp = None
             # Store extension IDs in fingerprint
             if fp is not None and profile_ext_ids:
-                fp_dict = fp.canonical() if hasattr(fp, "canonical") else fp.__dict__
+                fp_dict = fp.canonical() if hasattr(fp, "canonical") else vars(fp).copy()
                 fp_dict["extensions"] = profile_ext_ids
                 from .fingerprint_ops import fingerprint_from_dict
                 fp = fingerprint_from_dict(fp_dict)
