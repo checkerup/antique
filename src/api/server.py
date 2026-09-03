@@ -17,6 +17,7 @@ import uvicorn
 from fastapi import FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from .. import __version__
 from ..core.browser import BrowserLauncher
@@ -320,6 +321,19 @@ def create_app(
     @app.get("/sw.js", include_in_schema=False)
     async def pwa_service_worker():
         return _pwa_asset("sw.js", "application/javascript")
+
+    # ------------------------------------------------------------------
+    # UI assets (v2 dashboard): JS / CSS / images live in
+    # src/ui/templates/assets/ and are served under /assets/ with
+    # long-lived caching (content-stable files, no BOM handling needed).
+    # ------------------------------------------------------------------
+    _assets_dir = (Path(__file__).parent.parent / "ui" / "templates" / "assets").resolve()
+    if _assets_dir.exists():
+        app.mount(
+            "/assets",
+            StaticFiles(directory=str(_assets_dir)),
+            name="ui_assets",
+        )
 
     return app
 

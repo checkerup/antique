@@ -279,7 +279,7 @@ class TestMCPAPI:
 class TestMCPDashboard:
     def test_dashboard_has_mcp_functions(self):
         html_path = Path(__file__).parent.parent / "src" / "ui" / "templates" / "index.html"
-        html = html_path.read_text(encoding="utf-8")
+        html = html_path.read_text(encoding="utf-8") + "\n" + (html_path.parent / "assets" / "app.js").read_text(encoding="utf-8")
         assert "mcpStart" in html
         assert "mcpStop" in html
         assert "mcpCopyConfig" in html
@@ -290,6 +290,6 @@ class TestMCPDashboard:
 
     def test_dashboard_mcp_button_exists(self):
         html_path = Path(__file__).parent.parent / "src" / "ui" / "templates" / "index.html"
-        html = html_path.read_text(encoding="utf-8")
+        html = html_path.read_text(encoding="utf-8") + "\n" + (html_path.parent / "assets" / "app.js").read_text(encoding="utf-8")
         assert "loadMcp" in html
         assert "MCP status" in html

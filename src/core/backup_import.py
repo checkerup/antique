@@ -532,6 +532,22 @@ def _apply_adspower_fingerprint_overrides(
     if fp_overrides.get("extensions"):
         fp_dict["extensions"] = [e["id"] for e in fp_overrides["extensions"]]
 
+    # AdsPower GPU/WebGL fingerprint: the live cache stores the profile's real
+    # WebGL pair in a plain-JSON <hash>_Other file. Import it (plus stable
+    # per-profile canvas/audio seeds) so the migrated profile keeps the GPU
+    # identity Google & co. already associate with it.
+    try:
+        from .ads_fingerprint import ads_profile_to_fingerprint
+
+        ads_fp = ads_profile_to_fingerprint(adspower_uid)
+        if ads_fp is not None:
+            fp_dict["webgl_vendor"] = ads_fp.webgl_vendor
+            fp_dict["webgl_renderer"] = ads_fp.webgl_renderer
+            fp_dict["canvas_noise_seed"] = ads_fp.canvas_noise_seed
+            fp_dict["audio_noise_seed"] = ads_fp.audio_noise_seed
+    except Exception:
+        pass
+
     # Write back to DB
     from .fingerprint_ops import fingerprint_from_dict
     new_fp = fingerprint_from_dict(fp_dict)

@@ -16,6 +16,8 @@ def test_pwa_assets_are_served(tmp_path):
 
 
 def test_dashboard_registers_pwa():
-    html = Path(__file__).parents[1].joinpath("src", "ui", "templates", "index.html").read_text(encoding="utf-8-sig")
+    root = Path(__file__).parents[1]
+    html = root.joinpath("src", "ui", "templates", "index.html").read_text(encoding="utf-8-sig")
+    app_js = root.joinpath("src", "ui", "templates", "assets", "app.js").read_text(encoding="utf-8")
     assert 'rel="manifest"' in html
-    assert "serviceWorker.register" in html
+    assert "serviceWorker.register" in app_js

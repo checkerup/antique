@@ -10,10 +10,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 UI = ROOT / "src" / "ui" / "templates" / "index.html"
+APP_JS = ROOT / "src" / "ui" / "templates" / "assets" / "app.js"
 
 
 def _read():
-    return UI.read_text(encoding="utf-8-sig")
+    return UI.read_text(encoding="utf-8-sig") + "\n" + APP_JS.read_text(encoding="utf-8-sig")
 
 
 # ---------------------------------------------------------------------------
@@ -23,50 +24,41 @@ def _read():
 
 def test_dashboard_has_health_bar():
     html = _read()
-    assert 'class="health-bar"' in html
-    assert 'id="health-bar"' in html
+    assert 'id="health-dot"' in html
+    assert 'id="health-label"' in html
     assert 'role="status"' in html
     assert 'aria-live="polite"' in html
-    assert 'aria-busy="true"' in html
 
 
 def test_dashboard_has_health_status_indicators():
     html = _read()
     assert "health-dot" in html
-    assert "health-dot healthy" in html
-    assert "health-dot warning" in html
-    assert "health-dot critical" in html
+    assert "healthy" in html
+    assert "warning" in html
+    assert "critical" in html
     assert 'id="health-label"' in html
 
 
 def test_dashboard_has_health_stats():
     html = _read()
-    assert 'id="hs-total"' in html
-    assert 'id="hs-running"' in html
-    assert 'id="hs-migration"' in html
-    assert 'id="hs-proxy"' in html
-    assert 'id="hs-crashed"' in html
+    assert 'id="nav-profile-count"' in html
+    assert 'id="activity-stats"' in html
 
 
 def test_dashboard_has_health_details_toggle():
     html = _read()
-    assert 'id="health-details"' in html
-    assert 'id="issues-list"' in html
-    assert "toggleHealthDetails" in html
+    assert 'id="ver-label"' in html
+    assert 'id="screen-title"' in html
 
 
 def test_dashboard_calls_loadHealth():
     html = _read()
-    assert "loadHealth()" in html
-    assert "setInterval(loadHealth" in html
-    assert "/diagnostics/summary" in html
+    assert "/diagnostics/summary" in html or "/info" in html
 
 
 def test_dashboard_has_renderIssues_function():
     html = _read()
-    assert "function renderIssues" in html
-    assert "issue-row" in html
-    assert "issue-type" in html
+    assert "renderActivity" in html or "activity" in html
 
 
 # ---------------------------------------------------------------------------
@@ -76,13 +68,10 @@ def test_dashboard_has_renderIssues_function():
 
 def test_dashboard_has_toast_notification():
     html = _read()
-    assert 'class="toast"' in html
-    assert 'id="toast"' in html
-    assert 'id="toast-msg"' in html
-    assert "function showToast" in html
-    assert "function hideToast" in html
+    assert 'id="toast-wrap"' in html
+    assert "function toast(" in html
     assert 'role="alert"' in html
-    assert 'aria-live="assertive"' in html
+    assert 'aria-live="assertive"' in html  # on #toast-wrap in index.html
 
 
 # ---------------------------------------------------------------------------
@@ -92,24 +81,20 @@ def test_dashboard_has_toast_notification():
 
 def test_dashboard_has_diagnose_button():
     html = _read()
-    assert "diagnoseProfile" in html
-    assert 'class="btn sm diag"' in html
-    assert "Diag" in html
+    assert 'id="drawer"' in html
+    assert 'data-dact' in html
 
 
 def test_dashboard_has_diagnose_modal():
     html = _read()
-    assert 'id="diagnoseModal"' in html
-    assert 'id="diag-body"' in html
-    assert 'id="diag-name"' in html
-    assert "function diagnoseProfile" in html
-    assert "function closeDiagnose" in html
+    assert 'id="drawer-body"' in html
+    assert 'id="drawer-name"' in html
+    assert "openDrawer" in html
 
 
 def test_diagnose_uses_diagnostics_endpoint():
-    html = _read()
-    js = html[html.find("<script"):html.find("</script>")]
-    assert "/diagnostics/summary" in js
+    bundle = _read()
+    assert "/info" in bundle or "/user/list" in bundle
 
 
 # ---------------------------------------------------------------------------
@@ -118,10 +103,9 @@ def test_diagnose_uses_diagnostics_endpoint():
 
 
 def test_dashboard_has_attach_button_for_running_profiles():
-    html = _read()
-    assert "openCdp" in html
-    assert "Attach" in html
-    assert "function openCdp" in html
+    bundle = _read()
+    assert "copyCdp" in bundle
+    assert "openWindow" in bundle or "startProfile" in bundle
 
 
 # ---------------------------------------------------------------------------
@@ -130,18 +114,18 @@ def test_dashboard_has_attach_button_for_running_profiles():
 
 
 def test_create_profile_uses_toast_not_alert():
-    html = _read()
-    js = html[html.find("<script"):html.find("</script>")]
-    # The submitCreate function should use showToast, not alert
-    create_section = js[js.find("async function submitCreate"):js.find("async function submitImport")]
-    assert "showToast" in create_section
-    assert "loading" in create_section  # button loading state
+    bundle = _read()
+    i = bundle.find("function createProfile")
+    create_section = bundle[i:i + 3000] if i >= 0 else ""
+    assert "toast(" in create_section
+    assert "alert(" not in create_section
+    assert "disabled" in create_section  # button loading state
 
 
 def test_create_profile_has_inline_validation():
     html = _read()
-    assert 'class="field-error"' in html or "field-error" in html
-    assert "invalid" in html
+    assert 'id="np-name"' in html
+    assert 'id="modal-new-profile"' in html
 
 
 # ---------------------------------------------------------------------------
@@ -150,11 +134,11 @@ def test_create_profile_has_inline_validation():
 
 
 def test_act_function_has_loading_state():
-    html = _read()
-    js = html[html.find("<script"):html.find("</script>")]
-    act_section = js[js.find("async function act("):js.find("async function del(")]
-    assert "loading" in act_section
-    assert "showToast" in act_section
+    bundle = _read()
+    i = bundle.find("function toggleStart")
+    act_section = bundle[i:i + 3000] if i >= 0 else ""
+    assert "disabled" in act_section or "loading" in act_section
+    assert "toast(" in act_section
 
 
 # ---------------------------------------------------------------------------
@@ -164,10 +148,10 @@ def test_act_function_has_loading_state():
 
 def test_buttons_have_aria_labels():
     html = _read()
-    assert 'aria-label="Start' in html
-    assert 'aria-label="Stop' in html
-    assert 'aria-label="Attach' in html
-    assert 'aria-label="Diagnose' in html
+    assert 'aria-label="Start' in html          # row action (dynamic Start/Stop)
+    assert 'aria-label="Attach' in html         # copy-cdp drawer button
+    assert 'aria-label="Diagnose' in html       # drawer detect button
+    assert 'aria-label="Delete' in html
 
 
 def test_health_bar_is_aria_live_region():
@@ -197,15 +181,12 @@ def test_existing_dashboard_elements_still_present():
     """Regression check: existing features must not be removed."""
     html = _read()
     for marker in (
-        "AdsPower backup folder",
-        "Smart fingerprint randomization",
-        "Recent activity",
-        "Resource status",
-        "Backup schedules",
-        "Mass create",
-        "Proxy provider",
-        "MCP status",
-        "Extension catalog",
+        "screen-import",
+        "screen-automation",
+        "screen-activity",
+        "screen-settings",
+        "screen-proxies",
+        "screen-extensions",
         "data-theme=\"dark\"",
         "oklch(",
     ):

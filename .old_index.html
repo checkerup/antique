@@ -1,0 +1,2094 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>antidetect-local</title>
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#0e1117">
+<style>
+/* Perceptually-uniform OKLCH palette: lightness steps read evenly to the eye,
+   so hover/active tints stay legible without hand-tuned hex values. */
+:root {
+  --bg: oklch(17% 0.021 265);
+  --panel: oklch(21% 0.024 265);
+  --panel-raised: oklch(25% 0.027 265);
+  --border: oklch(32% 0.026 265);
+  --border-strong: oklch(42% 0.032 265);
+  --text: oklch(90% 0.014 250);
+  --muted: oklch(68% 0.019 258);
+  --accent: oklch(70% 0.146 250);
+  --accent-strong: oklch(78% 0.132 250);
+  --accent-soft: oklch(70% 0.146 250 / 0.14);
+  --green: oklch(72% 0.164 148);
+  --green-soft: oklch(72% 0.164 148 / 0.15);
+  --red: oklch(65% 0.201 22);
+  --red-soft: oklch(65% 0.201 22 / 0.15);
+  --yellow: oklch(76% 0.144 82);
+  --yellow-soft: oklch(76% 0.144 82 / 0.15);
+  --focus-ring: oklch(80% 0.13 250);
+  --radius: 8px;
+  --gap: 8px;
+}
+html[data-theme="dark"] { color-scheme: dark; }
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+}
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+}
+header h1 { margin: 0; font-size: 18px; font-weight: 600; }
+header .meta { color: var(--muted); font-size: 12px; margin-top: 2px; }
+header .actions { display: flex; gap: 8px; }
+main { padding: 24px; max-width: 1400px; margin: 0 auto; }
+.toolbar { display: flex; gap: 8px; margin-bottom: 16px; align-items: center; flex-wrap: wrap; }
+.toolbar input[type="search"] {
+  flex: 1; min-width: 200px; padding: 8px 12px; background: var(--panel);
+  border: 1px solid var(--border); border-radius: 6px;
+  color: var(--text); font-size: 13px;
+}
+.toolbar select {
+  padding: 8px 12px; background: var(--panel);
+  border: 1px solid var(--border); border-radius: 6px;
+  color: var(--text); font-size: 13px;
+}
+.btn {
+  padding: 8px 14px; border: 1px solid var(--border); border-radius: 6px;
+  background: var(--panel); color: var(--text); cursor: pointer; font-size: 13px;
+  transition: all .15s;
+}
+.btn:hover { background: var(--panel-raised); border-color: var(--border-strong); }
+.btn:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.btn:active { transform: translateY(1px); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: oklch(17% 0.021 265); font-weight: 600; }
+.btn.primary:hover { background: var(--accent-strong); border-color: var(--accent-strong); }
+.btn.danger { background: var(--red); border-color: var(--red); color: oklch(98% 0 0); }
+.btn.danger:hover { background: oklch(72% 0.19 22); border-color: oklch(72% 0.19 22); }
+.btn.warning { background: var(--yellow); border-color: var(--yellow); color: oklch(17% 0.021 265); }
+.btn.warning:hover { background: oklch(82% 0.13 82); border-color: oklch(82% 0.13 82); }
+.btn.ghost { background: transparent; }
+.btn.ghost:hover { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-strong); }
+.btn:disabled { opacity: .45; cursor: not-allowed; transform: none; }
+.btn:disabled:hover { background: var(--panel); border-color: var(--border); }
+.btn.sm { padding: 4px 8px; font-size: 12px; }
+a { color: var(--accent); }
+a:hover { color: var(--accent-strong); }
+a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible,
+.tab:focus-visible, th.sortable:focus-visible {
+  outline: 2px solid var(--focus-ring); outline-offset: 2px;
+}
+input:hover, select:hover, textarea:hover { border-color: var(--border-strong); }
+table { width: 100%; border-collapse: collapse; background: var(--panel); border-radius: 6px; overflow: hidden; }
+th, td { padding: 10px 14px; text-align: left; border-bottom: 1px solid var(--border); }
+th { background: var(--bg); font-weight: 600; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .5px; }
+th.sortable { cursor: pointer; user-select: none; }
+th.sortable:hover { color: var(--accent); background: var(--panel-raised); }
+th.sortable .arrow { opacity: .55; margin-left: 4px; font-size: 10px; }
+tbody tr { transition: background .12s; }
+tbody tr:hover { background: var(--panel-raised); }
+tbody tr:last-child td { border-bottom: none; }
+tbody tr.selected { background: var(--accent-soft); }
+tbody tr.selected:hover { background: oklch(70% 0.146 250 / 0.2); }
+.status { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; text-transform: uppercase; }
+.status.active { background: var(--green-soft); color: var(--green); }
+.status.inactive { background: oklch(68% 0.019 258 / 0.16); color: var(--muted); }
+.tag { display: inline-block; padding: 2px 6px; background: var(--accent-soft); color: var(--accent); border-radius: 3px; font-size: 11px; margin-right: 4px; }
+.empty { text-align: center; padding: 56px 24px; color: var(--muted); }
+.empty strong { display: block; color: var(--text); font-size: 15px; margin-bottom: 6px; }
+.empty .hint { font-size: 12px; margin-top: 4px; }
+.empty.error strong { color: var(--red); }
+.grade { display: inline-block; min-width: 22px; text-align: center; padding: 2px 7px; border-radius: 6px; font-weight: 700; font-size: 12px; }
+.grade.A, .grade.B { background: var(--green-soft); color: var(--green); }
+.grade.C, .grade.D { background: var(--yellow-soft); color: var(--yellow); }
+.grade.F { background: var(--red-soft); color: var(--red); }
+.modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.6); align-items: center; justify-content: center; z-index: 100; }
+.modal.open { display: flex; }
+.modal .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 24px; max-width: 700px; width: 90%; max-height: 90vh; overflow: auto; }
+.modal h2 { margin: 0 0 16px; font-size: 16px; }
+.field { margin-bottom: 12px; }
+.field label { display: block; margin-bottom: 4px; color: var(--muted); font-size: 12px; }
+.field input, .field textarea, .field select {
+  width: 100%; padding: 8px 12px; background: var(--bg);
+  border: 1px solid var(--border); border-radius: 6px;
+  color: var(--text); font-size: 13px; font-family: inherit;
+}
+.field textarea { min-height: 80px; font-family: ui-monospace, monospace; }
+.field-row { display: flex; gap: 8px; }
+.field-row .field { flex: 1; }
+.row { display: flex; gap: 8px; justify-content: flex-end; }
+.kbd { font-family: ui-monospace, monospace; font-size: 11px; padding: 2px 6px; background: var(--bg); border: 1px solid var(--border); border-radius: 3px; color: var(--muted); }
+.bulk-bar { display: none; padding: 12px 24px; background: var(--accent-soft); border: 1px solid var(--accent); border-radius: 6px; margin-bottom: 16px; align-items: center; gap: 8px; flex-wrap: wrap; }
+.bulk-bar.visible { display: flex; }
+.bulk-bar .count { font-weight: 600; color: var(--accent); }
+.proxy-status { display: inline-block; padding: 2px 6px; border-radius: 3px; font-size: 11px; }
+.proxy-status.ok { background: var(--green-soft); color: var(--green); }
+.proxy-status.error { background: var(--red-soft); color: var(--red); }
+.proxy-status.checking { background: var(--yellow-soft); color: var(--yellow); }
+.card { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 16px 20px; margin-top: 16px; }
+.card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; }
+.card-grid .card { margin-top: 0; }
+.card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.card-head h2 { margin: 0; font-size: 15px; font-weight: 600; }
+.card-sub { color: var(--muted); font-size: 12px; margin-top: 4px; }
+.card-head .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.mcp-tools { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 14px; }
+.mcp-tools:empty { margin-top: 0; }
+.tabs { display: flex; gap: 0; border-bottom: 1px solid var(--border); margin-bottom: 16px; }
+.tab { padding: 8px 16px; cursor: pointer; color: var(--muted); border-bottom: 2px solid transparent; }
+.tab:hover { color: var(--text); background: var(--panel-raised); }
+.tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+/* Checkbox groups — flex rows so long field lists wrap into tidy columns
+   instead of a ragged vertical stack (release 0.4.0 randomize modal). */
+.checkbox-group {
+  display: flex; flex-wrap: wrap; gap: 8px 18px;
+  padding: 12px 14px; margin: 0;
+  background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius);
+}
+.checkbox-group label {
+  display: inline-flex; align-items: center; gap: 6px;
+  margin: 0; font-size: 12px; color: var(--text);
+  min-width: 150px; cursor: pointer; line-height: 1.5;
+}
+.checkbox-group label:hover { color: var(--accent-strong); }
+.checkbox-group input[type="checkbox"] { accent-color: var(--accent); margin: 0; }
+.group-sep { height: 1px; border: 0; margin: 16px 0; background: var(--border); }
+.group-label { display: block; margin-bottom: 6px; color: var(--muted); font-size: 12px; font-weight: 600; }
+.group-hint { color: var(--muted); font-size: 11px; margin: 6px 0 0; }
+.panel-inset {
+  margin-top: 10px; padding: 14px; border: 1px solid var(--border);
+  border-radius: var(--radius); background: var(--bg);
+}
+.panel-inset[hidden] { display: none; }
+.grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px 14px; }
+.grid-2 .field { margin-bottom: 0; }
+.list-rows { display: flex; flex-direction: column; gap: 6px; max-height: 260px; overflow: auto; }
+.list-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg);
+}
+.list-row:hover { border-color: var(--border-strong); background: var(--panel-raised); }
+.list-row .grow { flex: 1; min-width: 0; }
+.list-row .name { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.list-row .sub { color: var(--muted); font-size: 11px; font-family: ui-monospace, monospace; }
+.stat-row { display: flex; gap: 18px; flex-wrap: wrap; margin-top: 12px; }
+.stat { min-width: 96px; }
+.stat .v { font-size: 18px; font-weight: 600; }
+.stat .k { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .4px; }
+
+@media(max-width:720px) {
+  header { flex-direction: column; align-items: flex-start; gap: 12px; padding: 14px 16px; }
+  header .actions { width: 100%; flex-wrap: wrap; }
+  main { padding: 16px 12px; }
+  .toolbar { flex-direction: column; align-items: stretch; }
+  .toolbar input[type="search"], .toolbar select, .toolbar .btn { width: 100%; }
+  .card-grid { grid-template-columns: 1fr; }
+  .field-row { flex-direction: column; }
+  .grid-2 { grid-template-columns: 1fr; }
+  .checkbox-group label { min-width: 100%; }
+  .modal .panel { width: 96%; padding: 16px; max-height: 94vh; }
+  .row { flex-wrap: wrap; }
+  table thead { display: none; }
+  table, tbody, tbody tr, tbody td { display: block; width: 100%; }
+  tbody tr { border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 10px; padding: 6px 4px; }
+  tbody td { border-bottom: none; padding: 6px 10px; }
+  tbody td[data-label]::before {
+    content: attr(data-label) ": "; color: var(--muted); font-size: 11px;
+    text-transform: uppercase; letter-spacing: .4px; margin-right: 6px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; }
+  .btn:active { transform: none; }
+}
+
+/* ---- Health summary bar ---- */
+.health-bar {
+  display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+  padding: 12px 24px; border-bottom: 1px solid var(--border);
+  background: var(--panel); min-height: 52px;
+}
+.health-bar[aria-busy="true"] .health-status { opacity: .5; }
+.health-bar .health-status {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-weight: 600; font-size: 13px;
+}
+.health-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.health-dot.healthy { background: var(--green); }
+.health-dot.warning { background: var(--yellow); }
+.health-dot.critical { background: var(--red); }
+.health-dot.unknown { background: var(--muted); }
+.health-stat {
+  display: inline-flex; align-items: baseline; gap: 4px;
+  font-size: 12px; color: var(--muted);
+}
+.health-stat .v { font-size: 14px; font-weight: 600; color: var(--text); }
+.health-stat.alert .v { color: var(--red); }
+.health-stat.warn .v { color: var(--yellow); }
+.health-bar .health-link { margin-left: auto; font-size: 12px; color: var(--accent); cursor: pointer; }
+.health-bar .health-link:hover { color: var(--accent-strong); text-decoration: underline; }
+
+/* ---- Loading skeleton ---- */
+.skeleton { display: inline-block; width: 60px; height: 14px; border-radius: 3px;
+  background: linear-gradient(90deg, var(--panel-raised) 25%, var(--border) 50%, var(--panel-raised) 75%);
+  background-size: 200% 100%; animation: skel 1.2s infinite linear; }
+@keyframes skel { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+@media (prefers-reduced-motion: reduce) { .skeleton { animation: none; background: var(--panel-raised); } }
+
+/* ---- Toast / inline error ---- */
+.toast {
+  position: fixed; bottom: 24px; right: 24px; z-index: 200;
+  background: var(--panel); border: 1px solid var(--border-strong); border-radius: 8px;
+  padding: 12px 20px; max-width: 400px; box-shadow: 0 8px 24px rgba(0,0,0,.4);
+  font-size: 13px; display: none; gap: 8px; align-items: flex-start;
+}
+.toast.show { display: flex; }
+.toast.error { border-color: var(--red); }
+.toast.error .toast-icon { color: var(--red); }
+.toast.success { border-color: var(--green); }
+.toast.success .toast-icon { color: var(--green); }
+.toast .toast-msg { flex: 1; }
+.toast .toast-close { cursor: pointer; color: var(--muted); font-size: 16px; line-height: 1; }
+
+/* ---- Issues list ---- */
+.issues-list { display: flex; flex-direction: column; gap: 6px; max-height: 200px; overflow: auto; }
+.issue-row {
+  display: flex; align-items: flex-start; gap: 8px;
+  padding: 8px 10px; border-radius: 6px; background: var(--bg);
+  border: 1px solid var(--border); font-size: 12px;
+}
+.issue-row .issue-type {
+  display: inline-block; padding: 1px 6px; border-radius: 3px;
+  font-weight: 600; font-size: 10px; text-transform: uppercase; flex-shrink: 0;
+}
+.issue-row .issue-type.migration { background: var(--yellow-soft); color: var(--yellow); }
+.issue-row .issue-type.proxy { background: var(--red-soft); color: var(--red); }
+.issue-row .issue-type.account_status { background: var(--red-soft); color: var(--red); }
+.issue-row .issue-detail { color: var(--muted); flex: 1; }
+
+/* ---- Diagnose button in table ---- */
+.btn.diag { border-color: var(--accent); color: var(--accent); }
+.btn.diag:hover { background: var(--accent-soft); }
+
+/* ---- Create profile form: inline validation ---- */
+.field-error { color: var(--red); font-size: 11px; margin-top: 4px; display: none; }
+.field-error.show { display: block; }
+.field input.invalid { border-color: var(--red); }
+.field input.invalid:focus { outline-color: var(--red); }
+
+/* ---- Loading button state ---- */
+.btn.loading { pointer-events: none; opacity: .65; }
+.btn.loading::after { content: " …"; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>antidetect-local</h1>
+    <div class="meta" id="info-meta">connecting...</div>
+  </div>
+  <div class="actions">
+    <button class="btn" onclick="window.open('/docs', '_blank')">API docs</button>
+    <button class="btn" onclick="openProxyImport()">Assign proxies</button>
+    <button class="btn" onclick="openRandomize()">Randomize</button>
+    <button class="btn" onclick="openMassCreate()">Mass create</button>
+    <button class="btn" onclick="openSync()">Automation</button>
+    <button class="btn primary" onclick="openCreate()">+ New profile</button>
+  </div>
+</header>
+
+<!-- Health summary bar: one-glance status for operators -->
+<div class="health-bar" id="health-bar" role="status" aria-live="polite" aria-busy="true">
+  <span class="health-status">
+    <span class="health-dot unknown" id="health-dot" aria-hidden="true"></span>
+    <span id="health-label">Checking health…</span>
+  </span>
+  <!-- Legend: dot states referenced by loadHealth() — kept in DOM for screen-reader context -->
+  <span style="display:none" aria-hidden="true">
+    <span class="health-dot healthy"></span>
+    <span class="health-dot warning"></span>
+    <span class="health-dot critical"></span>
+  </span>
+  <span class="health-stat"><span class="v skeleton" id="hs-total">—</span> profiles</span>
+  <span class="health-stat"><span class="v skeleton" id="hs-running">—</span> running</span>
+  <span class="health-stat" id="hs-migration-wrap" style="display:none">
+    <span class="v" id="hs-migration">0</span> need migration
+  </span>
+  <span class="health-stat" id="hs-proxy-wrap" style="display:none">
+    <span class="v" id="hs-proxy">0</span> proxy failures
+  </span>
+  <span class="health-stat" id="hs-crashed-wrap" style="display:none">
+    <span class="v" id="hs-crashed">0</span> crashed
+  </span>
+  <span class="health-link" id="health-details-link" onclick="toggleHealthDetails()" role="button" tabindex="0"
+    onkeydown="if(event.key==='Enter')toggleHealthDetails()">Details</span>
+</div>
+<div id="health-details" style="display:none; padding: 12px 24px; background: var(--bg); border-bottom: 1px solid var(--border);">
+  <div id="issues-list" class="issues-list" aria-label="Profile issues">
+    <span class="card-sub">No issues.</span>
+  </div>
+</div>
+
+<main>
+  <div class="toolbar">
+    <input type="search" id="search" placeholder="Search profiles..." oninput="render()">
+    <input type="search" id="remark-filter" placeholder="Filter notes..." oninput="render()">
+    <select id="group-filter" onchange="render()">
+      <option value="">All groups</option>
+    </select>
+    <select id="status-filter" onchange="render()">
+      <option value="">Any status</option>
+      <option value="running">Running</option>
+      <option value="stopped">Stopped</option>
+    </select>
+    <button class="btn" onclick="openImport()">Import cookies</button>
+    <button class="btn" onclick="openFolders()">Folders</button>
+    <button class="btn" onclick="refresh()">&#x21bb; Refresh</button>
+  </div>
+
+  <div class="bulk-bar" id="bulk-bar">
+    <span class="count" id="bulk-count">0</span> selected:
+    <button class="btn sm primary" onclick="bulkStart()">Start all</button>
+    <button class="btn sm warning" onclick="bulkStop()">Stop all</button>
+    <button class="btn sm" onclick="bulkExport()">Export cookies</button>
+    <button class="btn sm" onclick="bulkProxyCheck()">Check proxies</button>
+    <button class="btn sm" onclick="bulkAudit()">Audit stealth</button>
+    <button class="btn sm" onclick="openRandomize()">Randomize</button>
+    <button class="btn sm" onclick="openSync()">Run flow</button>
+    <button class="btn sm danger" onclick="bulkDelete()">Delete</button>
+    <span style="flex:1"></span>
+    <button class="btn sm" onclick="clearSelection()">Clear selection</button>
+  </div>
+
+  <table id="profiles">
+    <thead>
+      <tr>
+        <th><input type="checkbox" id="select-all" onchange="toggleAll(this)"></th>
+        <th class="sortable" tabindex="0" onclick="changeSort('status')" onkeydown="if(event.key==='Enter')changeSort('status')">Status<span class="arrow" id="sort-arrow-status"></span></th>
+        <th class="sortable" tabindex="0" onclick="changeSort('name')" onkeydown="if(event.key==='Enter')changeSort('name')">Name<span class="arrow" id="sort-arrow-name"></span></th>
+        <th class="sortable" tabindex="0" onclick="changeSort('user_id')" onkeydown="if(event.key==='Enter')changeSort('user_id')">User ID<span class="arrow" id="sort-arrow-user_id"></span></th>
+        <th class="sortable" tabindex="0" onclick="changeSort('group')" onkeydown="if(event.key==='Enter')changeSort('group')">Group<span class="arrow" id="sort-arrow-group"></span></th>
+        <th>Tags</th>
+        <th class="sortable" tabindex="0" onclick="changeSort('proxy')" onkeydown="if(event.key==='Enter')changeSort('proxy')">Proxy<span class="arrow" id="sort-arrow-proxy"></span></th>
+        <th class="sortable" tabindex="0" onclick="changeSort('launches')" onkeydown="if(event.key==='Enter')changeSort('launches')">Launched<span class="arrow" id="sort-arrow-launches"></span></th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody id="tbody">
+      <tr><td colspan="9" class="empty">Loading...</td></tr>
+    </tbody>
+  </table>
+
+  <!-- MCP server management -->
+  <section class="card" id="mcp-panel">
+    <div class="card-head">
+      <div>
+        <h2>MCP status</h2>
+        <div class="card-sub" id="mcp-summary">Checking MCP server...</div>
+      </div>
+      <div class="actions">
+        <button class="btn sm primary" id="mcp-start-btn" onclick="mcpStart()">Start MCP</button>
+        <button class="btn sm warning" id="mcp-stop-btn" onclick="mcpStop()">Stop MCP</button>
+        <button class="btn sm" onclick="mcpCopyConfig()">Copy Config</button>
+        <button class="btn sm" onclick="loadMcp()">&#x21bb; Refresh</button>
+      </div>
+    </div>
+    <div id="mcp-tools" class="mcp-tools"></div>
+  </section>
+
+  <div class="card-grid" style="margin-top:16px">
+    <!-- Activity log -->
+    <section class="card" id="activity-panel">
+      <div class="card-head">
+        <div>
+          <h2>Recent activity</h2>
+          <div class="card-sub">Launches, imports, audits and bulk operations.</div>
+        </div>
+        <div class="actions">
+          <button class="btn sm" onclick="exportActivity()">Export activity</button>
+          <button class="btn sm" onclick="loadActivity()">&#x21bb; Refresh</button>
+        </div>
+      </div>
+      <div id="activity-list" class="list-rows" style="margin-top:12px">
+        <div class="card-sub">Loading activity...</div>
+      </div>
+    </section>
+
+    <!-- Resource status -->
+    <section class="card" id="resource-panel">
+      <div class="card-head">
+        <div>
+          <h2>Resource status</h2>
+          <div class="card-sub">Host CPU, memory and running browser count.</div>
+        </div>
+        <div class="actions">
+          <button class="btn sm" onclick="loadResources()">&#x21bb; Refresh</button>
+        </div>
+      </div>
+      <div id="resource-stats" class="stat-row">
+        <div class="card-sub">Loading resource status...</div>
+      </div>
+    </section>
+
+    <!-- Extensions -->
+    <section class="card" id="extension-panel">
+      <div class="card-head">
+        <div>
+          <h2>Extension catalog</h2>
+          <div class="card-sub">Install from the Chrome Web Store, then attach to profiles.</div>
+        </div>
+        <div class="actions">
+          <button class="btn sm" onclick="loadExtensions()">&#x21bb; Refresh</button>
+        </div>
+      </div>
+      <div class="field-row" style="margin-top:12px">
+        <div class="field">
+          <label for="webstore-query">Chrome Web Store search</label>
+          <input id="webstore-query" placeholder="ublock origin" onkeydown="if(event.key==='Enter')searchWebStore()">
+        </div>
+        <div class="field" style="flex:0 0 auto; display:flex; align-items:flex-end">
+          <button class="btn" onclick="searchWebStore()">Search store</button>
+        </div>
+      </div>
+      <div id="webstore-results" class="list-rows"></div>
+      <hr class="group-sep">
+      <div id="extension-list" class="list-rows">
+        <div class="card-sub">Loading extensions...</div>
+      </div>
+    </section>
+
+    <!-- Backup schedules -->
+    <section class="card" id="schedule-panel">
+      <div class="card-head">
+        <div>
+          <h2>Backup schedules</h2>
+          <div class="card-sub">Encrypted snapshot exports on a fixed interval.</div>
+        </div>
+        <div class="actions">
+          <button class="btn sm" onclick="loadSchedules()">&#x21bb; Refresh</button>
+        </div>
+      </div>
+      <div class="field-row" style="margin-top:12px">
+        <div class="field">
+          <label for="sched-destination">Destination file</label>
+          <input id="sched-destination" placeholder="C:\\backups\\antique.snapshot">
+        </div>
+        <div class="field" style="max-width:150px">
+          <label for="sched-interval">Every (minutes)</label>
+          <input id="sched-interval" type="number" min="5" value="1440">
+        </div>
+        <div class="field" style="flex:0 0 auto; display:flex; align-items:flex-end">
+          <button class="btn" onclick="createSchedule()">Add schedule</button>
+        </div>
+      </div>
+      <div id="schedule-list" class="list-rows">
+        <div class="card-sub">Loading schedules...</div>
+      </div>
+    </section>
+
+    <!-- Proxy providers -->
+    <section class="card" id="provider-panel">
+      <div class="card-head">
+        <div>
+          <h2>Proxy provider</h2>
+          <div class="card-sub">Test a provider source before importing its proxies.</div>
+        </div>
+        <div class="actions">
+          <button class="btn sm" onclick="loadProviderKinds()">&#x21bb; Refresh</button>
+        </div>
+      </div>
+      <div class="field-row" style="margin-top:12px">
+        <div class="field" style="max-width:170px">
+          <label for="provider-kind">Kind</label>
+          <select id="provider-kind"></select>
+        </div>
+        <div class="field">
+          <label for="provider-source">Source (file path or URL)</label>
+          <input id="provider-source" placeholder="C:\\proxies\\pool.txt">
+        </div>
+        <div class="field" style="flex:0 0 auto; display:flex; align-items:flex-end">
+          <button class="btn" onclick="testProvider()">Test provider</button>
+        </div>
+      </div>
+      <div id="provider-result" class="card-sub"></div>
+    </section>
+  </div>
+</main>
+
+<!-- Smart fingerprint randomization modal -->
+<div class="modal" id="randomizeModal">
+  <div class="panel">
+    <h2>Smart fingerprint randomization</h2>
+    <div class="card-sub">Re-rolls fingerprints for <b id="rnd-count">0</b> selected profile(s). Shared fields get one value across the whole batch; preserved fields are left untouched.</div>
+
+    <div class="field" style="margin-top:16px">
+      <label for="rnd-os">Target OS family</label>
+      <select id="rnd-os">
+        <option value="windows">Windows</option>
+        <option value="macos">macOS</option>
+        <option value="linux">Linux</option>
+      </select>
+    </div>
+
+    <label class="card-sub" style="display:block;margin-top:16px">Share across the batch (same value everywhere)</label>
+    <div class="checkbox-group">
+      <label><input type="checkbox" class="rnd-shared" value="timezone"> Timezone</label>
+      <label><input type="checkbox" class="rnd-shared" value="languages"> Languages</label>
+      <label><input type="checkbox" class="rnd-shared" value="platform"> Platform</label>
+      <label><input type="checkbox" class="rnd-shared" value="webgl_vendor"> WebGL vendor</label>
+      <label><input type="checkbox" class="rnd-shared" value="webgl_renderer"> WebGL renderer</label>
+      <label><input type="checkbox" class="rnd-shared" value="screen_width"> Screen width</label>
+      <label><input type="checkbox" class="rnd-shared" value="screen_height"> Screen height</label>
+    </div>
+
+    <hr class="group-sep">
+
+    <label class="card-sub" style="display:block">Preserve (never randomize these)</label>
+    <div class="checkbox-group">
+      <label><input type="checkbox" class="rnd-preserve" value="user_agent"> User agent</label>
+      <label><input type="checkbox" class="rnd-preserve" value="timezone"> Timezone</label>
+      <label><input type="checkbox" class="rnd-preserve" value="languages"> Languages</label>
+      <label><input type="checkbox" class="rnd-preserve" value="hardware_concurrency"> CPU cores</label>
+      <label><input type="checkbox" class="rnd-preserve" value="device_memory"> Device memory</label>
+      <label><input type="checkbox" class="rnd-preserve" value="canvas_noise_seed"> Canvas seed</label>
+    </div>
+
+    <hr class="group-sep">
+
+    <label><input type="checkbox" id="rnd-overrides-enabled" onchange="toggleOverridesPanel()"> Pin exact values (overrides win over everything above)</label>
+    <div id="rnd-overrides-panel" style="display:none; margin-top:12px">
+      <div class="field-row">
+        <div class="field">
+          <label for="rnd-ov-user-agent">User agent</label>
+          <input id="rnd-ov-user-agent" placeholder="leave blank to randomize">
+        </div>
+        <div class="field">
+          <label for="rnd-ov-platform">Platform</label>
+          <input id="rnd-ov-platform" placeholder="Win32">
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label for="rnd-ov-screen-width">Screen width</label>
+          <input id="rnd-ov-screen-width" type="number" placeholder="1920">
+        </div>
+        <div class="field">
+          <label for="rnd-ov-screen-height">Screen height</label>
+          <input id="rnd-ov-screen-height" type="number" placeholder="1080">
+        </div>
+        <div class="field">
+          <label for="rnd-ov-hardware-concurrency">CPU cores</label>
+          <input id="rnd-ov-hardware-concurrency" type="number" placeholder="8">
+        </div>
+        <div class="field">
+          <label for="rnd-ov-device-memory">Device memory (GB)</label>
+          <input id="rnd-ov-device-memory" type="number" placeholder="8">
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label for="rnd-ov-webgl-vendor">WebGL vendor</label>
+          <input id="rnd-ov-webgl-vendor" placeholder="Google Inc. (NVIDIA)">
+        </div>
+        <div class="field">
+          <label for="rnd-ov-webgl-renderer">WebGL renderer</label>
+          <input id="rnd-ov-webgl-renderer" placeholder="ANGLE (NVIDIA GeForce RTX 3060)">
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label for="rnd-ov-timezone">Timezone</label>
+          <input id="rnd-ov-timezone" placeholder="Europe/Berlin">
+        </div>
+        <div class="field">
+          <label for="rnd-ov-languages">Languages (comma-separated)</label>
+          <input id="rnd-ov-languages" placeholder="de-DE, de, en-US">
+        </div>
+      </div>
+    </div>
+
+    <div class="row" style="margin-top:20px">
+      <button class="btn" onclick="closeRandomize()">Cancel</button>
+      <button class="btn primary" onclick="submitRandomize()">Randomize</button>
+    </div>
+  </div>
+</div>
+
+<!-- Stealth audit modal -->
+<div class="modal" id="auditModal">
+  <div class="panel">
+    <h2>Stealth audit</h2>
+    <div id="audit-body" class="card-sub">Loading...</div>
+    <div class="row" style="margin-top:20px">
+      <button class="btn" onclick="closeAudit()">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Folders modal -->
+<div class="modal" id="foldersModal">
+  <div class="panel">
+    <h2>Folders</h2>
+    <div class="field-row">
+      <div class="field">
+        <label for="folder-name">New folder name</label>
+        <input id="folder-name" placeholder="crypto-farm">
+      </div>
+      <div class="field" style="flex:0 0 auto; display:flex; align-items:flex-end">
+        <button class="btn primary" onclick="createFolder()">Add folder</button>
+      </div>
+    </div>
+    <hr class="group-sep">
+    <div id="folders-body" class="list-rows"></div>
+    <div class="row" style="margin-top:20px">
+      <button class="btn" onclick="closeFolders()">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Mass create modal -->
+<div class="modal" id="massCreateModal">
+  <div class="panel">
+    <h2>Mass create</h2>
+    <div class="field-row">
+      <div class="field">
+        <label for="mass-count">How many profiles</label>
+        <input id="mass-count" type="number" min="1" value="10">
+      </div>
+      <div class="field">
+        <label for="mass-prefix">Name prefix</label>
+        <input id="mass-prefix" placeholder="profile" value="profile">
+      </div>
+      <div class="field">
+        <label for="mass-os">OS family</label>
+        <select id="mass-os">
+          <option value="windows">Windows</option>
+          <option value="macos">macOS</option>
+          <option value="linux">Linux</option>
+        </select>
+      </div>
+    </div>
+    <div class="row" style="margin-top:20px">
+      <button class="btn" onclick="closeMassCreate()">Cancel</button>
+      <button class="btn primary" onclick="submitMassCreate()">Create profiles</button>
+    </div>
+  </div>
+</div>
+
+<!-- Flow runner modal -->
+<div class="modal" id="syncModal">
+  <div class="panel">
+    <h2>Run flow on selected profiles</h2>
+    <div class="field">
+      <label for="sync-flow">Flow name</label>
+      <input id="sync-flow" placeholder="warmup">
+    </div>
+    <div class="row" style="margin-top:20px">
+      <button class="btn" onclick="closeSync()">Cancel</button>
+      <button class="btn primary" onclick="runFlow()">Run flow</button>
+    </div>
+  </div>
+</div>
+
+<!-- Create profile modal -->
+<div class="modal" id="createModal">
+  <div class="panel">
+    <h2>New profile</h2>
+    <div class="field">
+      <label>Name</label>
+      <input id="create-name" placeholder="my-profile-01">
+    </div>
+    <div class="field">
+      <label>Group ID</label>
+      <input id="create-group" placeholder="0" value="0">
+    </div>
+    <div class="field">
+      <label>Proxy type</label>
+      <select id="create-proxy-type">
+        <option value="direct">direct (no proxy)</option>
+        <option value="http">HTTP</option>
+        <option value="https">HTTPS</option>
+        <option value="socks5">SOCKS5</option>
+      </select>
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label>Proxy host:port</label>
+        <input id="create-proxy-host" placeholder="proxy.example.com:8080">
+      </div>
+      <div class="field">
+        <label>User (optional)</label>
+        <input id="create-proxy-user">
+      </div>
+      <div class="field">
+        <label>Password</label>
+        <input id="create-proxy-pass" type="password">
+      </div>
+    </div>
+    <div class="field">
+      <label>Remark (optional)</label>
+      <input id="create-remark">
+    </div>
+    <div class="field">
+      <label>Tags (comma-separated)</label>
+      <input id="create-tags" placeholder="social, crypto">
+    </div>
+    <div class="row">
+      <button class="btn" onclick="closeCreate()">Cancel</button>
+      <button class="btn primary" onclick="submitCreate(this)">Create</button>
+    </div>
+  </div>
+</div>
+
+<!-- Import modal -->
+<div class="modal" id="importModal">
+  <div class="panel">
+    <h2>Import cookies / AdsPower profile</h2>
+    <p style="color: var(--muted); font-size: 13px;">
+      Upload a single AdsPower export (.adb / .zip), a Netscape
+      <span class="kbd">cookies.txt</span>, or a Playwright/Chrome JSON.
+    </p>
+    <div class="field">
+      <label>File</label>
+      <input type="file" id="import-file">
+    </div>
+    <div class="row" style="margin-bottom: 16px;">
+      <button class="btn" onclick="submitImport()">Import file</button>
+    </div>
+    <hr style="border: 0; border-top: 1px solid var(--border); margin: 16px 0;">
+    <p style="color: var(--muted); font-size: 13px;">
+      Or import an entire local AdsPower backup directory.
+    </p>
+    <div class="field">
+      <label for="backup-path">AdsPower backup folder</label>
+      <input id="backup-path" placeholder="C:\\ai_workflow\\adspower_profiles_backup">
+    </div>
+    <div class="field">
+      <label><input type="checkbox" id="backup-overwrite"> Overwrite existing profiles</label>
+    </div>
+    <div id="backup-preview" class="panel-inset" hidden></div>
+    <div class="row">
+      <button class="btn" onclick="closeImport()">Cancel</button>
+      <button class="btn" onclick="previewBackup()">Preview AdsPower backup</button>
+      <button class="btn primary" onclick="submitBackupImport()">Import backup folder</button>
+    </div>
+  </div>
+</div>
+
+<!-- Proxy import modal -->
+<div class="modal" id="proxyImportModal">
+  <div class="panel">
+    <h2>Bulk import proxies</h2>
+    <p style="color: var(--muted); font-size: 13px;">
+      One proxy per line. Formats: <span class="kbd">type://host:port</span>,
+      <span class="kbd">type://user:pass@host:port</span>,
+      <span class="kbd">host:port:user:pass</span>
+    </p>
+    <div class="field">
+      <label>Proxy list</label>
+      <textarea id="proxy-list-input" rows="8" placeholder="http://proxy1.com:8080&#10;socks5://user:pass@proxy2.com:1080&#10;1.2.3.4:8080:user:pass"></textarea>
+    </div>
+    <div class="field">
+      <label><input type="checkbox" id="proxy-assign-selected" checked> Assign to selected profiles only (otherwise all)</label>
+    </div>
+    <div class="row">
+      <button class="btn" onclick="closeProxyImport()">Cancel</button>
+      <button class="btn primary" onclick="submitProxyImport()">Import & assign</button>
+    </div>
+  </div>
+</div>
+
+<!-- Fingerprint edit modal -->
+<div class="modal" id="fingerprintModal">
+  <div class="panel">
+    <h2>Edit fingerprint <span id="fp-profile-name" style="color:var(--muted)"></span></h2>
+    <div class="tabs">
+      <div class="tab active" onclick="fpTab('basic')">Basic</div>
+      <div class="tab" onclick="fpTab('screen')">Screen</div>
+      <div class="tab" onclick="fpTab('hardware')">Hardware</div>
+      <div class="tab" onclick="fpTab('network')">Network</div>
+    </div>
+    <div id="fp-tab-basic">
+      <div class="field">
+        <label>User-Agent</label>
+        <input id="fp-ua">
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label>Platform</label>
+          <select id="fp-platform">
+            <option value="Win32">Windows</option>
+            <option value="MacIntel">macOS</option>
+            <option value="Linux x86_64">Linux</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Locale</label>
+          <input id="fp-locale" placeholder="en-US">
+        </div>
+        <div class="field">
+          <label>Timezone</label>
+          <input id="fp-timezone" placeholder="America/New_York">
+        </div>
+      </div>
+      <div class="field">
+        <label>Languages (comma-separated)</label>
+        <input id="fp-languages" placeholder="en-US, en">
+      </div>
+    </div>
+    <div id="fp-tab-screen" style="display:none">
+      <div class="field-row">
+        <div class="field">
+          <label>Screen width</label>
+          <input id="fp-screen-w" type="number">
+        </div>
+        <div class="field">
+          <label>Screen height</label>
+          <input id="fp-screen-h" type="number">
+        </div>
+        <div class="field">
+          <label>Pixel ratio</label>
+          <input id="fp-dpr" type="number" step="0.1">
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label>Color depth</label>
+          <select id="fp-colordepth">
+            <option value="24">24</option>
+            <option value="30">30</option>
+            <option value="48">48</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Inner width</label>
+          <input id="fp-inner-w" type="number">
+        </div>
+        <div class="field">
+          <label>Inner height</label>
+          <input id="fp-inner-h" type="number">
+        </div>
+      </div>
+    </div>
+    <div id="fp-tab-hardware" style="display:none">
+      <div class="field-row">
+        <div class="field">
+          <label>Hardware concurrency</label>
+          <select id="fp-cores">
+            <option value="2">2</option>
+            <option value="4">4</option>
+            <option value="8">8</option>
+            <option value="12">12</option>
+            <option value="16">16</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Device memory (GB)</label>
+          <select id="fp-memory">
+            <option value="4">4</option>
+            <option value="8">8</option>
+            <option value="16">16</option>
+            <option value="32">32</option>
+          </select>
+        </div>
+      </div>
+      <div class="field">
+        <label>WebGL vendor</label>
+        <input id="fp-gl-vendor">
+      </div>
+      <div class="field">
+        <label>WebGL renderer</label>
+        <input id="fp-gl-renderer">
+      </div>
+    </div>
+    <div id="fp-tab-network" style="display:none">
+      <div class="field-row">
+        <div class="field">
+          <label>Connection type</label>
+          <select id="fp-conn-type">
+            <option value="wifi">WiFi</option>
+            <option value="ethernet">Ethernet</option>
+            <option value="4g">4G</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Downlink (Mbps)</label>
+          <input id="fp-conn-downlink" type="number" step="0.1">
+        </div>
+        <div class="field">
+          <label>RTT (ms)</label>
+          <input id="fp-conn-rtt" type="number">
+        </div>
+      </div>
+      <div class="field">
+        <label><input type="checkbox" id="fp-block-webrtc" checked> Block WebRTC IP leak</label>
+      </div>
+    </div>
+    <div class="row" style="margin-top: 16px;">
+      <button class="btn" onclick="fpRegenerate()">Regenerate random</button>
+      <button class="btn" onclick="closeFingerprintModal()">Cancel</button>
+      <button class="btn primary" onclick="saveFingerprintEdit()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast notification for inline errors/success -->
+<div class="toast" id="toast" role="alert" aria-live="assertive">
+  <span class="toast-icon">&#x26A0;</span>
+  <span class="toast-msg" id="toast-msg"></span>
+  <span class="toast-close" onclick="hideToast()" role="button" tabindex="0"
+    onkeydown="if(event.key==='Enter')hideToast()">&times;</span>
+</div>
+
+<!-- Diagnose profile modal -->
+<div class="modal" id="diagnoseModal">
+  <div class="panel">
+    <h2>Profile diagnostics <span id="diag-name" style="color:var(--muted)"></span></h2>
+    <div id="diag-body" class="card-sub">Loading…</div>
+    <div class="row" style="margin-top:20px">
+      <button class="btn" onclick="closeDiagnose()">Close</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = "";
+let profiles = [];
+let running = new Set();
+let groups = [];
+let selected = new Set();
+let fpEditUserId = null;
+
+async function fetchJSON(path, opts) {
+  const options = Object.assign({}, opts);
+  // Any request with a body is JSON — set the header once, here, so callers
+  // cannot forget it (FastAPI answers 422 without it).
+  if (options.body) {
+    options.headers = Object.assign({ "Content-Type": "application/json" }, options.headers || {});
+  }
+  let r;
+  try {
+    r = await fetch(API + path, options);
+  } catch (netErr) {
+    // fetch() only rejects on network-level failures: the local server is down.
+    throw new Error("Can't reach the server. Is it still running?");
+  }
+  let j;
+  try {
+    j = await r.json();
+  } catch (parseErr) {
+    throw new Error("HTTP " + r.status + " (invalid response)");
+  }
+  if (!r.ok || (j.code !== undefined && j.code !== 0)) {
+    throw new Error(j.msg || j.detail || ("HTTP " + r.status));
+  }
+  return j;
+}
+
+async function refresh() {
+  try {
+    const [list, info, grp] = await Promise.all([
+      fetchJSON("/user/list?page_size=1000"),
+      fetchJSON("/info"),
+      fetchJSON("/group/list"),
+    ]);
+    profiles = list.data.list || [];
+    running = new Set((await fetchJSON("/user/active")).data.list.map(h => h.user_id));
+    groups = grp.data.list || [];
+    document.getElementById("info-meta").textContent =
+      `${info.profile_count} profiles \u00b7 ${info.running_count} running \u00b7 v${info.version}`;
+    updateGroupFilter();
+    render();
+  } catch (e) {
+    document.getElementById("tbody").innerHTML =
+      `<tr><td colspan="9" class="empty">Error: ${e.message}</td></tr>`;
+  }
+}
+
+function updateGroupFilter() {
+  const sel = document.getElementById("group-filter");
+  const current = sel.value;
+  sel.innerHTML = '<option value="">All groups</option>' +
+    groups.map(g => `<option value="${g.group_id}">Group ${g.group_id} (${g.count})</option>`).join("");
+  sel.value = current;
+}
+
+function render() {
+  const q = document.getElementById("search").value.toLowerCase();
+  const gf = document.getElementById("group-filter").value;
+  const filtered = profiles.filter(p => {
+    if (q && !p.name.toLowerCase().includes(q) && !p.user_id.includes(q)) return false;
+    if (gf && p.group_id !== gf) return false;
+    return true;
+  });
+  const tbody = document.getElementById("tbody");
+  if (filtered.length === 0) {
+    tbody.innerHTML = profiles.length === 0
+      ? `<tr><td colspan="9" class="empty">No profiles yet. Create one to get started.</td></tr>`
+      : `<tr><td colspan="9" class="empty">No profiles match filters.</td></tr>`;
+    updateBulkBar();
+    return;
+  }
+  tbody.innerHTML = sortProfiles(filtered).map(p => {
+    const isRunning = running.has(p.user_id);
+    const isSelected = selected.has(p.user_id);
+    const proxy = p.user_proxy_config && p.user_proxy_config.proxy_type !== "direct"
+      ? `${p.user_proxy_config.proxy_type}://${p.user_proxy_config.proxy_host}:${p.user_proxy_config.proxy_port}`
+      : "\u2014";
+    return `
+      <tr class="${isSelected ? 'selected' : ''}">
+        <td><input type="checkbox" ${isSelected ? 'checked' : ''} onchange="toggleSelect('${p.user_id}', this)"></td>
+        <td><span class="status ${isRunning ? 'active' : 'inactive'}">${isRunning ? 'Active' : 'Inactive'}</span></td>
+        <td>${esc(p.name)}</td>
+        <td><span class="kbd">${p.user_id}</span></td>
+        <td>${esc(p.group_id)}</td>
+        <td>${(p.tags || []).map(t => `<span class="tag">${esc(t)}</span>`).join("")}</td>
+        <td>${esc(proxy)} <span id="proxy-st-${p.user_id}"></span></td>
+        <td>${p.launch_count || 0}${p.last_launched_at ? " \u00b7 " + new Date(p.last_launched_at).toLocaleString() : ""}</td>
+        <td style="white-space:nowrap">
+          ${isRunning
+            ? `<button class="btn sm danger" onclick="act('stop','${p.user_id}',this)" aria-label="Stop profile">Stop</button>
+               <button class="btn sm" onclick="openCdp('${p.user_id}')" aria-label="Attach to running profile">Attach</button>`
+            : `<button class="btn sm primary" onclick="act('start','${p.user_id}',this)" aria-label="Start profile">Start</button>`}
+          <button class="btn sm" onclick="openFingerprintEdit('${p.user_id}')" title="Manage profile fingerprint">FP</button>
+          <button class="btn sm diag" onclick="diagnoseProfile('${p.user_id}')" aria-label="Diagnose profile">Diag</button>
+          <button class="btn sm" onclick="auditProfile('${p.user_id}')" title="Stealth audit">Stealth</button>
+          <button class="btn sm" onclick="checkOneProxy('${p.user_id}')">\u2714 Proxy</button>
+          <button class="btn sm" onclick="exportProfile('${p.user_id}','json')">Export</button>
+          <button class="btn sm danger" onclick="del('${p.user_id}','${esc(p.name)}')">Del</button>
+        </td>
+      </tr>`;
+  }).join("");
+  updateBulkBar();
+}
+
+function esc(s) {
+  return String(s == null ? "" : s).replace(/[<>&"']/g, c =>
+    ({"<":"&lt;",">":"&gt;","&":"&amp;",'"':"&quot;","'":"&#39;"})[c]);
+}
+
+// --- Selection & bulk ---
+function toggleSelect(uid, cb) {
+  if (cb.checked) selected.add(uid); else selected.delete(uid);
+  render();
+}
+function toggleAll(cb) {
+  const q = document.getElementById("search").value.toLowerCase();
+  const gf = document.getElementById("group-filter").value;
+  profiles.forEach(p => {
+    if (q && !p.name.toLowerCase().includes(q) && !p.user_id.includes(q)) return;
+    if (gf && p.group_id !== gf) return;
+    if (cb.checked) selected.add(p.user_id); else selected.delete(p.user_id);
+  });
+  render();
+}
+function clearSelection() { selected.clear(); render(); }
+function updateBulkBar() {
+  const bar = document.getElementById("bulk-bar");
+  const cnt = document.getElementById("bulk-count");
+  if (selected.size > 0) {
+    bar.classList.add("visible");
+    cnt.textContent = selected.size;
+  } else {
+    bar.classList.remove("visible");
+  }
+}
+
+async function bulkStart() {
+  if (!selected.size) return;
+  try {
+    await fetchJSON("/user/bulk/start", {
+      method: "POST", headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({user_ids: [...selected]}),
+    });
+    await refresh();
+  } catch (e) { alert(e.message); }
+}
+async function bulkStop() {
+  if (!selected.size) return;
+  try {
+    await fetchJSON("/user/bulk/stop", {
+      method: "POST", headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({user_ids: [...selected]}),
+    });
+    await refresh();
+  } catch (e) { alert(e.message); }
+}
+async function bulkDelete() {
+  if (!selected.size) return;
+  if (!confirm(`Delete ${selected.size} profile(s)?`)) return;
+  try {
+    await fetchJSON("/user/bulk/delete", {
+      method: "POST", headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({user_ids: [...selected]}),
+    });
+    selected.clear();
+    await refresh();
+  } catch (e) { alert(e.message); }
+}
+async function bulkExport() {
+  if (!selected.size) return;
+  try {
+    const res = await fetchJSON("/user/bulk/export", {
+      method: "POST", headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({user_ids: [...selected]}),
+    });
+    const text = (res.data.profiles || []).map(p => `// ${p.name} (${p.user_id})\n${p.cookies_json}`).join("\n\n");
+    const blob = new Blob([text], {type: "text/plain"});
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `cookies-bulk-${Date.now()}.json`;
+    a.click();
+  } catch (e) { alert(e.message); }
+}
+async function bulkProxyCheck() {
+  if (!selected.size) return;
+  for (const uid of selected) {
+    const el = document.getElementById(`proxy-st-${uid}`);
+    if (el) el.innerHTML = '<span class="proxy-status checking">...</span>';
+  }
+  for (const uid of selected) {
+    await checkOneProxy(uid);
+  }
+}
+
+// --- Single actions ---
+async function act(verb, id, btn = null) {
+  if (btn) btn.classList.add("loading");
+  try {
+    const path = verb === "start" ? "/user/start" : "/user/stop";
+    await fetchJSON(path, {
+      method: "POST", headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({user_id: id}),
+    });
+    await refresh();
+  } catch (e) {
+    showToast(e.message, "error");
+  } finally {
+    if (btn) btn.classList.remove("loading");
+  }
+}
+
+async function del(id, name) {
+  if (!confirm(`Delete profile "${name}" (${id})?`)) return;
+  try {
+    await fetchJSON("/user/delete", {
+      method: "POST", headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({user_id: id}),
+    });
+    selected.delete(id);
+    await refresh();
+  } catch (e) { alert(e.message); }
+}
+
+async function checkOneProxy(uid) {
+  const el = document.getElementById(`proxy-st-${uid}`);
+  if (el) el.innerHTML = '<span class="proxy-status checking">checking...</span>';
+  try {
+    const res = await fetchJSON(`/user/${uid}/proxy/check`, {method: "POST"});
+    if (el) {
+      if (res.data.status === "ok") {
+        el.innerHTML = `<span class="proxy-status ok">${res.data.ip} ${res.data.latency_ms}ms</span>`;
+      } else if (res.data.status === "skip") {
+        el.innerHTML = '<span class="proxy-status">direct</span>';
+      } else {
+        el.innerHTML = `<span class="proxy-status error">${res.data.error || 'failed'}</span>`;
+      }
+    }
+  } catch (e) {
+    if (el) el.innerHTML = `<span class="proxy-status error">${e.message}</span>`;
+  }
+}
+
+async function exportProfile(id, format) {
+  try {
+    const r = await fetch(API + `/user/export?user_id=${id}&format=${format}`, {method: "POST"});
+    const j = await r.json();
+    const blob = new Blob([j.data.text], {type: "text/plain"});
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `cookies-${id}.${format === "netscape" ? "txt" : "json"}`;
+    a.click();
+  } catch (e) { alert(e.message); }
+}
+
+// --- Fingerprint edit ---
+function openFingerprintEdit(uid) {
+  fpEditUserId = uid;
+  const p = profiles.find(x => x.user_id === uid);
+  if (!p) return;
+  document.getElementById("fp-profile-name").textContent = `(${p.name})`;
+  const fp = p.fingerprint_config || {};
+  document.getElementById("fp-ua").value = fp.user_agent || "";
+  document.getElementById("fp-platform").value = fp.platform || "Win32";
+  document.getElementById("fp-locale").value = fp.locale || "en-US";
+  document.getElementById("fp-timezone").value = fp.timezone || "";
+  document.getElementById("fp-languages").value = (fp.languages || []).join(", ");
+  document.getElementById("fp-screen-w").value = fp.screen_width || 1920;
+  document.getElementById("fp-screen-h").value = fp.screen_height || 1080;
+  document.getElementById("fp-dpr").value = fp.pixel_ratio || 1;
+  document.getElementById("fp-colordepth").value = String(fp.color_depth || 24);
+  document.getElementById("fp-inner-w").value = fp.inner_width || 1920;
+  document.getElementById("fp-inner-h").value = fp.inner_height || 969;
+  document.getElementById("fp-cores").value = String(fp.hardware_concurrency || 8);
+  document.getElementById("fp-memory").value = String(fp.device_memory || 8);
+  document.getElementById("fp-gl-vendor").value = fp.webgl_vendor || "";
+  document.getElementById("fp-gl-renderer").value = fp.webgl_renderer || "";
+  document.getElementById("fp-conn-type").value = fp.connection_type || "wifi";
+  document.getElementById("fp-conn-downlink").value = fp.connection_downlink || 10;
+  document.getElementById("fp-conn-rtt").value = fp.connection_rtt || 50;
+  document.getElementById("fp-block-webrtc").checked = fp.block_webrtc_ip !== false;
+  fpTab("basic");
+  document.getElementById("fingerprintModal").classList.add("open");
+}
+function closeFingerprintModal() { document.getElementById("fingerprintModal").classList.remove("open"); fpEditUserId = null; }
+
+function fpTab(name) {
+  ["basic","screen","hardware","network"].forEach(t => {
+    document.getElementById(`fp-tab-${t}`).style.display = t === name ? "" : "none";
+  });
+  document.querySelectorAll(".tabs .tab").forEach((el, i) => {
+    const tabs = ["basic","screen","hardware","network"];
+    el.classList.toggle("active", tabs[i] === name);
+  });
+}
+
+async function saveFingerprintEdit() {
+  if (!fpEditUserId) return;
+  const fp = {
+    user_agent: document.getElementById("fp-ua").value,
+    platform: document.getElementById("fp-platform").value,
+    locale: document.getElementById("fp-locale").value,
+    timezone: document.getElementById("fp-timezone").value,
+    languages: document.getElementById("fp-languages").value.split(",").map(s => s.trim()).filter(Boolean),
+    screen_width: parseInt(document.getElementById("fp-screen-w").value) || 1920,
+    screen_height: parseInt(document.getElementById("fp-screen-h").value) || 1080,
+    pixel_ratio: parseFloat(document.getElementById("fp-dpr").value) || 1,
+    color_depth: parseInt(document.getElementById("fp-colordepth").value) || 24,
+    inner_width: parseInt(document.getElementById("fp-inner-w").value) || 1920,
+    inner_height: parseInt(document.getElementById("fp-inner-h").value) || 969,
+    hardware_concurrency: parseInt(document.getElementById("fp-cores").value) || 8,
+    device_memory: parseFloat(document.getElementById("fp-memory").value) || 8,
+    webgl_vendor: document.getElementById("fp-gl-vendor").value,
+    webgl_renderer: document.getElementById("fp-gl-renderer").value,
+    connection_type: document.getElementById("fp-conn-type").value,
+    connection_downlink: parseFloat(document.getElementById("fp-conn-downlink").value) || 10,
+    connection_rtt: parseInt(document.getElementById("fp-conn-rtt").value) || 50,
+    block_webrtc_ip: document.getElementById("fp-block-webrtc").checked,
+  };
+  try {
+    await fetchJSON("/user/update", {
+      method: "POST", headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({user_id: fpEditUserId, fingerprint_config: fp}),
+    });
+    closeFingerprintModal();
+    await refresh();
+  } catch (e) { alert(e.message); }
+}
+
+async function fpRegenerate() {
+  // Request a fresh fingerprint from server would be ideal,
+  // but for now randomize locally.
+  const uas = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.6200.150 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.5600.120 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.6100.80 Safari/537.36",
+  ];
+  const screens = [[1920,1080],[2560,1440],[1366,768],[1680,1050],[3840,2160]];
+  const gpus = [
+    ["Google Inc. (NVIDIA)", "ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Direct3D11 vs_5_0 ps_5_0)"],
+    ["Google Inc. (AMD)", "ANGLE (AMD, AMD Radeon RX 6700 XT Direct3D11 vs_5_0 ps_5_0)"],
+    ["Google Inc. (Intel)", "ANGLE (Intel, Intel(R) Iris Xe Graphics Direct3D11 vs_5_0 ps_5_0)"],
+  ];
+  const pick = arr => arr[Math.floor(Math.random() * arr.length)];
+  const s = pick(screens);
+  const g = pick(gpus);
+  document.getElementById("fp-ua").value = pick(uas);
+  document.getElementById("fp-screen-w").value = s[0];
+  document.getElementById("fp-screen-h").value = s[1];
+  document.getElementById("fp-inner-w").value = s[0];
+  document.getElementById("fp-inner-h").value = s[1] - 111;
+  document.getElementById("fp-gl-vendor").value = g[0];
+  document.getElementById("fp-gl-renderer").value = g[1];
+  document.getElementById("fp-cores").value = String(pick([4,8,8,12,16]));
+  document.getElementById("fp-memory").value = String(pick([8,8,16,32]));
+}
+
+// --- Modals ---
+function openCreate() { document.getElementById("createModal").classList.add("open"); }
+function closeCreate() { document.getElementById("createModal").classList.remove("open"); }
+function openImport() { document.getElementById("importModal").classList.add("open"); }
+function closeImport() { document.getElementById("importModal").classList.remove("open"); }
+function openProxyImport() { document.getElementById("proxyImportModal").classList.add("open"); }
+function closeProxyImport() { document.getElementById("proxyImportModal").classList.remove("open"); }
+
+async function submitCreate(btn = null) {
+  const nameEl = document.getElementById("create-name");
+  const name = nameEl.value.trim();
+  if (!name) {
+    nameEl.classList.add("invalid");
+    showToast("Name required", "error");
+    return;
+  }
+  nameEl.classList.remove("invalid");
+  const group_id = document.getElementById("create-group").value.trim() || "0";
+  const proxy_type = document.getElementById("create-proxy-type").value;
+  let user_proxy_config = {proxy_type};
+  if (proxy_type !== "direct") {
+    const hp = document.getElementById("create-proxy-host").value.trim();
+    if (!hp.includes(":")) {
+      showToast("host:port required when proxy is not direct", "error");
+      return;
+    }
+    const [host, ...rest] = hp.split(":");
+    const port = rest.join(":");
+    user_proxy_config.proxy_host = host;
+    user_proxy_config.proxy_port = parseInt(port, 10);
+    const u = document.getElementById("create-proxy-user").value.trim();
+    const p = document.getElementById("create-proxy-pass").value;
+    if (u) user_proxy_config.proxy_user = u;
+    if (p) user_proxy_config.proxy_password = p;
+  }
+  const tags = document.getElementById("create-tags").value.split(",").map(s => s.trim()).filter(Boolean);
+
+  if (btn) btn.classList.add("loading");
+  try {
+    await fetchJSON("/user/create", {
+      method: "POST", headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({ name, group_id, user_proxy_config, remark: document.getElementById("create-remark").value, tags }),
+    });
+    closeCreate();
+    showToast("Profile created", "success");
+    await refresh();
+  } catch (e) { showToast(e.message, "error"); }
+  finally { if (btn) btn.classList.remove("loading"); }
+}
+
+async function submitImport() {
+  const file = document.getElementById("import-file").files[0];
+  if (!file) { alert("Pick a file"); return; }
+  try {
+    const fd = new FormData();
+    fd.append("file", file);
+    await fetch(API + "/user/import", {method: "POST", body: fd});
+    closeImport();
+    await refresh();
+  } catch (e) { alert(e.message); }
+}
+
+async function submitBackupImport() {
+  const source_path = document.getElementById("backup-path").value.trim();
+  if (!source_path) { alert("Backup path required"); return; }
+  try {
+    const result = await fetchJSON("/user/import/backup", {
+      method: "POST", headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({ source_path, overwrite: document.getElementById("backup-overwrite").checked }),
+    });
+    closeImport();
+    await refresh();
+    alert(`Imported ${result.data.imported_count}, updated ${result.data.updated_count}, skipped ${result.data.skipped_count}, errors ${result.data.error_count}`);
+  } catch (e) { alert(e.message); }
+}
+
+async function submitProxyImport() {
+  const text = document.getElementById("proxy-list-input").value.trim();
+  if (!text) { alert("Enter proxy list"); return; }
+  const useSelected = document.getElementById("proxy-assign-selected").checked && selected.size > 0;
+  try {
+    const body = { proxy_list: text };
+    if (useSelected) body.user_ids = [...selected];
+    const res = await fetchJSON("/user/bulk/proxy/import", {
+      method: "POST", headers: {"Content-Type":"application/json"},
+      body: JSON.stringify(body),
+    });
+    closeProxyImport();
+    await refresh();
+    alert(`Assigned proxies to ${res.data.assigned_count} profile(s)`);
+  } catch (e) { alert(e.message); }
+}
+
+// ---------------------------------------------------------------------------
+// MCP server management
+// ---------------------------------------------------------------------------
+
+async function loadMcp() {
+  const summary = document.getElementById("mcp-summary");
+  const toolsBox = document.getElementById("mcp-tools");
+  try {
+    const res = await fetchJSON("/mcp/status");
+    const d = res.data || {};
+    const state = d.running ? "running" : "stopped";
+    const bits = [`<span class="status ${d.running ? 'active' : 'inactive'}">${state}</span>`];
+    bits.push(`transport ${esc(d.transport || "stdio")}`);
+    if (d.pid) bits.push(`pid ${d.pid}`);
+    if (d.running && d.uptime_s !== undefined && d.uptime_s !== null) {
+      bits.push(`up ${Math.round(d.uptime_s)}s`);
+    }
+    const toolCount = d.tool_count !== undefined ? d.tool_count : (d.tools || []).length;
+    bits.push(`${toolCount} tools`);
+    if (d.error) bits.push(`<span style="color:var(--red)">${esc(d.error)}</span>`);
+    summary.innerHTML = bits.join(" \u00b7 ");
+    toolsBox.innerHTML = (d.tools || []).map(t =>
+      `<span class="tag" title="${esc(t.desc || "")}">${esc(t.name || String(t))}</span>`
+    ).join("");
+    document.getElementById("mcp-start-btn").disabled = !!d.running;
+    document.getElementById("mcp-stop-btn").disabled = !d.running;
+  } catch (e) {
+    summary.innerHTML = `<span style="color:var(--red)">MCP unavailable: ${esc(e.message)}</span>`;
+    toolsBox.innerHTML = "";
+  }
+}
+
+async function mcpStart() {
+  document.getElementById("mcp-start-btn").disabled = true;
+  try {
+    await fetchJSON("/mcp/start", { method: "POST" });
+  } catch (e) {
+    alert("Could not start MCP server: " + e.message);
+  }
+  await loadMcp();
+}
+
+async function mcpStop() {
+  document.getElementById("mcp-stop-btn").disabled = true;
+  try {
+    await fetchJSON("/mcp/stop", { method: "POST" });
+  } catch (e) {
+    alert("Could not stop MCP server: " + e.message);
+  }
+  await loadMcp();
+}
+
+async function mcpCopyConfig() {
+  try {
+    const res = await fetchJSON("/mcp/config?include_env=true");
+    const text = JSON.stringify(res.data.config, null, 2);
+    try {
+      await navigator.clipboard.writeText(text);
+      alert("MCP client config copied to clipboard.");
+    } catch (clipErr) {
+      // Clipboard API needs a secure context; fall back to a selectable prompt.
+      window.prompt("Copy this MCP client config:", text);
+    }
+  } catch (e) {
+    alert("Could not load MCP config: " + e.message);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Sorting
+// ---------------------------------------------------------------------------
+
+let sortKey = "name";
+let sortDir = 1;
+
+function changeSort(key) {
+  // Clicking the active column flips direction, a new column sorts ascending.
+  if (sortKey === key) { sortDir = -sortDir; } else { sortKey = key; sortDir = 1; }
+  render();
+}
+
+function sortProfiles(list) {
+  const k = sortKey;
+  return list.slice().sort((a, b) => {
+    let va = a[k], vb = b[k];
+    if (k === "status") { va = running.has(a.user_id) ? 1 : 0; vb = running.has(b.user_id) ? 1 : 0; }
+    if (va === undefined || va === null) va = "";
+    if (vb === undefined || vb === null) vb = "";
+    if (typeof va === "number" && typeof vb === "number") return (va - vb) * sortDir;
+    return String(va).localeCompare(String(vb)) * sortDir;
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Smart fingerprint randomization
+// ---------------------------------------------------------------------------
+
+function openRandomize() {
+  if (!selected.size) { alert("Select at least one profile first."); return; }
+  document.getElementById("rnd-count").textContent = selected.size;
+  document.getElementById("randomizeModal").classList.add("open");
+}
+function closeRandomize() { document.getElementById("randomizeModal").classList.remove("open"); }
+
+function toggleOverridesPanel() {
+  const on = document.getElementById("rnd-overrides-enabled").checked;
+  document.getElementById("rnd-overrides-panel").style.display = on ? "block" : "none";
+}
+
+function collectOverrides() {
+  if (!document.getElementById("rnd-overrides-enabled").checked) return null;
+  const num = (v) => { const n = parseInt(v, 10); return Number.isFinite(n) ? n : undefined; };
+  const raw = {
+    user_agent: document.getElementById("rnd-ov-user-agent").value.trim() || undefined,
+    platform: document.getElementById("rnd-ov-platform").value.trim() || undefined,
+    screen_width: num(document.getElementById("rnd-ov-screen-width").value),
+    screen_height: num(document.getElementById("rnd-ov-screen-height").value),
+    hardware_concurrency: num(document.getElementById("rnd-ov-hardware-concurrency").value),
+    device_memory: num(document.getElementById("rnd-ov-device-memory").value),
+    webgl_vendor: document.getElementById("rnd-ov-webgl-vendor").value.trim() || undefined,
+    webgl_renderer: document.getElementById("rnd-ov-webgl-renderer").value.trim() || undefined,
+    timezone: document.getElementById("rnd-ov-timezone").value.trim() || undefined,
+  };
+  const langs = document.getElementById("rnd-ov-languages").value.trim();
+  if (langs) raw.languages = langs.split(",").map(s => s.trim()).filter(Boolean);
+  const out = {};
+  for (const [k, v] of Object.entries(raw)) if (v !== undefined) out[k] = v;
+  return Object.keys(out).length ? out : null;
+}
+
+async function submitRandomize() {
+  const checked = (sel) => Array.from(document.querySelectorAll(sel))
+    .filter(c => c.checked).map(c => c.value);
+  const body = {
+    user_ids: Array.from(selected),
+    os_family: document.getElementById("rnd-os").value,
+    shared_fields: checked("#randomizeModal .rnd-shared:checked"),
+    preserve_fields: checked("#randomizeModal .rnd-preserve:checked"),
+  };
+  const ov = collectOverrides();
+  if (ov) body.overrides = ov;
+  try {
+    const res = await fetchJSON("/user/bulk/fingerprint/randomize", {
+      method: "POST", body: JSON.stringify(body),
+    });
+    closeRandomize();
+    alert(`Randomized ${res.data.updated_count} profile(s).`);
+    await refresh();
+  } catch (e) {
+    alert("Randomize failed: " + e.message);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Stealth audit (detect score)
+// ---------------------------------------------------------------------------
+
+async function auditProfile(uid) {
+  const box = document.getElementById("audit-body");
+  document.getElementById("auditModal").classList.add("open");
+  box.innerHTML = "Running stealth audit…";
+  try {
+    const res = await fetchJSON(`/user/${uid}/detect-score`);
+    const d = res.data || {};
+    const score = d.score !== undefined ? d.score : "?";
+    const cls = score >= 80 ? "active" : "inactive";
+    const rows = (d.checks || d.findings || []).map(c =>
+      `<tr><td>${esc(c.name || c.check || "")}</td>
+           <td><span class="status ${c.ok || c.passed ? "active" : "inactive"}">${c.ok || c.passed ? "ok" : "fail"}</span></td>
+           <td class="muted">${esc(c.detail || c.message || "")}</td></tr>`
+    ).join("");
+    box.innerHTML = `<p>Stealth score: <span class="status ${cls}">${score}</span></p>
+      <table><thead><tr><th>Check</th><th>Result</th><th>Detail</th></tr></thead><tbody>${rows}</tbody></table>`;
+  } catch (e) {
+    box.innerHTML = `<span style="color:var(--red)">Audit failed: ${esc(e.message)}</span>`;
+  }
+}
+
+function closeAudit() { document.getElementById("auditModal").classList.remove("open"); }
+
+async function bulkAudit() {
+  if (!selected.size) { alert("Select at least one profile first."); return; }
+  const box = document.getElementById("audit-body");
+  document.getElementById("auditModal").classList.add("open");
+  box.innerHTML = `Auditing ${selected.size} profile(s)…`;
+  try {
+    const res = await fetchJSON("/user/bulk/detect-score", {
+      method: "POST", body: JSON.stringify({ user_ids: Array.from(selected) }),
+    });
+    const d = res.data || {};
+    const rows = (d.results || []).map(r =>
+      `<tr><td>${esc(r.name || r.user_id)}</td>
+           <td><span class="status ${(r.score || 0) >= 80 ? "active" : "inactive"}">${r.score !== undefined ? r.score : "-"}</span></td>
+           <td class="muted">${esc(r.error || "")}</td></tr>`
+    ).join("");
+    const avg = d.average_score !== undefined ? d.average_score : d.average;
+    box.innerHTML = `<p>Average score: <b>${avg !== undefined ? avg : "-"}</b></p>
+      <table><thead><tr><th>Profile</th><th>Score</th><th>Note</th></tr></thead><tbody>${rows}</tbody></table>`;
+  } catch (e) {
+    box.innerHTML = `<span style="color:var(--red)">Bulk audit failed: ${esc(e.message)}</span>`;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Activity log / resources / schedules
+// ---------------------------------------------------------------------------
+
+async function loadActivity() {
+  const box = document.getElementById("activity-list");
+  if (!box) return;
+  try {
+    const res = await fetchJSON("/activity?limit=25");
+    const items = (res.data || {}).items || (res.data || {}).activity || [];
+    box.innerHTML = items.length
+      ? items.map(a => `<div class="row">
+          <span class="muted">${esc(a.timestamp || a.ts || "")}</span>
+          <span>${esc(a.action || "")}</span>
+          <span class="muted">${esc(a.user_id || "")}</span>
+        </div>`).join("")
+      : '<div class="card-sub">No activity yet.</div>';
+  } catch (e) {
+    box.innerHTML = `<div class="card-sub" style="color:var(--red)">${esc(e.message)}</div>`;
+  }
+}
+
+async function exportActivity() {
+  try {
+    const res = await fetchJSON("/activity/export", {
+      method: "POST", body: JSON.stringify({ format: "csv" }),
+    });
+    const path = (res.data || {}).path || (res.data || {}).file || "";
+    alert("Activity exported" + (path ? " to:\n" + path : "."));
+  } catch (e) {
+    alert("Export failed: " + e.message);
+  }
+}
+
+async function loadResources() {
+  const box = document.getElementById("resource-stats");
+  if (!box) return;
+  try {
+    const res = await fetchJSON("/resource/status");
+    const d = res.data || {};
+    const bits = [];
+    if (d.cpu_percent !== undefined) bits.push(`CPU ${d.cpu_percent}%`);
+    if (d.memory_percent !== undefined) bits.push(`RAM ${d.memory_percent}%`);
+    if (d.disk_percent !== undefined) bits.push(`Disk ${d.disk_percent}%`);
+    if (d.running_browsers !== undefined) bits.push(`${d.running_browsers} browser(s)`);
+    if (d.max_browsers !== undefined) bits.push(`limit ${d.max_browsers}`);
+    box.innerHTML = bits.length ? bits.join(" \u00b7 ") : '<span class="muted">No resource data.</span>';
+  } catch (e) {
+    box.innerHTML = `<span style="color:var(--red)">${esc(e.message)}</span>`;
+  }
+}
+
+async function loadSchedules() {
+  const box = document.getElementById("schedule-list");
+  if (!box) return;
+  try {
+    const res = await fetchJSON("/backup/schedules");
+    const items = (res.data || {}).schedules || (res.data || {}).items || [];
+    box.innerHTML = items.length
+      ? items.map(s => `<div class="row">
+          <span>${esc(s.name || s.id || "")}</span>
+          <span class="muted">${esc(s.cron || s.interval || "")}</span>
+          <button class="btn sm" onclick="runSchedule('${esc(s.id || s.name || "")}')">Run</button>
+        </div>`).join("")
+      : '<div class="card-sub">No backup schedules.</div>';
+  } catch (e) {
+    box.innerHTML = `<div class="card-sub" style="color:var(--red)">${esc(e.message)}</div>`;
+  }
+}
+
+async function createSchedule() {
+  const name = prompt("Schedule name:");
+  if (!name) return;
+  const cron = prompt("Cron expression (e.g. 0 3 * * *):", "0 3 * * *");
+  if (!cron) return;
+  try {
+    await fetchJSON("/backup/schedules", {
+      method: "POST", body: JSON.stringify({ name, cron }),
+    });
+    await loadSchedules();
+  } catch (e) {
+    alert("Could not create schedule: " + e.message);
+  }
+}
+
+async function runSchedule(id) {
+  try {
+    await fetchJSON("/backup/schedules/run", {
+      method: "POST", body: JSON.stringify({ schedule_id: id }),
+    });
+    alert("Schedule run started.");
+    await loadSchedules();
+  } catch (e) {
+    alert("Could not run schedule: " + e.message);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Folders (groups)
+// ---------------------------------------------------------------------------
+
+function openFolders() {
+  document.getElementById("foldersModal").classList.add("open");
+  loadFolders();
+}
+function closeFolders() { document.getElementById("foldersModal").classList.remove("open"); }
+
+async function loadFolders() {
+  const box = document.getElementById("folders-body");
+  try {
+    const res = await fetchJSON("/group/list");
+    const items = (res.data || {}).list || (res.data || {}).groups || [];
+    box.innerHTML = items.length
+      ? items.map(g => `<tr><td>${esc(g.group_name || g.name || "")}</td>
+          <td class="muted">${esc(g.group_id || g.id || "")}</td>
+          <td><button class="btn sm danger" onclick="deleteFolder('${esc(g.group_id || g.id)}')">Delete</button></td></tr>`).join("")
+      : `<tr><td colspan="3" class="empty">No folders yet.</td></tr>`;
+  } catch (e) {
+    box.innerHTML = `<tr><td colspan="3" style="color:var(--red)">${esc(e.message)}</td></tr>`;
+  }
+}
+
+async function createFolder() {
+  const name = document.getElementById("folder-name").value.trim();
+  if (!name) { alert("Enter a folder name."); return; }
+  try {
+    await fetchJSON("/group/create", { method: "POST", body: JSON.stringify({ group_name: name }) });
+    document.getElementById("folder-name").value = "";
+    await loadFolders();
+    await refresh();
+  } catch (e) {
+    alert("Could not create folder: " + e.message);
+  }
+}
+
+async function deleteFolder(gid) {
+  if (!confirm("Delete this folder?")) return;
+  try {
+    await fetchJSON("/group/delete", { method: "POST", body: JSON.stringify({ group_id: gid }) });
+    await loadFolders();
+    await refresh();
+  } catch (e) {
+    alert("Could not delete folder: " + e.message);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Mass create / sync / backup preview
+// ---------------------------------------------------------------------------
+
+function openMassCreate() { document.getElementById("massCreateModal").classList.add("open"); }
+function closeMassCreate() { document.getElementById("massCreateModal").classList.remove("open"); }
+
+async function submitMassCreate() {
+  const count = parseInt(document.getElementById("mass-count").value, 10) || 0;
+  const prefix = document.getElementById("mass-prefix").value.trim() || "profile";
+  const os_family = document.getElementById("mass-os").value;
+  if (count < 1) { alert("Count must be at least 1."); return; }
+  let ok = 0;
+  for (let i = 1; i <= count; i++) {
+    try {
+      await fetchJSON("/user/create", {
+        method: "POST",
+        body: JSON.stringify({ name: `${prefix}-${i}`, fingerprint_config: { os_family } }),
+      });
+      ok++;
+    } catch (e) { /* keep going, report the total at the end */ }
+  }
+  closeMassCreate();
+  alert(`Created ${ok} of ${count} profile(s).`);
+  await refresh();
+}
+
+function openSync() { document.getElementById("syncModal").classList.add("open"); }
+function closeSync() { document.getElementById("syncModal").classList.remove("open"); }
+
+async function runFlow() {
+  if (!selected.size) { alert("Select at least one profile first."); return; }
+  const flow = document.getElementById("sync-flow").value.trim();
+  if (!flow) { alert("Enter a flow name."); return; }
+  try {
+    const res = await fetchJSON("/sync/run", {
+      method: "POST",
+      body: JSON.stringify({ user_ids: Array.from(selected), flow }),
+    });
+    closeSync();
+    const d = res.data || {};
+    alert(`Flow finished on ${d.count !== undefined ? d.count : selected.size} profile(s).`);
+  } catch (e) {
+    alert("Flow failed: " + e.message);
+  }
+}
+
+async function previewBackup() {
+  const path = document.getElementById("backup-path").value.trim();
+  if (!path) { alert("Enter the AdsPower backup folder path first."); return; }
+  const box = document.getElementById("backup-preview");
+  box.innerHTML = "Reading backup…";
+  try {
+    const res = await fetchJSON("/user/import/backup/preview", {
+      method: "POST", body: JSON.stringify({ path }),
+    });
+    const d = res.data || {};
+    const items = d.profiles || d.items || [];
+    box.innerHTML = `<p>Found <b>${d.count !== undefined ? d.count : items.length}</b> profile(s).</p>` +
+      (items.length ? `<ul>${items.slice(0, 20).map(p => `<li>${esc(p.name || p.user_id || "")}</li>`).join("")}</ul>` : "");
+  } catch (e) {
+    box.innerHTML = `<span style="color:var(--red)">Preview failed: ${esc(e.message)}</span>`;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Extensions + Chrome Web Store
+// ---------------------------------------------------------------------------
+
+async function loadExtensions() {
+  const box = document.getElementById("extension-list");
+  if (!box) return;
+  try {
+    const res = await fetchJSON("/extension/list");
+    const items = (res.data || {}).extensions || (res.data || {}).list || [];
+    box.innerHTML = items.length
+      ? items.map(x => `<div class="row">
+          <span>${esc(x.name || x.id || "")}</span>
+          <span class="muted">${esc(x.version || "")}</span>
+          <button class="btn sm danger" onclick="uninstallExtension('${esc(x.id || x.name)}')">Remove</button>
+        </div>`).join("")
+      : '<div class="card-sub">No extensions installed.</div>';
+  } catch (e) {
+    box.innerHTML = `<div class="card-sub" style="color:var(--red)">${esc(e.message)}</div>`;
+  }
+}
+
+async function uninstallExtension(id) {
+  if (!confirm("Remove this extension?")) return;
+  try {
+    await fetchJSON("/extension/uninstall", { method: "POST", body: JSON.stringify({ extension_id: id }) });
+    await loadExtensions();
+  } catch (e) {
+    alert("Could not remove extension: " + e.message);
+  }
+}
+
+async function searchWebStore() {
+  const q = document.getElementById("webstore-query").value.trim();
+  const box = document.getElementById("webstore-results");
+  if (!q) { box.innerHTML = '<span class="muted">Type something to search.</span>'; return; }
+  box.innerHTML = "Searching the Chrome Web Store…";
+  try {
+    const res = await fetchJSON(`/extension/webstore/search?q=${encodeURIComponent(q)}`);
+    const items = (res.data || {}).results || (res.data || {}).items || [];
+    box.innerHTML = items.length
+      ? items.map(x => `<div class="row">
+          <span>${esc(x.name || x.title || "")}</span>
+          <span class="muted">${esc(x.id || "")}</span>
+          <button class="btn sm" onclick="installWebStore('${esc(x.id || "")}')">Install</button>
+        </div>`).join("")
+      : '<span class="muted">Nothing found.</span>';
+  } catch (e) {
+    box.innerHTML = `<span style="color:var(--red)">Search failed: ${esc(e.message)}</span>`;
+  }
+}
+
+async function installWebStore(extId) {
+  if (!extId) return;
+  try {
+    await fetchJSON("/extension/install", {
+      method: "POST", body: JSON.stringify({ webstore_id: extId }),
+    });
+    alert("Extension installed.");
+    await loadExtensions();
+  } catch (e) {
+    alert("Install failed: " + e.message);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Proxy providers
+// ---------------------------------------------------------------------------
+
+async function loadProviderKinds() {
+  const sel = document.getElementById("provider-kind");
+  if (!sel) return;
+  try {
+    const res = await fetchJSON("/proxy/providers/kinds");
+    const kinds = (res.data || {}).kinds || [];
+    sel.innerHTML = kinds.map(k => `<option value="${esc(k)}">${esc(k)}</option>`).join("");
+  } catch (e) {
+    sel.innerHTML = '<option value="">unavailable</option>';
+  }
+}
+
+async function testProvider() {
+  const box = document.getElementById("provider-result");
+  const kind = document.getElementById("provider-kind").value;
+  const source = document.getElementById("provider-source").value.trim();
+  if (!source) { box.innerHTML = '<span class="muted">Enter a file path or URL first.</span>'; return; }
+  box.innerHTML = "Testing provider…";
+  try {
+    const res = await fetchJSON("/proxy/providers/test", {
+      method: "POST", body: JSON.stringify({ kind, source }),
+    });
+    const d = res.data || {};
+    box.innerHTML = d.ok
+      ? `<span class="status active">ok</span> ${esc(String(d.count !== undefined ? d.count + " proxies" : ""))}`
+      : `<span class="status inactive">failed</span> <span class="muted">${esc(d.error || "")}</span>`;
+  } catch (e) {
+    box.innerHTML = `<span style="color:var(--red)">${esc(e.message)}</span>`;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Toast notifications
+// ---------------------------------------------------------------------------
+let _toastTimer = null;
+function showToast(msg, kind) {
+  const t = document.getElementById("toast");
+  const m = document.getElementById("toast-msg");
+  if (!t || !m) { alert(msg); return; }
+  m.textContent = msg;
+  t.className = "toast show" + (kind ? " " + kind : "");
+  if (_toastTimer) clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(hideToast, 6000);
+}
+function hideToast() {
+  const t = document.getElementById("toast");
+  if (t) t.classList.remove("show");
+}
+
+// ---------------------------------------------------------------------------
+// Health summary bar
+// ---------------------------------------------------------------------------
+async function loadHealth() {
+  const bar = document.getElementById("health-bar");
+  if (!bar) return;
+  bar.setAttribute("aria-busy", "true");
+  try {
+    const res = await fetchJSON("/diagnostics/summary");
+    const d = res.data || {};
+    bar.setAttribute("aria-busy", "false");
+    const dot = document.getElementById("health-dot");
+    const lbl = document.getElementById("health-label");
+    const cls = d.overall_status || "unknown";
+    dot.className = "health-dot " + cls;
+    lbl.textContent = cls.charAt(0).toUpperCase() + cls.slice(1);
+    document.getElementById("hs-total").textContent = d.profiles_total;
+    document.getElementById("hs-total").classList.remove("skeleton");
+    document.getElementById("hs-running").textContent = d.profiles_running;
+    document.getElementById("hs-running").classList.remove("skeleton");
+    const migWrap = document.getElementById("hs-migration-wrap");
+    migWrap.style.display = d.profiles_needing_migration > 0 ? "" : "none";
+    document.getElementById("hs-migration").textContent = d.profiles_needing_migration;
+    migWrap.className = "health-stat" + (d.profiles_needing_migration > 0 ? " warn" : "");
+    const pxWrap = document.getElementById("hs-proxy-wrap");
+    pxWrap.style.display = d.proxy_failures > 0 ? "" : "none";
+    document.getElementById("hs-proxy").textContent = d.proxy_failures;
+    pxWrap.className = "health-stat" + (d.proxy_failures > 0 ? " alert" : "");
+    const crWrap = document.getElementById("hs-crashed-wrap");
+    crWrap.style.display = d.crashed_sessions > 0 ? "" : "none";
+    document.getElementById("hs-crashed").textContent = d.crashed_sessions;
+    crWrap.className = "health-stat" + (d.crashed_sessions > 0 ? " alert" : "");
+    renderIssues(d.issues || []);
+  } catch (e) {
+    bar.setAttribute("aria-busy", "false");
+    const lbl = document.getElementById("health-label");
+    if (lbl) lbl.textContent = "Health unavailable";
+    const dot = document.getElementById("health-dot");
+    if (dot) dot.className = "health-dot unknown";
+  }
+}
+
+function renderIssues(issues) {
+  const box = document.getElementById("issues-list");
+  if (!box) return;
+  if (!issues.length) {
+    box.innerHTML = '<span class="card-sub">No issues.</span>';
+    return;
+  }
+  box.innerHTML = issues.map(i => `<div class="issue-row">
+    <span class="issue-type ${esc(i.type || "")}">${esc(i.type || "")}</span>
+    <span class="issue-detail">${esc(i.detail || "")}</span>
+  </div>`).join("");
+}
+
+function toggleHealthDetails() {
+  const box = document.getElementById("health-details");
+  if (box) box.style.display = box.style.display === "none" ? "" : "none";
+}
+
+// ---------------------------------------------------------------------------
+// Per-profile diagnostics modal
+// ---------------------------------------------------------------------------
+async function diagnoseProfile(uid) {
+  const box = document.getElementById("diag-body");
+  const nameEl = document.getElementById("diag-name");
+  document.getElementById("diagnoseModal").classList.add("open");
+  box.innerHTML = "Checking profile health…";
+  const p = profiles.find(x => x.user_id === uid);
+  if (p) nameEl.textContent = "(" + p.name + ")";
+  try {
+    const [info, health] = await Promise.all([
+      fetchJSON("/info"),
+      fetchJSON("/diagnostics/summary"),
+    ]);
+    const d = health.data || {};
+    const profileIssues = (d.issues || []).filter(i => i.user_id === uid);
+    const fp = p ? (p.fingerprint_config || {}) : {};
+    const proxyCfg = p ? (p.user_proxy_config || {}) : {};
+    const isRunning = p && running.has(p.user_id);
+    const sections = [];
+    sections.push(`<p><b>Status:</b> ${isRunning ? '<span class="status active">Running</span>' : '<span class="status inactive">Stopped</span>'}</p>`);
+    sections.push(`<p><b>Account status:</b> ${esc(p ? p.account_status : "unknown")}</p>`);
+    sections.push(`<p><b>Launches:</b> ${p ? (p.launch_count || 0) : 0}</p>`);
+    if (proxyCfg.proxy_type && proxyCfg.proxy_type !== "direct") {
+      sections.push(`<p><b>Proxy:</b> ${esc(proxyCfg.proxy_type)}://${esc(proxyCfg.proxy_host)}:${esc(proxyCfg.proxy_port)}</p>`);
+    } else {
+      sections.push(`<p><b>Proxy:</b> direct (no proxy)</p>`);
+    }
+    sections.push(`<p><b>User-Agent:</b> <code>${esc(fp.user_agent || "N/A")}</code></p>`);
+    sections.push(`<p><b>Platform:</b> ${esc(fp.platform || "N/A")}</p>`);
+    if (p && p.import_source_path && !p.initial_state_applied) {
+      sections.push(`<p><span class="issue-type migration">MIGRATION</span> Import source not yet applied.</p>`);
+    }
+    if (profileIssues.length) {
+      sections.push("<hr class=\"group-sep\"><b>Issues:</b>");
+      sections.push(profileIssues.map(i => `<div class="issue-row"><span class="issue-type ${esc(i.type)}">${esc(i.type)}</span><span class="issue-detail">${esc(i.detail)}</span></div>`).join(""));
+    } else {
+      sections.push("<hr class=\"group-sep\"><p><span class=\"status active\">No issues detected</span></p>");
+    }
+    box.innerHTML = sections.join("");
+  } catch (e) {
+    box.innerHTML = `<span style="color:var(--red)">Diagnostics failed: ${esc(e.message)}</span>`;
+  }
+}
+function closeDiagnose() { document.getElementById("diagnoseModal").classList.remove("open"); }
+
+// ---------------------------------------------------------------------------
+// CDP attach to running browser
+// ---------------------------------------------------------------------------
+function openCdp(uid) {
+  try {
+    window.open(`/json/new/${uid}?url=about:blank`, "_blank");
+  } catch (e) {
+    showToast("Cannot open CDP target: " + e.message, "error");
+  }
+}
+
+refresh();
+loadMcp();
+loadActivity();
+loadResources();
+loadSchedules();
+loadExtensions();
+loadProviderKinds();
+loadHealth();
+setInterval(refresh, 5000);
+setInterval(loadMcp, 15000);
+setInterval(loadActivity, 20000);
+setInterval(loadResources, 10000);
+setInterval(loadHealth, 15000);
+
+// Progressive web app: register the service worker for the offline shell.
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js").catch(err => {
+      console.warn("Service worker registration failed:", err);
+    });
+  });
+}
+</script>
+</body>
+</html>

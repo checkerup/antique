@@ -64,7 +64,7 @@ def test_search_api_rejects_blank_query(tmp_path):
 
 
 def test_dashboard_has_webstore_search():
-    html = (Path(__file__).parent.parent / "src/ui/templates/index.html").read_text(encoding="utf-8")
+    html = (Path(__file__).parent.parent / "src/ui/templates/index.html").read_text(encoding="utf-8") + "\n" + (Path(__file__).parent.parent / "src/ui/templates/assets/app.js").read_text(encoding="utf-8")
     assert "/extension/webstore/search" in html
     assert "searchWebStore" in html
     assert "installWebStore" in html

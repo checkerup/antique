@@ -412,8 +412,12 @@ def set_webrtc_mode(
 
 def _ua_for(os_family: str, rng: random.Random) -> str:
     template = rng.choice(_UA_PRESETS[os_family])
-    # Pick a recent Chrome version
-    major = rng.randint(118, 132)
+    # Pick a recent Chrome version.
+    # IMPORTANT: stay close to the engine we actually run (Playwright chromium-1223
+    # = Chrome 146). A stale-UA (e.g. 118) on a modern engine is a strong
+    # cross-signal mismatch detectable by anti-fraud (Google especially).
+    # Range: current engine major and 6 majors back (still auto-updated in the wild).
+    major = rng.randint(140, 146)
     build = rng.randint(4000, 6800)
     patch = rng.randint(50, 200)
     return template.format(major=major, build=build, patch=patch)
@@ -752,8 +756,20 @@ INIT_SCRIPT_TEMPLATE = r"""
       return ext;
     };
   };
-  try { patchWebGL(HTMLCanvasElement.prototype.getContext('webgl').constructor.prototype); } catch (e) {}
-  try { patchWebGL(HTMLCanvasElement.prototype.getContext('webgl2').constructor.prototype); } catch (e) {}
+  // NOTE: calling getContext() on the *prototype* itself returns null in Chrome
+  // (it needs a real canvas instance); a real element must be created first,
+  // otherwise both patches silently no-op (verified against Playwright
+  // chromium-1223: instance-context patch works, prototype-call patch does not).
+  try {
+    const _c = document.createElement('canvas');
+    const _g = _c.getContext('webgl');
+    if (_g) patchWebGL(_g.constructor.prototype);
+  } catch (e) {}
+  try {
+    const _c2 = document.createElement('canvas');
+    const _g2 = _c2.getContext('webgl2');
+    if (_g2) patchWebGL(_g2.constructor.prototype);
+  } catch (e) {}
 
   // ---- Canvas noise (mild, deterministic) ----
   try {
@@ -1206,6 +1222,85 @@ INIT_SCRIPT_TEMPLATE = r"""
     Object.defineProperty(window.screen, 'colorDepth', { get: () => cfg.color_depth });
     Object.defineProperty(window.screen, 'pixelDepth', { get: () => cfg.color_depth });
     Object.defineProperty(window, 'devicePixelRatio', { get: () => cfg.pixel_ratio });
+  } catch (e) {}
+
+  // ---- ClientRect noise (AdsPower parity: --protected-clientrectfp) ----
+  // Detection scripts hash getClientRects()/getBoundingClientRect() values at
+  // sub-pixel precision; real hardware rounds differently per machine. We apply
+  // a deterministic ±0.25px offset per element derived from the profile's noise
+  // seed, matching AdsPower's clientrect fingerprint behaviour (constant seed
+  // per profile, stable across sessions).
+  try {
+    const rectRand = noise(cfg.canvas_noise_seed ^ 0x9e3779b9);
+    const NOISE_AMPLITUDE = 0.25;
+    // Per-element cache: the SAME element must ALWAYS return the same jittered
+    // rect — detection scripts measure twice and compare, and non-determinism
+    // is an instant automation flag. The cache lives on the rect object's source
+    // element (WeakMap keyed by element).
+    const rectCache = new WeakMap();
+    const jitter = (v) => {
+      const d = NOISE_AMPLITUDE * (rectRand() - 0.5) * 2;
+      return Math.round((v + d) * 100) / 100;
+    };
+    const patchRect = (elem, rect) => {
+      if (!rect || typeof rect !== 'object') return rect;
+      let cached = rectCache.get(elem);
+      if (cached) {
+        // reuse the cached deterministic rect for this element
+        try {
+          for (const p of ['x', 'y', 'top', 'left', 'bottom', 'right', 'width', 'height']) {
+            if (typeof cached[p] === 'number') {
+              Object.defineProperty(rect, p, { get: () => cached[p], configurable: true });
+            }
+          }
+        } catch (e) {}
+        return rect;
+      }
+      const snapshot = {};
+      try {
+        const props = ['x', 'y', 'top', 'left', 'bottom', 'right'];
+        for (const p of props) {
+          if (typeof rect[p] === 'number' && rect[p] !== 0) {
+            const j = jitter(rect[p]);
+            snapshot[p] = j;
+            if (j !== rect[p]) {
+              Object.defineProperty(rect, p, { get: () => j, configurable: true });
+            }
+          } else if (typeof rect[p] === 'number') {
+            snapshot[p] = rect[p];
+          }
+        }
+        if (typeof rect.width === 'number' && rect.width > 0) {
+          const w = jitter(rect.width);
+          const h = jitter(rect.height);
+          snapshot.width = w;
+          snapshot.height = h;
+          if (w !== rect.width) {
+            Object.defineProperty(rect, 'width', { get: () => w, configurable: true });
+            Object.defineProperty(rect, 'height', { get: () => h, configurable: true });
+          }
+        } else {
+          snapshot.width = rect.width;
+          snapshot.height = rect.height;
+        }
+        rectCache.set(elem, snapshot);
+      } catch (e) {}
+      return rect;
+    };
+    const origGBCR = Element.prototype.getBoundingClientRect;
+    Element.prototype.getBoundingClientRect = function (...args) {
+      return patchRect(this, origGBCR.apply(this, args));
+    };
+    const origGCR = Element.prototype.getClientRects;
+    Element.prototype.getClientRects = function (...args) {
+      const rects = origGCR.apply(this, args);
+      try {
+        for (let i = 0; i < rects.length; i++) {
+          patchRect(this, rects[i]);
+        }
+      } catch (e) {}
+      return rects;
+    };
   } catch (e) {}
 })();
 """

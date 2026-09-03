@@ -58,7 +58,7 @@ def test_audit_routes_return_404_for_unknown_profile(client):
 
 
 def test_dashboard_contains_iteration7_audit_ui():
-    html = Path(__file__).parents[1].joinpath("src", "ui", "templates", "index.html").read_text(encoding="utf-8-sig")
+    html = Path(__file__).parents[1].joinpath("src", "ui", "templates", "index.html").read_text(encoding="utf-8-sig") + "\n" + Path(__file__).parents[1].joinpath("src", "ui", "templates", "assets", "app.js").read_text(encoding="utf-8-sig")
     assert "Stealth" in html
     assert "auditProfile" in html
     assert "auditModal" in html
@@ -83,7 +83,7 @@ def test_user_list_remark_filter(client):
 
 
 def test_dashboard_has_bulk_audit_and_notes_filter():
-    html = Path(__file__).parents[1].joinpath("src", "ui", "templates", "index.html").read_text(encoding="utf-8-sig")
+    html = Path(__file__).parents[1].joinpath("src", "ui", "templates", "index.html").read_text(encoding="utf-8-sig") + "\n" + Path(__file__).parents[1].joinpath("src", "ui", "templates", "assets", "app.js").read_text(encoding="utf-8-sig")
     assert "bulkAudit" in html
     assert "remark-filter" in html
     assert "Filter notes" in html
