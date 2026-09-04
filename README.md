@@ -1,12 +1,12 @@
 ﻿[![English](https://img.shields.io/badge/lang-English-blue.svg)](README.md) [![Русский](https://img.shields.io/badge/lang-Русский-red.svg)](README.ru.md) [![中文](https://img.shields.io/badge/lang-中文-green.svg)](README.zh.md)
 
-# antique
+# antique — almost free antidetect browser
 
 [![CI](https://github.com/checkerup/antique/actions/workflows/ci.yml/badge.svg)](https://github.com/checkerup/antique/actions/workflows/ci.yml)
 
-**A self-hosted, open-source replacement for AdsPower — multi-profile browser farm with fingerprint spoofing, proxy rotation, .adb bundle import, and an AdsPower-compatible REST API.**
+**Antique — an almost free antidetect browser. A self-hosted, open-source replacement for AdsPower — multi-profile browser farm with fingerprint spoofing, proxy rotation, .adb bundle import, and an AdsPower-compatible REST API.**
 
-> Built autonomously to replace a paid AdsPower subscription with the same UX and API surface, no licensing, fully local.
+> Built autonomously to replace a paid AdsPower subscription with the same UX and API surface, no licensing, fully local. You pay only for proxies — the software itself costs nothing.
 
 
 ---

@@ -1,10 +1,10 @@
 ﻿[![English](https://img.shields.io/badge/lang-English-blue.svg)](README.md) [![Русский](https://img.shields.io/badge/lang-Русский-red.svg)](README.ru.md) [![中文](https://img.shields.io/badge/lang-中文-green.svg)](README.zh.md)
 
-# antique
+# antique — 近乎免费的防关联浏览器
 
-**дёЂдёЄи‡Єж‰з®ЎгЂЃејЂжєђзљ„ AdsPower ж›їд»Јж–№жЎ€ вЂ”вЂ” е¤љ profile жµЏи§€е™Ёе†њењєпјЊе…·е¤‡ fingerprint дјЄиЈ…гЂЃproxy иЅ®жЌўгЂЃ.adb bundle еЇје…ҐпјЊд»ҐеЏЉ AdsPower е…је®№зљ„ REST APIгЂ‚**
+**Antique — 近乎免费的防关联浏览器。自托管的开源 AdsPower 替代方案 — 多 profile 浏览器农场，具备 fingerprint 伪装、proxy 轮换、.adb bundle 导入，以及 AdsPower 兼容的 REST API。**
 
-> и‡Єдё»жћ„е»єпјЊз”ЁдєЋж›їд»Јд»иґ№зљ„ AdsPower и®ўй…пјЊдїќжЊЃз›ёеђЊзљ„ UX е’Њ API жЋҐеЏЈпјЊж— йњЂжЋ€жќѓпјЊе®Ње…Ёжњ¬ењ°иїђиЎЊгЂ‚
+> 自主构建，用于替代付费的 AdsPower 订阅，保持相同的 UX 和 API 接口，无需授权，完全本地运行。你只需为代理付费 — 软件本身完全免费。
 
 
 ---
