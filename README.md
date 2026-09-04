@@ -4,7 +4,9 @@
 
 [![CI](https://github.com/checkerup/antique/actions/workflows/ci.yml/badge.svg)](https://github.com/checkerup/antique/actions/workflows/ci.yml)
 
-**Antique — an almost free antidetect browser. A self-hosted, open-source replacement for AdsPower — multi-profile browser farm with fingerprint spoofing, proxy rotation, .adb bundle import, and an AdsPower-compatible REST API.**
+**Antique — almost free antidetect browser. A self-hosted, open-source replacement for paid AdsPower subscriptions: a multi-profile browser farm with fingerprint spoofing, proxy rotation, `.adb` bundle import, and an AdsPower-compatible REST API.**
+
+📚 **Knowledge base / 知识库 / База знаний:** [`docs/wiki/KB-INDEX.md`](docs/wiki/KB-INDEX.md) — versioned docs for every domain (API, security, deployment, proxies, fingerprint, UI). Changelog: [`CHANGELOG.md`](CHANGELOG.md).
 
 > Built autonomously to replace a paid AdsPower subscription with the same UX and API surface, no licensing, fully local. You pay only for proxies — the software itself costs nothing.
 
@@ -56,7 +58,7 @@ antique is a Python service that:
 
 **What it is NOT (yet):**
 - Not a headless browser farm for thousands of profiles — designed for tens of profiles per machine.
-- Not a multi-user auth layer — single-process, no auth on the REST API, runs locally.
+- Not a multi-user auth layer — single process, one Bearer token (`ANTIQUE_API_TOKEN`; off on loopback by default, required in `--deploy-mode lan`).
 - Not a proxy provider — uses proxies you supply.
 
 **When to use it:** when an AdsPower-compatible local browser farm is needed with full profile isolation, fingerprint control, and .adb bundle import — without paying for AdsPower.
@@ -76,7 +78,7 @@ antique is a Python service that:
 ### Install
 
 ```bash
-git clone https://github.com/<your-org>/antique
+git clone https://github.com/checkerup/antique
 cd antique
 python -m venv .venv && source .venv/bin/activate   # or .venv\Scripts\activate on Windows
 pip install -e .
