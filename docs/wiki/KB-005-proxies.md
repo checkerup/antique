@@ -37,8 +37,8 @@ target network, are excluded from the UI provider dropdown regardless of price.
 | NodeMaven | `https://nodemaven.com/?ref_id=1d8624a8` |
 | Proxy-Seller | `https://proxy-seller.com/?partner=ZABA0TN9F1GYRZ` |
 | Proxy-Cheap | `https://app.proxy-cheap.com/r/jmYN04AE` |
-| Proxy6 | `https://proxy6.net/` (plain link until ref id is registered) |
-| Proxy5 | `https://proxy5.net/` (plain link until ref id is registered) |
+| Proxy6 | `https://proxy6.net/?r=495791` |
+| Proxy5 | `https://proxy5.net/user/aff.php?aff=298` |
 
 Referral IDs are affiliate codes, not secrets: they are meant to be published
 inside the app UI. Registered by the project owner.
