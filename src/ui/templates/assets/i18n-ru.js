@@ -86,6 +86,13 @@
     "common.start": "Запустить", "common.stop": "Остановить", "common.run": "Запустить", "common.none": "Пусто", "common.copied": "Скопировано",
     "extensions.installed": "Расширение установлено", "search.filterNotes": "Фильтр по заметкам",
 
+  "settings.proxyProviders": "Провайдеры прокси",
+  "settings.providerName": "Название",
+  "settings.providerKind": "Тип",
+  "settings.providerSource": "Источник / эндпоинт",
+  "settings.providerApiKey": "API-ключ (опц. — имя env-переменной в доке провайдера)",
+  "settings.testProvider": "Проверить и получить",
+
     "bulk.randomize": "Рандомизировать", "bulk.audit": "Аудит стелса",
     "bulk.massCreate": "Массовое создание", "bulk.rndSub": "Перегенерирует фингерпринты выбранных профилей. Общие поля получают одно значение на всю партию; сохраняемые поля не трогаются.",
     "bulk.rndOs": "Целевая ОС", "bulk.rndShare": "Общие поля (одно значение)", "bulk.rndPreserve": "Сохранить (не рандомизировать)",

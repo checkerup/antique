@@ -919,6 +919,31 @@
     m = $("#mcp-stop-btn"); if (m) m.addEventListener("click", mcpStop);
     m = $("#mcp-copy-btn"); if (m) m.addEventListener("click", mcpCopyConfig);
     m = $("#ext-search-btn"); if (m) m.addEventListener("click", searchWebStore);
+    m = $("#pp-test"); if (m) m.addEventListener("click", testProxyProvider);
+  }
+
+  function testProxyProvider() {
+    var name = ($("#pp-name").value || "").trim() || "test";
+    var kind = $("#pp-kind").value;
+    var source = ($("#pp-source").value || "").trim();
+    var apiKey = ($("#pp-apikey").value || "").trim() || null;
+    var box = $("#pp-result");
+    if (!source) { if (box) box.innerHTML = '<div class="kv-row"><span>Enter a source</span></div>'; return; }
+    if (box) box.innerHTML = '<div class="kv-row"><span>Fetching…</span></div>';
+    fetchJSON("/proxy/providers/test", { method: "POST", body: JSON.stringify({ name: name, kind: kind, source: source, enabled: true, api_key: apiKey }) })
+      .then(function (r) {
+        var d = r.data || {};
+        var html = '<div class="kv-row"><span class="kv-key">Provider</span><span>' + (d.provider || name) + '</span></div>';
+        html += '<div class="kv-row"><span class="kv-key">Fetched</span><span>' + (d.count || 0) + ' proxies</span></div>';
+        if (d.proxies && d.proxies.length) {
+          html += d.proxies.slice(0, 5).map(function (p) { return '<div class="kv-row"><span class="kv-key">•</span><span style="font-family:monospace;font-size:11px">' + p + '</span></div>'; }).join("");
+          if (d.proxies.length > 5) html += '<div class="kv-row"><span class="kv-key">…</span><span>' + (d.proxies.length - 5) + ' more</span></div>';
+        }
+        if (box) box.innerHTML = html;
+      })
+      .catch(function (err) {
+        if (box) box.innerHTML = '<div class="kv-row"><span style="color:var(--bad)">' + (err.message || "Error") + '</span></div>';
+      });
   }
 
   // ============ service worker (PWA) ============

@@ -8,7 +8,7 @@ from src.core.providers import ProviderConfig, ProxyProvider, list_provider_kind
 
 def test_provider_kinds_include_vendor_adapters():
     kinds = list_provider_kinds()
-    assert {"brightdata", "decodo", "smartproxy"}.issubset(kinds)
+    assert {"brightdata", "decodo", "iproyal", "proxy-cheap", "nodemaven", "oxylabs"}.issubset(kinds)
 
 
 def test_disabled_provider_returns_empty(tmp_path):
@@ -20,7 +20,11 @@ def test_disabled_provider_returns_empty(tmp_path):
 @pytest.mark.parametrize("kind,env_name", [
     ("brightdata", "BRIGHTDATA_API_KEY"),
     ("decodo", "DECODO_API_KEY"),
-    ("smartproxy", "SMARTPROXY_API_KEY"),
+    ("smartproxy", "DECODO_API_KEY"),  # legacy alias — Smartproxy rebranded to Decodo
+    ("iproyal", "IPROYAL_API_KEY"),
+    ("proxy-cheap", "PROXY_CHEAP_API_KEY"),
+    ("nodemaven", "NODEMAVEN_API_KEY"),
+    ("oxylabs", "OXYLABS_API_KEY"),
 ])
 def test_vendor_adapter_sends_bearer_token(monkeypatch, kind, env_name):
     seen = {}
@@ -63,9 +67,9 @@ def test_explicit_api_key_overrides_environment(monkeypatch):
 
 
 def test_vendor_requires_api_key(monkeypatch):
-    monkeypatch.delenv("SMARTPROXY_API_KEY", raising=False)
+    monkeypatch.delenv("IPROYAL_API_KEY", raising=False)
     with pytest.raises(ValueError, match="requires api_key"):
-        ProxyProvider(ProviderConfig("s", "smartproxy", "https://x")).fetch()
+        ProxyProvider(ProviderConfig("s", "iproyal", "https://x")).fetch()
 
 
 def test_normalizes_nested_host_port_payload():

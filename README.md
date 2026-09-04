@@ -840,9 +840,11 @@ Added operational parity features: AdsPower backup dry-run preview, profile temp
 - [x] **Real CDP per profile** — `--remote-debugging-port` per profile, surfaced at `/user/{id}/cdp`.
 - [x] **Live View, sync groups, account statuses, Docker** — shipped in 0.3.0.
 - [x] **WebRTC proxy-IP rewriting** — `webrtc_mode: proxy` rewrites host candidates to the profile's `webrtc_public_ip`.
-- [ ] **MCP server UI integration** — start/stop MCP from the dashboard.
-- [ ] **Proxy provider integrations** — BrightData, Decodo, smartproxy.
-- [ ] **Extension Web Store browser** — search and install extensions from UI.
+- [x] **MCP server UI integration** — start/stop MCP from the dashboard Settings screen. `mcpStart()`/`mcpStop()` bindings in app.js, `/mcp/status` live status.
+- [x] **Proxy provider integrations** — BrightData, Decodo, smartproxy. Backend `src/core/providers.py` with Bearer auth + env-var fallback (`BRIGHTDATA_API_KEY`/`DECODO_API_KEY`/`SMARTPROXY_API_KEY`). API: `/proxy/providers/kinds`, `/proxy/providers/test`. UI: Settings screen proxy-provider panel (test & fetch).
+- [x] **Extension Web Store browser** — search and install extensions from the Extensions screen. `searchWebStore()`/`installWebStore()` bindings, `/extension/webstore/search` API.
+- [x] **Backup schedules UI** — schedule and run backups from the Settings screen. `/backup/schedules` + `/backup/schedules/run` API, UI bindings in app.js.
+- [x] **Full SPA dashboard** — 8-screen SPA (profiles, groups, proxies, automation, extensions, import, activity, settings) with i18n (EN/RU/ZH), dark/light themes, PWA service worker. Replaces the old single-file dashboard. Commit `f15f7f2`.
 - [x] **Cookie warming** — done via the Cookie Robot (`warm` command + automation flows).
 - [x] **Proxy rotation** — done (`src/core/proxy_pool.py`, `proxy-rotate` CLI).
 - [x] **Headless stealth** — done (`window.chrome` + permissions patches).
@@ -856,9 +858,16 @@ Added operational parity features: AdsPower backup dry-run preview, profile temp
   History copied to Antique user-data-dir on import. `copy_profile_state()`.
 - [x] **Window title labeling** — `[ProfileName]` prefix in `document.title` with
   MutationObserver; survives SPA navigation. `src/core/window_title.py`, 16 tests.
-- [ ] **Google auth with imported cookies** — Google device-binds cookies to
+- [~] **Google auth with imported cookies** — Google device-binds cookies to
   Canvas/WebGL/Audio fingerprint. Twitter/X and Discord work; Google needs deeper
-  fingerprint matching or SunBrowser binary passthrough.
+  fingerprint matching or SunBrowser binary passthrough. **Partially addressed:**
+  AdsPower's `--protected-canvasmark`/`--protected-webglmark`/`--protected-webglfp`
+  flags ported; SunBrowser GPU data import added; `Function.prototype.toString`
+  hardening added (patched functions now report `[native code]`); `UserAgentClientHint`
+  feature disabled. Google may still detect JS-level patches via deeper heuristics
+  (paint timing, GPU quirks). Full Google auth requires SunBrowser binary
+  passthrough (blocked — see `references/sunbrowser-fingerprint-protocol.md`).
+  See `src/core/ads_fingerprint.py` + `src/core/fingerprint.py`.
 
 ---
 

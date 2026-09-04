@@ -1194,8 +1194,12 @@ INIT_SCRIPT_TEMPLATE = r"""
 
     // (2) window.chrome.runtime must be absent on a normal page — its presence
     // is an extension/automation tell that DevTools probes look for.
+    // EXCEPT on chrome-extension:// pages, where removing it kills real
+    // wallet extensions (Solflare/Phantom UI throws "This script should only
+    // be loaded in a browser extension" and renders nothing).
     try {
-      if (window.chrome && window.chrome.runtime) {
+      if (window.chrome && window.chrome.runtime &&
+          !location.protocol.startsWith('chrome-extension:')) {
         delete window.chrome.runtime;
       }
     } catch (e) {}
@@ -1301,6 +1305,75 @@ INIT_SCRIPT_TEMPLATE = r"""
       } catch (e) {}
       return rects;
     };
+  } catch (e) {}
+  })();
+
+  // ---- toString / Function.prototype.toString hardening ----
+  // Google's anti-bot checks whether patched native functions still
+  // report `function X() { [native code] }` when .toString() is called.
+  // Without this, every JS-level patch above is trivially detectable.
+  // We wrap Function.prototype.toString so that any function we overrode
+  // returns the original native-looking string instead of the patched
+  // source.  This mirrors what AdsPower's SunBrowser does at the C++
+  // level — but from JS, best-effort.
+  try {
+    const _origFnToString = Function.prototype.toString;
+    const _patched = new WeakSet();
+    // collect all functions we overrode above
+    const _nativeStrings = {
+      // navigator getters are accessors, not functions — skip
+      'toDataURL': 'function toDataURL() { [native code] }',
+      'toBlob': 'function toBlob() { [native code] }',
+      'getParameter': 'function getParameter() { [native code] }',
+      'getExtension': 'function getExtension() { [native code] }',
+      'createOscillator': 'function createOscillator() { [native code] }',
+      'connect': 'function connect() { [native code] }',
+      'createDataChannel': 'function createDataChannel() { [native code] }',
+      'createOffer': 'function createOffer() { [native code] }',
+      'createAnswer': 'function createAnswer() { [native code] }',
+      'setLocalDescription': 'function setLocalDescription() { [native code] }',
+      'getBoundingClientRect': 'function getBoundingClientRect() { [native code] }',
+      'getClientRects': 'function getClientRects() { [native code] }',
+      'getImageData': 'function getImageData() { [native code] }',
+      'putImageData': 'function putImageData() { [native code] }',
+    };
+    // Walk the prototypes we patched and mark overridden methods
+    const _checkAndMark = (proto, names) => {
+      for (const n of names) {
+        const desc = Object.getOwnPropertyDescriptor(proto, n);
+        if (desc && typeof desc.value === 'function') {
+          _patched.add(desc.value);
+        }
+      }
+    };
+    try { _checkAndMark(HTMLCanvasElement.prototype, ['toDataURL', 'toBlob']); } catch (e) {}
+    try { _checkAndMark(CanvasRenderingContext2D.prototype, ['getImageData', 'putImageData']); } catch (e) {}
+    try { _checkAndMark(WebGLRenderingContext.prototype, ['getParameter', 'getExtension']); } catch (e) {}
+    try { _checkAndMark(WebGL2RenderingContext.prototype, ['getParameter', 'getExtension']); } catch (e) {}
+    try { _checkAndMark(Element.prototype, ['getBoundingClientRect', 'getClientRects']); } catch (e) {}
+    // AudioContext — only if it exists
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (AC && AC.prototype) _checkAndMark(AC.prototype, ['createOscillator']);
+    } catch (e) {}
+    // RTCPeerConnection
+    try {
+      const RTC = window.RTCPeerConnection || window.webkitRTCPeerConnection;
+      if (RTC && RTC.prototype) {
+        _checkAndMark(RTC.prototype, ['createDataChannel', 'createOffer', 'createAnswer', 'setLocalDescription']);
+      }
+    } catch (e) {}
+
+    Function.prototype.toString = function () {
+      if (_patched.has(this)) {
+        const name = this.name || '';
+        if (name && _nativeStrings[name]) return _nativeStrings[name];
+        return `function ${name}() { [native code] }`;
+      }
+      return _origFnToString.call(this);
+    };
+    // The toString override itself must be native-looking
+    _patched.add(Function.prototype.toString);
   } catch (e) {}
 })();
 """

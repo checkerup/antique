@@ -83,6 +83,13 @@
     "common.start": "Start", "common.stop": "Stop", "common.run": "Run", "common.none": "No items", "common.copied": "Copied to clipboard",
     "extensions.installed": "Extension installed", "search.filterNotes": "Filter notes",
 
+  "settings.proxyProviders": "Proxy providers",
+  "settings.providerName": "Name",
+  "settings.providerKind": "Type",
+  "settings.providerSource": "Source / endpoint",
+  "settings.providerApiKey": "API key (optional — see provider docs for env var name)",
+  "settings.testProvider": "Test & Fetch",
+
     "bulk.randomize": "Randomize", "bulk.audit": "Audit stealth",
     "bulk.massCreate": "Mass create", "bulk.rndSub": "Re-rolls fingerprints for selected profiles. Shared fields get one value across the batch; preserved fields stay untouched.",
     "bulk.rndOs": "Target OS", "bulk.rndShare": "Share across the batch", "bulk.rndPreserve": "Preserve (never randomize)",

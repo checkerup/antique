@@ -183,6 +183,13 @@
     "common.start": "启动", "common.stop": "停止", "common.run": "运行", "common.none": "暂无", "common.copied": "已复制到剪贴板",
     "extensions.installed": "扩展已安装", "search.filterNotes": "备注筛选",
 
+  "settings.proxyProviders": "代理提供商",
+  "settings.providerName": "名称",
+  "settings.providerKind": "类型",
+  "settings.providerSource": "来源 / 端点",
+  "settings.providerApiKey": "API 密钥 (可选 — 环境变量名称请参阅提供商文档)",
+  "settings.testProvider": "测试并获取",
+
     "bulk.randomize": "随机化", "bulk.audit": "隐身检测",
     "bulk.massCreate": "批量创建", "bulk.rndSub": "为所选环境重新生成指纹。共享字段整批统一；保留字段不变。",
     "bulk.rndOs": "目标系统", "bulk.rndShare": "整批共享字段", "bulk.rndPreserve": "保留字段（不随机化）",

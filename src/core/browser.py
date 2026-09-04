@@ -467,7 +467,7 @@ class BrowserLauncher:
             "--disable-component-update",
             "--disable-default-apps",
             "--disable-sync",
-            "--disable-features=Translate,HttpsUpgrades,OptimizationHints",
+            "--disable-features=Translate,HttpsUpgrades,OptimizationHints,UserAgentClientHint",
             "--disable-popup-blocking",
             "--disable-prompt-on-repost",
             "--disable-renderer-backgrounding",
