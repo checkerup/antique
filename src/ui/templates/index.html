@@ -624,10 +624,11 @@ table.profiles tbody tr:last-child td { border-bottom: none; }
           <h2 data-i18n="settings.proxyProviders">Proxy providers</h2>
           <div class="field"><label data-i18n="settings.providerName">Name</label><input id="pp-name" placeholder="My BrightData pool"></div>
           <div class="field"><label data-i18n="settings.providerKind">Type</label>
-            <select id="pp-kind"><option value="file">File</option><option value="json">JSON file</option><option value="http-json">HTTP JSON (any provider)</option><option value="brightdata">BrightData</option><option value="decodo">Decodo (ex-Smartproxy)</option><option value="iproyal">IPRoyal</option><option value="proxy-cheap">Proxy-Cheap</option><option value="nodemaven">NodeMaven</option><option value="oxylabs">Oxylabs</option></select>
+            <select id="pp-kind"><option value="file">File</option><option value="json">JSON file</option><option value="http-json">HTTP JSON (any provider)</option><option value="nodemaven">NodeMaven</option><option value="lunaproxxy">LunaProxy</option><option value="proxy-seller">Proxy-Seller</option><option value="proxy-cheap">Proxy-Cheap</option><option value="ip2world">IP2World</option></select>
           </div>
+          <p class="hint" data-i18n="settings.providerPhilosophy" style="margin:2px 0 8px;font-size:11.5px;color:var(--muted)">Only crypto-native providers: crypto payment in, crypto payouts out. No KYC, no payment trail.</p>
           <div class="field"><label data-i18n="settings.providerSource">Source / endpoint</label><input id="pp-source" placeholder="file path or https://…"></div>
-          <div class="field"><label data-i18n="settings.providerApiKey">API key (optional, env vars: BRIGHTDATA / DECODO / IPROYAL / PROXY_CHEAP / NODEMAVEN / OXYLABS _API_KEY)</label><input id="pp-apikey" type="password" placeholder="••••••••"></div>
+          <div class="field"><label data-i18n="settings.providerApiKey">API key (optional, env vars: NODEMAVEN / LUNAPROXY / PROXY_SELLER / PROXY_CHEAP / IP2WORLD _API_KEY)</label><input id="pp-apikey" type="password" placeholder="••••••••"></div>
           <div class="actions-row"><button class="btn primary" id="pp-test" data-i18n="settings.testProvider">Test &amp; Fetch</button></div>
           <div id="pp-result" class="kv-table"></div>
         </div>

@@ -33,13 +33,11 @@ class ProxyProvider:
     """
 
     _API_ENV = {
-        "brightdata": "BRIGHTDATA_API_KEY",
-        "decodo": "DECODO_API_KEY",
-        "smartproxy": "DECODO_API_KEY",  # legacy alias — Smartproxy rebranded to Decodo
-        "iproyal": "IPROYAL_API_KEY",
-        "proxy-cheap": "PROXY_CHEAP_API_KEY",
         "nodemaven": "NODEMAVEN_API_KEY",
-        "oxylabs": "OXYLABS_API_KEY",
+        "lunaproxxy": "LUNAPROXY_API_KEY",
+        "proxy-seller": "PROXY_SELLER_API_KEY",
+        "proxy-cheap": "PROXY_CHEAP_API_KEY",
+        "ip2world": "IP2WORLD_API_KEY",
     }
 
     def __init__(self, config: ProviderConfig):
@@ -56,7 +54,7 @@ class ProxyProvider:
             if isinstance(data, dict):
                 data = data.get("proxies", [])
             return [str(item.get("url") if isinstance(item, dict) else item) for item in data]
-        if self.config.kind in {"http-json", "brightdata", "decodo", "smartproxy", "iproyal", "proxy-cheap", "nodemaven", "oxylabs"}:
+        if self.config.kind in {"http-json", "nodemaven", "lunaproxxy", "proxy-seller", "proxy-cheap", "ip2world"}:
             data = self._fetch_remote_json()
             return self._extract_proxy_urls(data)
         raise ValueError(f"unsupported provider kind: {self.config.kind}")
@@ -110,6 +108,6 @@ class ProxyProvider:
 def list_provider_kinds() -> List[str]:
     return [
         "file", "json", "http-json",
-        "brightdata", "decodo", "iproyal",
-        "proxy-cheap", "nodemaven", "oxylabs",
+        "nodemaven", "lunaproxxy", "proxy-seller",
+        "proxy-cheap", "ip2world",
     ]

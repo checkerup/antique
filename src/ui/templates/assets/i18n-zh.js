@@ -162,6 +162,8 @@
   "activity.stats.sessions": "总会话数",
   "activity.stats.failures": "启动失败（24小时）",
   "settings.appearance": "外观",
+
+  "settings.providerPhilosophy": "仅限加密原生服务商：加密支付进、加密收益出。无 KYC，无支付痕迹。",
   "settings.theme": "主题",
   "settings.language": "语言",
   "settings.server": "服务器",

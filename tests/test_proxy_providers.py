@@ -8,7 +8,8 @@ from src.core.providers import ProviderConfig, ProxyProvider, list_provider_kind
 
 def test_provider_kinds_include_vendor_adapters():
     kinds = list_provider_kinds()
-    assert {"brightdata", "decodo", "iproyal", "proxy-cheap", "nodemaven", "oxylabs"}.issubset(kinds)
+    assert {"nodemaven", "lunaproxxy", "proxy-seller", "proxy-cheap", "ip2world"}.issubset(kinds)
+    assert not {"brightdata", "decodo", "iproyal", "oxylabs"} & set(kinds)  # non-crypto removed
 
 
 def test_disabled_provider_returns_empty(tmp_path):
@@ -18,13 +19,11 @@ def test_disabled_provider_returns_empty(tmp_path):
 
 
 @pytest.mark.parametrize("kind,env_name", [
-    ("brightdata", "BRIGHTDATA_API_KEY"),
-    ("decodo", "DECODO_API_KEY"),
-    ("smartproxy", "DECODO_API_KEY"),  # legacy alias — Smartproxy rebranded to Decodo
-    ("iproyal", "IPROYAL_API_KEY"),
-    ("proxy-cheap", "PROXY_CHEAP_API_KEY"),
     ("nodemaven", "NODEMAVEN_API_KEY"),
-    ("oxylabs", "OXYLABS_API_KEY"),
+    ("lunaproxxy", "LUNAPROXY_API_KEY"),
+    ("proxy-seller", "PROXY_SELLER_API_KEY"),
+    ("proxy-cheap", "PROXY_CHEAP_API_KEY"),
+    ("ip2world", "IP2WORLD_API_KEY"),
 ])
 def test_vendor_adapter_sends_bearer_token(monkeypatch, kind, env_name):
     seen = {}
@@ -59,17 +58,17 @@ def test_explicit_api_key_overrides_environment(monkeypatch):
         seen["auth"] = request.headers.get("Authorization")
         return Response()
 
-    monkeypatch.setenv("DECODO_API_KEY", "env-secret")
+    monkeypatch.setenv("NODEMAVEN_API_KEY", "env-secret")
     monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
-    values = ProxyProvider(ProviderConfig("d", "decodo", "https://x", api_key="explicit")).fetch()
+    values = ProxyProvider(ProviderConfig("d", "nodemaven", "https://x", api_key="explicit")).fetch()
     assert values == ["socks5://proxy:1"]
     assert seen["auth"] == "Bearer explicit"
 
 
 def test_vendor_requires_api_key(monkeypatch):
-    monkeypatch.delenv("IPROYAL_API_KEY", raising=False)
+    monkeypatch.delenv("IP2WORLD_API_KEY", raising=False)
     with pytest.raises(ValueError, match="requires api_key"):
-        ProxyProvider(ProviderConfig("s", "iproyal", "https://x")).fetch()
+        ProxyProvider(ProviderConfig("s", "ip2world", "https://x")).fetch()
 
 
 def test_normalizes_nested_host_port_payload():
@@ -94,7 +93,7 @@ def test_api_accepts_vendor_provider(monkeypatch, tmp_path):
     monkeypatch.setattr("urllib.request.urlopen", lambda *args, **kwargs: Response())
     response = TestClient(create_app(data_root=tmp_path)).post(
         "/proxy/providers/test",
-        json={"name": "b", "kind": "brightdata", "source": "https://x", "api_key": "k"},
+        json={"name": "b", "kind": "nodemaven", "source": "https://x", "api_key": "k"},
     )
     assert response.status_code == 200
     assert response.json()["data"]["proxies"] == ["http://proxy:8"]
