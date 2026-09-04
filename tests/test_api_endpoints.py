@@ -244,7 +244,7 @@ def test_adspower_backup_import(client, tmp_path):
     d = r.json()["data"]
     assert d["imported_count"] == 2
     # AdsPower user_id preserved
-    p = client.get("/profile/aaa11111").json()["data"]
+    p = client.get("/profile/aaa11111?include_cookies=true").json()["data"]
     assert p["name"] == "Acc One"
     assert p["group_id"] == "5"
     assert "warm" in p["tags"]

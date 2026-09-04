@@ -311,7 +311,10 @@ def _profile_to_adspower_shape(p) -> Dict[str, Any]:
         "account_status": p.account_status,
         "user_proxy_config": proxy_safe,
         "fingerprint_config": p.fingerprint,
-        "cookies": p.cookies,
+        # Session cookies are credentials — never serialize in list views.
+        # Count + has flag only; the blob itself is served by /user/{id}/cookies.
+        "cookies_count": len(p.cookies) if isinstance(p.cookies, list) else (1 if p.cookies else 0),
+        "has_cookies": bool(p.cookies),
         "status": "Active" if p.running_debug_port else "Inactive",
         "debug_port": p.running_debug_port,
         "ws_endpoint": p.running_ws,
@@ -972,12 +975,16 @@ def user_export(
 
 
 @router.get("/profile/{user_id}")
-def get_profile(user_id: str) -> Dict[str, Any]:
+def get_profile(user_id: str, include_cookies: bool = False) -> Dict[str, Any]:
     assert _store is not None
     p = _store.get(user_id)
     if p is None:
         raise HTTPException(status_code=404, detail="user_id not found")
-    return _ads_response(True, **_profile_to_adspower_shape(p))
+    shape = _profile_to_adspower_shape(p)
+    if include_cookies:
+        # Explicit opt-in: the caller asks for the cookie blob (export tooling).
+        shape["cookies"] = p.cookies
+    return _ads_response(True, **shape)
 
 
 # ---------------------------------------------------------------------------
