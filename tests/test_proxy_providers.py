@@ -8,8 +8,8 @@ from src.core.providers import ProviderConfig, ProxyProvider, list_provider_kind
 
 def test_provider_kinds_include_vendor_adapters():
     kinds = list_provider_kinds()
-    assert {"nodemaven", "lunaproxxy", "proxy-seller", "proxy-cheap", "ip2world"}.issubset(kinds)
-    assert not {"brightdata", "decodo", "iproyal", "oxylabs"} & set(kinds)  # non-crypto removed
+    assert {"nodemaven", "proxy-seller", "proxy-cheap", "proxy6", "proxy5"}.issubset(kinds)
+    assert not {"brightdata", "decodo", "iproyal", "oxylabs", "lunaproxxy", "ip2world"} & set(kinds)  # non-crypto / unreachable removed
 
 
 def test_disabled_provider_returns_empty(tmp_path):
@@ -20,10 +20,10 @@ def test_disabled_provider_returns_empty(tmp_path):
 
 @pytest.mark.parametrize("kind,env_name", [
     ("nodemaven", "NODEMAVEN_API_KEY"),
-    ("lunaproxxy", "LUNAPROXY_API_KEY"),
     ("proxy-seller", "PROXY_SELLER_API_KEY"),
     ("proxy-cheap", "PROXY_CHEAP_API_KEY"),
-    ("ip2world", "IP2WORLD_API_KEY"),
+    ("proxy6", "PROXY6_API_KEY"),
+    ("proxy5", "PROXY5_API_KEY"),
 ])
 def test_vendor_adapter_sends_bearer_token(monkeypatch, kind, env_name):
     seen = {}
@@ -66,9 +66,9 @@ def test_explicit_api_key_overrides_environment(monkeypatch):
 
 
 def test_vendor_requires_api_key(monkeypatch):
-    monkeypatch.delenv("IP2WORLD_API_KEY", raising=False)
+    monkeypatch.delenv("PROXY6_API_KEY", raising=False)
     with pytest.raises(ValueError, match="requires api_key"):
-        ProxyProvider(ProviderConfig("s", "ip2world", "https://x")).fetch()
+        ProxyProvider(ProviderConfig("s", "proxy6", "https://x")).fetch()
 
 
 def test_normalizes_nested_host_port_payload():

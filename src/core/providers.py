@@ -34,10 +34,10 @@ class ProxyProvider:
 
     _API_ENV = {
         "nodemaven": "NODEMAVEN_API_KEY",
-        "lunaproxxy": "LUNAPROXY_API_KEY",
         "proxy-seller": "PROXY_SELLER_API_KEY",
         "proxy-cheap": "PROXY_CHEAP_API_KEY",
-        "ip2world": "IP2WORLD_API_KEY",
+        "proxy6": "PROXY6_API_KEY",
+        "proxy5": "PROXY5_API_KEY",
     }
 
     def __init__(self, config: ProviderConfig):
@@ -54,7 +54,7 @@ class ProxyProvider:
             if isinstance(data, dict):
                 data = data.get("proxies", [])
             return [str(item.get("url") if isinstance(item, dict) else item) for item in data]
-        if self.config.kind in {"http-json", "nodemaven", "lunaproxxy", "proxy-seller", "proxy-cheap", "ip2world"}:
+        if self.config.kind in {"http-json", "nodemaven", "proxy-seller", "proxy-cheap", "proxy6", "proxy5"}:
             data = self._fetch_remote_json()
             return self._extract_proxy_urls(data)
         raise ValueError(f"unsupported provider kind: {self.config.kind}")
@@ -108,6 +108,6 @@ class ProxyProvider:
 def list_provider_kinds() -> List[str]:
     return [
         "file", "json", "http-json",
-        "nodemaven", "lunaproxxy", "proxy-seller",
-        "proxy-cheap", "ip2world",
+        "nodemaven", "proxy-seller", "proxy-cheap",
+        "proxy6", "proxy5",
     ]

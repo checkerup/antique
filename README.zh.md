@@ -204,7 +204,7 @@ src/
 │   ├── fingerprint_ops.py         ← 智能批量指纹随机化，支持字段组共享/锁定
 │   ├── socks_bridge.py            ← 本地 SOCKS5 代理授权桥接器（解决 Chromium 不支持带账号密码的 SOCKS5 问题）
 │   ├── operations.py              ← 模板批量创建、AES-GCM 加密快照、备份预览与操作审计
-│   ├── providers.py               ← 本地/远程代理源提取器（支持 File/JSON/HTTP-JSON)
+│   ├── providers.py               ← 本地/远程代理源提取器（File/JSON/HTTP-JSON + 供应商：NodeMaven、Proxy-Seller、Proxy-Cheap、Proxy6、Proxy5）
 │   └── backup_scheduler.py        ← 本地加密备份计划管理器（支持 AES-GCM 与多时段设置）
 ├── api/
 │   ├── __init__.py

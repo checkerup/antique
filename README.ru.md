@@ -207,7 +207,7 @@ src/
 │   ├── fingerprint_ops.py         ← умная массовая рандомизация, общие/сохраняемые группы полей
 │   ├── socks_bridge.py            ← петлевой SOCKS5-мост авторизации для совместимости с AdsPower/Chromium
 │   ├── operations.py              ← массовое создание по шаблону, зашифрованные AES-GCM снимки, предпросмотр бэкапов и аудит
-│   ├── providers.py               ← провайдеры прокси (File/JSON/HTTP-JSON)
+│   ├── providers.py               ← провайдеры прокси (File/JSON/HTTP-JSON + вендоры: NodeMaven, Proxy-Seller, Proxy-Cheap, Proxy6, Proxy5)
 │   └── backup_scheduler.py        ← планировщик локальных зашифрованных резервных копий
 ├── api/
 │   ├── __init__.py

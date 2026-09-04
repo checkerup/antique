@@ -190,6 +190,7 @@
   "settings.providerKind": "类型",
   "settings.providerSource": "来源 / 端点",
   "settings.providerApiKey": "API 密钥 (可选 — 环境变量名称请参阅提供商文档)",
+  "settings.providerRefLinks": "通过推荐链接购买代理（支持本项目）：",
   "settings.testProvider": "测试并获取",
 
     "bulk.randomize": "随机化", "bulk.audit": "隐身检测",

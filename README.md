@@ -843,7 +843,7 @@ Added operational parity features: AdsPower backup dry-run preview, profile temp
 - [x] **Live View, sync groups, account statuses, Docker** — shipped in 0.3.0.
 - [x] **WebRTC proxy-IP rewriting** — `webrtc_mode: proxy` rewrites host candidates to the profile's `webrtc_public_ip`.
 - [x] **MCP server UI integration** — start/stop MCP from the dashboard Settings screen. `mcpStart()`/`mcpStop()` bindings in app.js, `/mcp/status` live status.
-- [x] **Proxy provider integrations** — BrightData, Decodo, smartproxy. Backend `src/core/providers.py` with Bearer auth + env-var fallback (`BRIGHTDATA_API_KEY`/`DECODO_API_KEY`/`SMARTPROXY_API_KEY`). API: `/proxy/providers/kinds`, `/proxy/providers/test`. UI: Settings screen proxy-provider panel (test & fetch).
+- [x] **Proxy provider integrations** — crypto-payout vendors only: NodeMaven, Proxy-Seller, Proxy-Cheap, Proxy6, Proxy5. Backend `src/core/providers.py` with Bearer auth + env-var fallback (`NODEMAVEN_API_KEY`/`PROXY_SELLER_API_KEY`/`PROXY_CHEAP_API_KEY`/`PROXY6_API_KEY`/`PROXY5_API_KEY`). API: `/proxy/providers/kinds`, `/proxy/providers/test`. UI: Settings screen proxy-provider panel (test & fetch) with referral links.
 - [x] **Extension Web Store browser** — search and install extensions from the Extensions screen. `searchWebStore()`/`installWebStore()` bindings, `/extension/webstore/search` API.
 - [x] **Backup schedules UI** — schedule and run backups from the Settings screen. `/backup/schedules` + `/backup/schedules/run` API, UI bindings in app.js.
 - [x] **Full SPA dashboard** — 8-screen SPA (profiles, groups, proxies, automation, extensions, import, activity, settings) with i18n (EN/RU/ZH), dark/light themes, PWA service worker. Replaces the old single-file dashboard. Commit `f15f7f2`.

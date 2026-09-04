@@ -90,6 +90,7 @@
   "settings.providerKind": "Type",
   "settings.providerSource": "Source / endpoint",
   "settings.providerApiKey": "API key (optional — see provider docs for env var name)",
+  "settings.providerRefLinks": "Get a proxy pool via a referral link (supports the project):",
   "settings.testProvider": "Test & Fetch",
 
     "bulk.randomize": "Randomize", "bulk.audit": "Audit stealth",

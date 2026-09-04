@@ -1,5 +1,16 @@
 # CHANGELOG
 
+## [1.1.2] — 2026-09-05
+
+### Changed
+- Proxy provider dropdown: LunaProxy and IP2World removed (sites unreachable from the RU network), replaced with verified crypto-payout providers **Proxy6** (30% first payment / 20% recurring, USDT ERC-20/BEP-20 + WebMoney payout, no cashout minimum) and **Proxy5** (10% lifetime, USDT TRC-20 payout, min $50).
+- Provider adapters: `proxy6` / `proxy5` kinds replace `lunaproxxy` / `ip2world` (`PROXY6_API_KEY` / `PROXY5_API_KEY` env vars).
+
+### Added
+- Referral links (EN/RU/ZH) in Settings → Proxy providers: NodeMaven, Proxy-Seller, Proxy-Cheap (owner's affiliate IDs) + Proxy6, Proxy5 (plain links until ref IDs registered).
+- Wiki knowledge base (`docs/wiki/` KB-001–KB-008 + index): architecture, API, security, profiles, proxies, deployment, fingerprint, UI/i18n.
+- No-slop pass on README (EN/RU/ZH): mojibake repair in RU/ZH bodies, placeholders and dead links fixed, auth statements updated to 1.1.x reality, CJK punctuation restored.
+
 ## [1.1.1] — 2026-09-04
 
 ### Security

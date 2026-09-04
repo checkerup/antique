@@ -93,6 +93,7 @@
   "settings.providerKind": "Тип",
   "settings.providerSource": "Источник / эндпоинт",
   "settings.providerApiKey": "API-ключ (опц. — имя env-переменной в доке провайдера)",
+  "settings.providerRefLinks": "Купить прокси по реф-ссылке (поддерживает проект):",
   "settings.testProvider": "Проверить и получить",
 
     "bulk.randomize": "Рандомизировать", "bulk.audit": "Аудит стелса",
